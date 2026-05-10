@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: video-platform-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --bind 0.0.0.0 --protected-mode no
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-namesrv
+    ports:
+      - "9876:9876"
+    environment:
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqnamesrv
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-broker
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c ../conf/broker.conf
+    depends_on:
+      - rocketmq-namesrv

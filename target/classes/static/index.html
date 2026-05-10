@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频内容理解平台</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                </div>
+                <span>Video AI</span>
+            </div>
+            <div class="sidebar-content">
+                <h1>上传视频<br>秒懂内容</h1>
+                <p class="subtitle">基于分片上传 + MQ 异步处理的视频转写与 AI 总结平台</p>
+                <div class="tech-tags">
+                    <span class="tag">Spring Boot</span>
+                    <span class="tag">Redis</span>
+                    <span class="tag">RocketMQ</span>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <div class="indicator">
+                    <span class="dot"></span>
+                    <span class="indicator-text">服务在线</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Auth Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span class="step-num">1</span>
+                    <h2>账号认证</h2>
+                </div>
+                <div class="form-row">
+                    <div class="input-wrap">
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <input id="username" type="text" value="demo" placeholder="用户名">
+                    </div>
+                    <div class="input-wrap">
+                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        <input id="password" type="password" value="demo123" placeholder="密码">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button id="registerButton" class="btn btn-primary">注册</button>
+                    <button id="loginButton" class="btn btn-ghost">登录</button>
+                </div>
+                <div class="token-bar" id="tokenBar" style="display:none">
+                    <svg class="token-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    <span id="tokenText">已获取 Token</span>
+                </div>
+            </div>
+
+            <!-- Upload Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span class="step-num">2</span>
+                    <h2>上传视频</h2>
+                    <span class="chip">分片上传</span>
+                </div>
+
+                <div class="dropzone" id="dropzone">
+                    <input id="videoFile" type="file" accept="video/*">
+                    <div class="dropzone-empty" id="dropzoneEmpty">
+                        <div class="dropzone-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <p class="dropzone-title">点击或拖拽视频文件到此处</p>
+                        <p class="dropzone-desc">支持 MP4 格式，大文件自动分片</p>
+                    </div>
+                    <div class="dropzone-file" id="dropzoneFile" style="display:none">
+                        <div class="file-row">
+                            <svg class="file-type-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+                                <line x1="7" y1="2" x2="7" y2="22"/>
+                                <line x1="17" y1="2" x2="17" y2="22"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <line x1="2" y1="7" x2="7" y2="7"/>
+                                <line x1="2" y1="17" x2="7" y2="17"/>
+                                <line x1="17" y1="17" x2="22" y2="17"/>
+                                <line x1="17" y1="7" x2="22" y2="7"/>
+                            </svg>
+                            <div class="file-info">
+                                <span class="file-name" id="fileName">-</span>
+                                <span class="file-size" id="fileSize">-</span>
+                            </div>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="progress-meta">
+                            <span id="progressText">准备上传</span>
+                            <span id="progressPercent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button id="uploadButton" class="btn btn-primary" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="12" y1="19" x2="12" y2="5"/>
+                            <polyline points="5 12 12 5 19 12"/>
+                        </svg>
+                        开始上传
+                    </button>
+                    <button id="refreshButton" class="btn btn-ghost" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        刷新
+                    </button>
+                </div>
+
+                <div class="task-field" id="taskField" style="display:none">
+                    <label>任务 ID</label>
+                    <input id="taskId" type="text" readonly>
+                </div>
+            </div>
+
+            <!-- Result Card -->
+            <div class="card result-card">
+                <div class="card-title">
+                    <span class="step-num">3</span>
+                    <h2>处理结果</h2>
+                    <span class="status-pill idle" id="statusPill">未开始</span>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" data-target="pane-transcript">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                        转写结果
+                    </button>
+                    <button class="tab" data-target="pane-summary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                        AI 总结
+                    </button>
+                </div>
+
+                <div class="tab-panes">
+                    <div class="tab-pane active" id="pane-transcript">
+                        <textarea id="transcript" readonly placeholder="任务完成后显示语音转写内容"></textarea>
+                    </div>
+                    <div class="tab-pane" id="pane-summary">
+                        <textarea id="summary" readonly placeholder="任务完成后显示 AI 智能总结"></textarea>
+                    </div>
+                </div>
+
+                <div class="log-area">
+                    <label>操作日志</label>
+                    <textarea id="messages" rows="3" readonly placeholder="等待操作..."></textarea>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
