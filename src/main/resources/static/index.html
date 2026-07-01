@@ -4,190 +4,303 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>视频内容理解平台</title>
-    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="/app.css?v=4">
 </head>
 <body>
-    <div class="app">
-        <!-- Sidebar -->
-        <aside class="sidebar">
+    <div class="shell">
+        <header class="topbar">
             <div class="brand">
-                <div class="brand-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"/>
+                <div class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5.14v13.72L18.98 12 8 5.14Z"></path>
                     </svg>
                 </div>
-                <span>Video AI</span>
-            </div>
-            <div class="sidebar-content">
-                <h1>上传视频<br>秒懂内容</h1>
-                <p class="subtitle">基于分片上传 + MQ 异步处理的视频转写与 AI 总结平台</p>
-                <div class="tech-tags">
-                    <span class="tag">Spring Boot</span>
-                    <span class="tag">Redis</span>
-                    <span class="tag">RocketMQ</span>
+                <div>
+                    <h1>视频内容理解平台</h1>
+                    <p>上传视频，观察普通上传与 Redis 分片上传的差异</p>
                 </div>
             </div>
-            <div class="sidebar-footer">
-                <div class="indicator">
-                    <span class="dot"></span>
-                    <span class="indicator-text">服务在线</span>
-                </div>
-            </div>
-        </aside>
+            <nav class="top-links" aria-label="开发入口">
+                <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Swagger</a>
+                <a href="/actuator/health" target="_blank" rel="noreferrer">Health</a>
+                <a href="/v3/api-docs" target="_blank" rel="noreferrer">OpenAPI</a>
+            </nav>
+        </header>
 
-        <!-- Main Content -->
-        <main class="main">
-            <!-- Auth Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span class="step-num">1</span>
-                    <h2>账号认证</h2>
-                </div>
-                <div class="form-row">
-                    <div class="input-wrap">
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        <input id="username" type="text" value="demo" placeholder="用户名">
-                    </div>
-                    <div class="input-wrap">
-                        <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                        <input id="password" type="password" value="demo123" placeholder="密码">
-                    </div>
-                </div>
-                <div class="btn-group">
-                    <button id="registerButton" class="btn btn-primary">注册</button>
-                    <button id="loginButton" class="btn btn-ghost">登录</button>
-                </div>
-                <div class="token-bar" id="tokenBar" style="display:none">
-                    <svg class="token-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                    <span id="tokenText">已获取 Token</span>
-                </div>
-            </div>
-
-            <!-- Upload Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span class="step-num">2</span>
-                    <h2>上传视频</h2>
-                    <span class="chip">分片上传</span>
-                </div>
-
-                <div class="dropzone" id="dropzone">
-                    <input id="videoFile" type="file" accept="video/*">
-                    <div class="dropzone-empty" id="dropzoneEmpty">
-                        <div class="dropzone-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="17 8 12 3 7 8"/>
-                                <line x1="12" y1="3" x2="12" y2="15"/>
-                            </svg>
+        <main class="workbench">
+            <section class="left-rail" aria-label="操作区">
+                <section class="panel auth-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">1</span>
+                        <div>
+                            <h2>账号</h2>
+                            <p>先登录，再上传和查看历史</p>
                         </div>
-                        <p class="dropzone-title">点击或拖拽视频文件到此处</p>
-                        <p class="dropzone-desc">支持 MP4 格式，大文件自动分片</p>
                     </div>
-                    <div class="dropzone-file" id="dropzoneFile" style="display:none">
-                        <div class="file-row">
-                            <svg class="file-type-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
-                                <line x1="7" y1="2" x2="7" y2="22"/>
-                                <line x1="17" y1="2" x2="17" y2="22"/>
-                                <line x1="2" y1="12" x2="22" y2="12"/>
-                                <line x1="2" y1="7" x2="7" y2="7"/>
-                                <line x1="2" y1="17" x2="7" y2="17"/>
-                                <line x1="17" y1="17" x2="22" y2="17"/>
-                                <line x1="17" y1="7" x2="22" y2="7"/>
+                    <div class="field-grid">
+                        <label class="field">
+                            <span>用户名</span>
+                            <input id="username" type="text" value="demo" autocomplete="username">
+                        </label>
+                        <label class="field">
+                            <span>密码</span>
+                            <input id="password" type="password" value="demo123" autocomplete="current-password">
+                        </label>
+                    </div>
+                    <div class="actions">
+                        <button id="loginButton" class="btn btn-primary">登录</button>
+                        <button id="registerButton" class="btn btn-secondary">注册</button>
+                    </div>
+                    <div class="session-state" id="tokenBar" style="display:none">
+                        <span class="state-dot"></span>
+                        <span id="tokenText">已登录</span>
+                    </div>
+                </section>
+
+                <section class="panel upload-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">2</span>
+                        <div>
+                            <h2>上传实验</h2>
+                            <p>同一个视频可分别用两种策略上传</p>
+                        </div>
+                    </div>
+
+                    <div class="strategy-switch" role="radiogroup" aria-label="上传策略">
+                        <button class="strategy-option active" type="button" data-upload-mode="single" aria-pressed="true">
+                            <span>普通上传</span>
+                            <small>一个请求传完整文件</small>
+                        </button>
+                        <button class="strategy-option" type="button" data-upload-mode="chunk" aria-pressed="false">
+                            <span>Redis 分片</span>
+                            <small>init / chunk / merge</small>
+                        </button>
+                    </div>
+
+                    <div class="dropzone" id="dropzone">
+                        <input id="videoFile" type="file" accept="video/*" aria-label="选择视频文件">
+                        <div class="dropzone-empty" id="dropzoneEmpty">
+                            <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M12 16V4"></path>
+                                <path d="m7 9 5-5 5 5"></path>
+                                <path d="M20 16.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5"></path>
                             </svg>
-                            <div class="file-info">
-                                <span class="file-name" id="fileName">-</span>
-                                <span class="file-size" id="fileSize">-</span>
+                            <strong>选择或拖入视频文件</strong>
+                            <span>建议先用同一个小视频分别验证两种上传方式</span>
+                        </div>
+                        <div class="dropzone-file" id="dropzoneFile" style="display:none">
+                            <div class="file-meta">
+                                <div class="file-icon">VIDEO</div>
+                                <div class="file-text">
+                                    <strong id="fileName">-</strong>
+                                    <span id="fileSize">-</span>
+                                </div>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <div class="progress-row">
+                                <span id="progressText">准备上传</span>
+                                <strong id="progressPercent">0%</strong>
                             </div>
                         </div>
-                        <div class="progress-track">
-                            <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="actions">
+                        <button id="uploadButton" class="btn btn-primary" disabled>开始上传</button>
+                        <button id="refreshButton" class="btn btn-secondary" disabled>刷新任务</button>
+                    </div>
+                    <div class="task-id-row" id="taskField" style="display:none">
+                        <span>当前任务</span>
+                        <input id="taskId" type="text" readonly>
+                    </div>
+                </section>
+
+                <section class="panel metrics-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">ms</span>
+                        <div>
+                            <h2>上传观测</h2>
+                            <p>对比普通上传和 Redis 分片上传耗时</p>
                         </div>
-                        <div class="progress-meta">
-                            <span id="progressText">准备上传</span>
-                            <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <span>当前策略</span>
+                            <strong id="metricMode">普通上传</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>总耗时</span>
+                            <strong id="metricTotal">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>文件大小</span>
+                            <strong id="metricSize">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>吞吐</span>
+                            <strong id="metricSpeed">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>分片数量</span>
+                            <strong id="metricChunks">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>平均分片</span>
+                            <strong id="metricAvgChunk">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>初始化</span>
+                            <strong id="metricInit">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>合并</span>
+                            <strong id="metricMerge">-</strong>
                         </div>
                     </div>
-                </div>
-
-                <div class="btn-group">
-                    <button id="uploadButton" class="btn btn-primary" disabled>
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <line x1="12" y1="19" x2="12" y2="5"/>
-                            <polyline points="5 12 12 5 19 12"/>
-                        </svg>
-                        开始上传
-                    </button>
-                    <button id="refreshButton" class="btn btn-ghost" disabled>
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <polyline points="23 4 23 10 17 10"/>
-                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                        </svg>
-                        刷新
-                    </button>
-                </div>
-
-                <div class="task-field" id="taskField" style="display:none">
-                    <label>任务 ID</label>
-                    <input id="taskId" type="text" readonly>
-                </div>
-            </div>
-
-            <!-- Result Card -->
-            <div class="card result-card">
-                <div class="card-title">
-                    <span class="step-num">3</span>
-                    <h2>处理结果</h2>
-                    <span class="status-pill idle" id="statusPill">未开始</span>
-                </div>
-
-                <div class="tabs">
-                    <button class="tab active" data-target="pane-transcript">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="16" y1="13" x2="8" y2="13"/>
-                            <line x1="16" y1="17" x2="8" y2="17"/>
-                            <polyline points="10 9 9 9 8 9"/>
-                        </svg>
-                        转写结果
-                    </button>
-                    <button class="tab" data-target="pane-summary">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                        </svg>
-                        AI 总结
-                    </button>
-                </div>
-
-                <div class="tab-panes">
-                    <div class="tab-pane active" id="pane-transcript">
-                        <textarea id="transcript" readonly placeholder="任务完成后显示语音转写内容"></textarea>
+                    <div class="compare-grid">
+                        <div class="compare-card">
+                            <span>最近普通上传</span>
+                            <strong id="singleCompare">尚未测试</strong>
+                        </div>
+                        <div class="compare-card">
+                            <span>最近 Redis 分片</span>
+                            <strong id="chunkCompare">尚未测试</strong>
+                        </div>
                     </div>
-                    <div class="tab-pane" id="pane-summary">
-                        <textarea id="summary" readonly placeholder="任务完成后显示 AI 智能总结"></textarea>
-                    </div>
-                </div>
+                </section>
+            </section>
 
-                <div class="log-area">
-                    <label>操作日志</label>
-                    <textarea id="messages" rows="3" readonly placeholder="等待操作..."></textarea>
-                </div>
-            </div>
+            <section class="center-stage" aria-label="任务结果区">
+                <section class="panel task-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">3</span>
+                        <div>
+                            <h2>当前任务</h2>
+                            <p>上传后这里会显示处理进度</p>
+                        </div>
+                        <span class="status-pill idle" id="statusPill">未开始</span>
+                    </div>
+                    <div class="pipeline" aria-label="任务处理状态">
+                        <div class="pipeline-step" data-status="UPLOADING">
+                            <span class="pipeline-dot"></span>
+                            <span>上传</span>
+                        </div>
+                        <div class="pipeline-step" data-status="QUEUED">
+                            <span class="pipeline-dot"></span>
+                            <span>排队</span>
+                        </div>
+                        <div class="pipeline-step" data-status="TRANSCRIBING">
+                            <span class="pipeline-dot"></span>
+                            <span>转写</span>
+                        </div>
+                        <div class="pipeline-step" data-status="SUMMARIZING">
+                            <span class="pipeline-dot"></span>
+                            <span>总结</span>
+                        </div>
+                        <div class="pipeline-step" data-status="COMPLETED">
+                            <span class="pipeline-dot"></span>
+                            <span>完成</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel result-panel">
+                    <div class="panel-heading result-heading">
+                        <span class="step-badge">4</span>
+                        <div>
+                            <h2>结果</h2>
+                            <p>转写用于还原内容，摘要用于快速理解</p>
+                        </div>
+                    </div>
+                    <div class="tabs" role="tablist" aria-label="结果类型">
+                        <button class="tab active" data-target="pane-transcript" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 4h14v16H5z"></path>
+                                <path d="M8 9h8"></path>
+                                <path d="M8 13h8"></path>
+                                <path d="M8 17h5"></path>
+                            </svg>
+                            <span>转写文本</span>
+                        </button>
+                        <button class="tab" data-target="pane-summary" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 5h16"></path>
+                                <path d="M4 12h10"></path>
+                                <path d="M4 19h7"></path>
+                                <path d="m17 15 2 2 4-5"></path>
+                            </svg>
+                            <span>AI 摘要</span>
+                        </button>
+                    </div>
+                    <div class="tab-panes">
+                        <div class="tab-pane active" id="pane-transcript">
+                            <textarea id="transcript" readonly placeholder="任务完成后显示语音转写内容"></textarea>
+                        </div>
+                        <div class="tab-pane" id="pane-summary">
+                            <textarea id="summary" readonly placeholder="任务完成后显示 AI 摘要"></textarea>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel log-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">log</span>
+                        <div>
+                            <h2>操作日志</h2>
+                            <p>定位上传、认证、任务查询问题</p>
+                        </div>
+                    </div>
+                    <textarea id="messages" readonly placeholder="等待操作..."></textarea>
+                </section>
+            </section>
+
+            <aside class="right-rail" aria-label="历史任务">
+                <section class="panel mode-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">i</span>
+                        <div>
+                            <h2>模式说明</h2>
+                            <p>用于面试演示时解释工程取舍</p>
+                        </div>
+                    </div>
+                    <div class="mode-list" aria-label="上传模式说明">
+                        <div class="mode-item">
+                            <span>普通上传</span>
+                            <strong>实现简单，适合小文件</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>Redis 分片</span>
+                            <strong>可扩展断点续传和重试</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>观测指标</span>
+                            <strong>先建基线，再谈优化</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel history-panel" id="myVideosCard" style="display:none">
+                    <div class="panel-heading">
+                        <span class="step-badge">5</span>
+                        <div>
+                            <h2>我的视频</h2>
+                            <p>点击历史任务可重新查看结果</p>
+                        </div>
+                        <button id="loadMyVideos" class="icon-button" type="button" title="刷新列表" aria-label="刷新视频列表">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                                <path d="M21 3v6h-6"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="video-list" id="videoList">
+                        <p class="empty-state">暂无视频，请先上传</p>
+                    </div>
+                </section>
+            </aside>
         </main>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=4"></script>
 </body>
 </html>

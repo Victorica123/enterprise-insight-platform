@@ -1,20 +1,47 @@
 package com.example.videoplatform.workflow;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.time.Instant;
 
+@Entity
+@Table(name = "video_task")
 public class VideoTask {
 
-	private final String taskId;
-	private final String videoId;
-	private final String owner;
-	private final String fileName;
-	private final String storagePath;
-	private volatile String transcript;
-	private volatile String summary;
-	private volatile TaskStatus status;
-	private volatile String errorMessage;
-	private final Instant createdAt;
-	private volatile Instant updatedAt;
+	@Id
+	private String taskId;
+
+	private String videoId;
+
+	private String owner;
+
+	private String fileName;
+
+	private String storagePath;
+
+	@Column(length = 10000)
+	private String transcript;
+
+	@Column(length = 5000)
+	private String summary;
+
+	@Enumerated(EnumType.STRING)
+	private TaskStatus status;
+
+	@Column(columnDefinition = "TEXT")
+	private String errorMessage;
+
+	private Instant createdAt;
+
+	private Instant updatedAt;
+
+	protected VideoTask() {
+		// JPA requires no-arg constructor
+	}
 
 	public VideoTask(String taskId, String videoId, String owner, String fileName, String storagePath) {
 		this.taskId = taskId;

@@ -1,5 +1,6 @@
 package com.example.videoplatform.summary;
 
+import com.example.videoplatform.common.StringUtils;
 import com.example.videoplatform.config.AppProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,11 +10,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
 public class OpenAiCompatibleSummaryClient {
+
+	private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+	private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
 	private final AppProperties appProperties;
 	private final ObjectMapper objectMapper;
@@ -22,14 +27,17 @@ public class OpenAiCompatibleSummaryClient {
 	public OpenAiCompatibleSummaryClient(AppProperties appProperties, ObjectMapper objectMapper) {
 		this.appProperties = appProperties;
 		this.objectMapper = objectMapper;
-		this.httpClient = HttpClient.newHttpClient();
+		this.httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 	}
 
 	public String summarize(String transcript) {
+		if (StringUtils.isBlank(transcript)) {
+			return "（该视频未检测到语音内容，无法生成总结）";
+		}
 		AppProperties.Summary.Llm llm = appProperties.getSummary().getLlm();
 		String baseUrl = llm.getApiBaseUrl();
 		String apiKey = llm.getApiKey();
-		if (isBlank(baseUrl) || isBlank(apiKey)) {
+		if (StringUtils.isBlank(baseUrl) || StringUtils.isBlank(apiKey)) {
 			throw new IllegalStateException("LLM 配置缺失，请设置 app.summary.llm.api-base-url 和 api-key");
 		}
 
@@ -44,7 +52,8 @@ public class OpenAiCompatibleSummaryClient {
 
 			String requestBody = objectMapper.writeValueAsString(payload);
 			HttpRequest request = HttpRequest.newBuilder()
-					.uri(URI.create(trimTrailingSlash(baseUrl) + "/chat/completions"))
+					.uri(URI.create(StringUtils.trimTrailingSlash(baseUrl) + "/chat/completions"))
+					.timeout(REQUEST_TIMEOUT)
 					.header("Authorization", "Bearer " + apiKey)
 					.header("Content-Type", "application/json")
 					.POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
@@ -58,7 +67,7 @@ public class OpenAiCompatibleSummaryClient {
 			JsonNode root = objectMapper.readTree(response.body());
 			JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
 			String content = contentNode.asText();
-			if (isBlank(content)) {
+			if (StringUtils.isBlank(content)) {
 				throw new IllegalStateException("LLM 响应缺少 content 字段: " + response.body());
 			}
 			return content;
@@ -68,13 +77,5 @@ public class OpenAiCompatibleSummaryClient {
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("LLM 请求被中断", exception);
 		}
-	}
-
-	private static String trimTrailingSlash(String value) {
-		return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
-	}
-
-	private static boolean isBlank(String value) {
-		return value == null || value.trim().isEmpty();
 	}
 }

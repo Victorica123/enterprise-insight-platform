@@ -17,11 +17,13 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+@ConditionalOnProperty(prefix = "app.redis", name = "enabled", havingValue = "true")
 public class ChunkUploadService {
 
 	private static final String UPLOAD_META_KEY = "upload:%s:meta";
@@ -46,11 +48,12 @@ public class ChunkUploadService {
 	}
 
 	public MediaDtos.InitUploadResponse initUpload(String owner, MediaDtos.InitUploadRequest request) {
+		String safeName = MediaFileValidator.safeVideoFileName(request.fileName());
 		String fileMd5 = request.fileMd5();
 		if (fileMd5 != null && !fileMd5.isBlank()) {
 			String existingPath = redisTemplate.opsForValue().get(String.format(FILE_MD5_KEY, fileMd5));
 			if (existingPath != null) {
-				VideoTask task = videoTaskService.createTask(owner, request.fileName(), existingPath);
+				VideoTask task = videoTaskService.createTask(owner, safeName, existingPath);
 				workflowPublisher.publish(task.getTaskId());
 				return new MediaDtos.InitUploadResponse(
 						task.getTaskId(), null, request.totalChunks(), null, fileMd5, true);
@@ -61,7 +64,7 @@ public class ChunkUploadService {
 		String metaKey = String.format(UPLOAD_META_KEY, uploadId);
 
 		java.util.HashMap<String, String> meta = new java.util.HashMap<>();
-		meta.put("fileName", request.fileName());
+		meta.put("fileName", safeName);
 		meta.put("fileSize", String.valueOf(request.fileSize()));
 		meta.put("totalChunks", String.valueOf(request.totalChunks()));
 		meta.put("chunkSize", String.valueOf(request.chunkSize()));
@@ -78,7 +81,7 @@ public class ChunkUploadService {
 				Instant.now().plusSeconds(86400).toEpochMilli(), fileMd5, false);
 	}
 
-	public MediaDtos.ChunkUploadResponse uploadChunk(String uploadId, int chunkIndex, MultipartFile file) {
+	public MediaDtos.ChunkUploadResponse uploadChunk(String owner, String uploadId, int chunkIndex, MultipartFile file) {
 		if (file == null || file.isEmpty()) {
 			throw new IllegalArgumentException("分片文件不能为空");
 		}
@@ -88,6 +91,7 @@ public class ChunkUploadService {
 		if (meta == null || meta.isEmpty()) {
 			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
 		}
+		requireUploadOwner(meta, owner);
 
 		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
 		if (chunkIndex < 0 || chunkIndex >= totalChunks) {
@@ -109,6 +113,7 @@ public class ChunkUploadService {
 
 		String chunksKey = String.format(UPLOAD_CHUNKS_KEY, uploadId);
 		redisTemplate.opsForSet().add(chunksKey, String.valueOf(chunkIndex));
+		redisTemplate.expire(chunksKey, Duration.ofHours(24));
 		Long uploaded = redisTemplate.opsForSet().size(chunksKey);
 		return new MediaDtos.ChunkUploadResponse(chunkIndex, uploaded != null ? uploaded.intValue() : 0,
 				totalChunks);
@@ -121,6 +126,7 @@ public class ChunkUploadService {
 		if (meta == null || meta.isEmpty()) {
 			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
 		}
+		requireUploadOwner(meta, owner);
 
 		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
 		String fileName = (String) meta.get("fileName");
@@ -142,7 +148,7 @@ public class ChunkUploadService {
 		try {
 			Path baseDir = Path.of(appProperties.getStorage().getBasePath()).resolve("uploads");
 			Files.createDirectories(baseDir);
-			String safeName = fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
+			String safeName = MediaFileValidator.safeVideoFileName(fileName);
 			Path stored = baseDir.resolve(UUID.randomUUID() + "-" + safeName);
 
 			try (OutputStream outputStream = Files.newOutputStream(stored, StandardOpenOption.CREATE,
@@ -157,6 +163,10 @@ public class ChunkUploadService {
 					}
 					Files.copy(chunkPath, outputStream);
 				}
+			} catch (IOException | RuntimeException e) {
+				// 合并中途失败（分片缺失、磁盘异常等）时清理半成品文件，避免残留不完整视频占用磁盘。
+				deleteQuietly(stored);
+				throw e;
 			}
 
 			// 清理分片文件
@@ -186,28 +196,6 @@ public class ChunkUploadService {
 		}
 	}
 
-	public MediaDtos.SingleUploadResponse uploadSingleFile(String owner, MultipartFile file) {
-		if (file == null || file.isEmpty()) {
-			throw new IllegalArgumentException("上传文件不能为空");
-		}
-		try {
-			Path baseDir = Path.of(appProperties.getStorage().getBasePath()).resolve("uploads");
-			Files.createDirectories(baseDir);
-			String originalName = file.getOriginalFilename() == null ? "video.mp4" : file.getOriginalFilename();
-			String safeName = originalName.replaceAll("[^a-zA-Z0-9._-]", "_");
-			Path stored = baseDir.resolve(UUID.randomUUID() + "-" + safeName);
-			try (InputStream inputStream = file.getInputStream()) {
-				Files.copy(inputStream, stored, StandardCopyOption.REPLACE_EXISTING);
-			}
-			VideoTask task = videoTaskService.createTask(owner, safeName, stored.toString());
-			workflowPublisher.publish(task.getTaskId());
-			return new MediaDtos.SingleUploadResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
-					task.getStatus().name());
-		} catch (IOException exception) {
-			throw new IllegalArgumentException("保存上传文件失败", exception);
-		}
-	}
-
 	private void deleteDirectory(Path directory) throws IOException {
 		if (!Files.exists(directory)) {
 			return;
@@ -219,5 +207,20 @@ public class ChunkUploadService {
 			}
 		}
 		Files.deleteIfExists(directory);
+	}
+
+	private static void deleteQuietly(Path path) {
+		try {
+			Files.deleteIfExists(path);
+		} catch (IOException ignored) {
+			// Best effort cleanup.
+		}
+	}
+
+	private static void requireUploadOwner(Map<Object, Object> meta, String owner) {
+		Object uploadOwner = meta.get("owner");
+		if (uploadOwner == null || !uploadOwner.equals(owner)) {
+			throw new IllegalArgumentException("上传会话不存在或无权限访问");
+		}
 	}
 }

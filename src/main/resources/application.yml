@@ -1,9 +1,15 @@
 server:
-  port: 8080
+  port: 8081
 
 spring:
   application:
     name: video-platform
+  docker:
+    compose:
+      enabled: true
+      lifecycle-management: start_only
+      profiles:
+        active: ""
   servlet:
     multipart:
       max-file-size: 256MB
@@ -19,6 +25,34 @@ spring:
           max-active: 8
           max-idle: 8
           min-idle: 0
+  # ===== 本地开发用 H2（内存模式，不锁文件）=====
+  datasource:
+    url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  # ===== 生产环境切换到 MySQL（部署时取消下面注释，注释掉上面的 H2）=====
+  # datasource:
+  #   url: jdbc:mysql://localhost:3306/videoplatform?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+  #   username: root
+  #   password: your_password
+  #   driver-class-name: com.mysql.cj.jdbc.Driver
+  # jpa:
+  #   hibernate:
+  #     ddl-auto: update
+  #   show-sql: false
+  #   properties:
+  #     hibernate:
+  #       dialect: org.hibernate.dialect.MySQLDialect
 
 rocketmq:
   nameServer: localhost:9876
@@ -34,33 +68,45 @@ management:
 
 app:
   jwt:
-    secret: 01234567890123456789012345678901
-    expiration-seconds: 86400
+    secret: ${APP_JWT_SECRET:01234567890123456789012345678901}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
   storage:
-    base-path: storage
+    base-path: ${APP_STORAGE_BASE_PATH:./storage}
   redis:
-    enabled: true
+    enabled: ${APP_REDIS_ENABLED:true}
   mq:
-    enabled: false
+    enabled: ${APP_MQ_ENABLED:false}
   transcript:
-    enabled: false
+    enabled: ${APP_TRANSCRIPT_ENABLED:false}
     whisper:
-      # OpenAI-compatible base URL, example: https://api.openai.com/v1
-      api-base-url: ""
-      # Your API key
-      api-key: ""
-      # Whisper model name
-      model: whisper-1
-      # ffmpeg executable path. Keep "ffmpeg" if PATH is configured.
-      ffmpeg-path: ffmpeg
+      # 硅基流动 API: https://api.siliconflow.cn/v1
+      api-base-url: ${WHISPER_API_BASE_URL:https://api.siliconflow.cn/v1}
+      api-key: ${WHISPER_API_KEY:}
+      model: ${WHISPER_MODEL:iic/SenseVoiceSmall}
+      ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
   summary:
-    enabled: false
+    enabled: ${APP_SUMMARY_ENABLED:false}
     llm:
-      # OpenAI-compatible base URL, example: https://api.openai.com/v1
-      api-base-url: ""
-      # Your API key
-      api-key: ""
-      # Chat model name
-      model: gpt-4o-mini
-      # Optional system prompt for summary behavior
+      # DeepSeek API: https://api.deepseek.com/v1
+      api-base-url: ${LLM_API_BASE_URL:https://api.deepseek.com/v1}
+      api-key: ${LLM_API_KEY:}
+      model: ${LLM_MODEL:deepseek-chat}
       system-prompt: 请将以下视频转写内容总结为3-5条要点，并给出一个简短结论。
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect

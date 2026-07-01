@@ -2,6 +2,7 @@ package com.example.videoplatform.workflow;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(prefix = "app.redis", name = "enabled", havingValue = "true")
+@ConditionalOnMissingBean(org.redisson.api.RedissonClient.class)
 public class RedisDistributedLockService implements DistributedLockService {
 
 	private static final String UNLOCK_SCRIPT =

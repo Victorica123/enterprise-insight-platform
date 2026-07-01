@@ -28,7 +28,7 @@ public class RocketMqWorkflowConsumer implements RocketMQListener<String> {
 			if (taskId == null || taskId.isBlank()) {
 				throw new IllegalArgumentException("MQ 消息缺少 taskId: " + message);
 			}
-			workflowProcessor.process(taskId);
+			workflowProcessor.processAsync(taskId);
 		} catch (Exception e) {
 			throw new RuntimeException("MQ 消费失败: " + message, e);
 		}

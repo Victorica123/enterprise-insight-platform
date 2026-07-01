@@ -28,11 +28,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			throws ServletException, IOException {
 		String header = request.getHeader("Authorization");
 		if (header != null && header.startsWith("Bearer ")) {
-			Claims claims = jwtService.parse(header.substring(7));
-			UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-					claims.getSubject(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
-			auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-			SecurityContextHolder.getContext().setAuthentication(auth);
+			try {
+				Claims claims = jwtService.parse(header.substring(7));
+				UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+						claims.getSubject(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+				auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+				SecurityContextHolder.getContext().setAuthentication(auth);
+			} catch (Exception e) {
+				// token invalid or expired — leave context unauthenticated
+			}
 		}
 		filterChain.doFilter(request, response);
 	}

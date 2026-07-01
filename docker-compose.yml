@@ -1,16 +1,38 @@
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
     container_name: video-platform-redis
     ports:
-      - "6379:6379"
+      - "7379:6379"
     command: redis-server --bind 0.0.0.0 --protected-mode no
+
+  mysql:
+    image: mysql:8.4
+    container_name: video-platform-mysql
+    profiles:
+      - mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: videoplatform
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   rocketmq-namesrv:
     image: apache/rocketmq:5.2.0
     container_name: video-platform-namesrv
+    profiles:
+      - mq
     ports:
       - "9876:9876"
     environment:
@@ -20,6 +42,8 @@ services:
   rocketmq-broker:
     image: apache/rocketmq:5.2.0
     container_name: video-platform-broker
+    profiles:
+      - mq
     ports:
       - "10911:10911"
       - "10909:10909"
@@ -29,3 +53,6 @@ services:
     command: sh mqbroker -n rocketmq-namesrv:9876 -c ../conf/broker.conf
     depends_on:
       - rocketmq-namesrv
+
+volumes:
+  mysql-data:

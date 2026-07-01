@@ -1,5 +1,6 @@
 package com.example.videoplatform.transcript;
 
+import com.example.videoplatform.common.StringUtils;
 import com.example.videoplatform.config.AppProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,11 +12,15 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class OpenAiCompatibleWhisperClient {
+
+	private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+	private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(90);
 
 	private final AppProperties appProperties;
 	private final HttpClient httpClient;
@@ -23,7 +28,7 @@ public class OpenAiCompatibleWhisperClient {
 
 	public OpenAiCompatibleWhisperClient(AppProperties appProperties, ObjectMapper objectMapper) {
 		this.appProperties = appProperties;
-		this.httpClient = HttpClient.newHttpClient();
+		this.httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 		this.objectMapper = objectMapper;
 	}
 
@@ -31,7 +36,7 @@ public class OpenAiCompatibleWhisperClient {
 		AppProperties.Transcript.Whisper whisper = appProperties.getTranscript().getWhisper();
 		String baseUrl = whisper.getApiBaseUrl();
 		String apiKey = whisper.getApiKey();
-		if (isBlank(baseUrl) || isBlank(apiKey)) {
+		if (StringUtils.isBlank(baseUrl) || StringUtils.isBlank(apiKey)) {
 			throw new IllegalStateException("Whisper 配置缺失，请设置 app.transcript.whisper.api-base-url 和 api-key");
 		}
 
@@ -40,7 +45,8 @@ public class OpenAiCompatibleWhisperClient {
 		try {
 			byte[] payload = buildMultipartPayload(audioFile, model, boundary);
 			HttpRequest request = HttpRequest.newBuilder()
-					.uri(URI.create(trimTrailingSlash(baseUrl) + "/audio/transcriptions"))
+					.uri(URI.create(StringUtils.trimTrailingSlash(baseUrl) + "/audio/transcriptions"))
+					.timeout(REQUEST_TIMEOUT)
 					.header("Authorization", "Bearer " + apiKey)
 					.header("Content-Type", "multipart/form-data; boundary=" + boundary)
 					.POST(HttpRequest.BodyPublishers.ofByteArray(payload))
@@ -52,7 +58,7 @@ public class OpenAiCompatibleWhisperClient {
 			}
 
 			String text = extractJsonTextField(response.body());
-			if (isBlank(text)) {
+			if (text == null) {
 				throw new IllegalStateException("Whisper 返回缺少 text 字段: " + response.body());
 			}
 			return text;
@@ -66,13 +72,14 @@ public class OpenAiCompatibleWhisperClient {
 
 	private static byte[] buildMultipartPayload(Path audioFile, String model, String boundary) throws IOException {
 		String fileName = audioFile.getFileName().toString();
+		String contentType = fileName.endsWith(".mp3") ? "audio/mpeg" : "audio/wav";
 		StringBuilder head = new StringBuilder();
 		head.append("--").append(boundary).append("\r\n");
 		head.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n");
 		head.append(model).append("\r\n");
 		head.append("--").append(boundary).append("\r\n");
 		head.append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(fileName).append("\"\r\n");
-		head.append("Content-Type: audio/wav\r\n\r\n");
+		head.append("Content-Type: ").append(contentType).append("\r\n\r\n");
 
 		byte[] fileBytes = Files.readAllBytes(audioFile);
 		byte[] headBytes = head.toString().getBytes(StandardCharsets.UTF_8);
@@ -93,13 +100,5 @@ public class OpenAiCompatibleWhisperClient {
 		} catch (IOException exception) {
 			throw new IllegalStateException("Whisper 响应解析失败: " + body, exception);
 		}
-	}
-
-	private static String trimTrailingSlash(String value) {
-		return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
-	}
-
-	private static boolean isBlank(String value) {
-		return value == null || value.trim().isEmpty();
 	}
 }

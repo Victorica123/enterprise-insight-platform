@@ -1,40 +1,41 @@
 package com.example.videoplatform.auth;
 
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
 
-	private final Map<String, UserAccount> users = new ConcurrentHashMap<>();
+	private final UserAccountRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
 
-	public AuthService(PasswordEncoder passwordEncoder, JwtService jwtService) {
+	public AuthService(UserAccountRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
 	}
 
+	@Transactional
 	public AuthDtos.AuthResponse register(AuthDtos.RegisterRequest request) {
-		if (users.containsKey(request.username())) {
+		if (userRepository.existsByUsername(request.username())) {
 			throw new IllegalArgumentException("用户名已存在");
 		}
 		UserAccount user = new UserAccount(UUID.randomUUID().toString(), request.username(), passwordEncoder.encode(request.password()));
-		users.put(user.username(), user);
-		return new AuthDtos.AuthResponse(user.userId(), user.username(), jwtService.generateToken(user.userId(), user.username()));
+		userRepository.save(user);
+		return new AuthDtos.AuthResponse(user.getUserId(), user.getUsername(), jwtService.generateToken(user.getUserId(), user.getUsername()));
 	}
 
+	@Transactional(readOnly = true)
 	public AuthDtos.AuthResponse login(AuthDtos.LoginRequest request) {
-		UserAccount user = users.get(request.username());
-		if (user == null || !passwordEncoder.matches(request.password(), user.passwordHash())) {
+		UserAccount user = userRepository.findByUsername(request.username())
+				.orElseThrow(() -> new IllegalArgumentException("用户名或密码错误"));
+		if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
 			throw new IllegalArgumentException("用户名或密码错误");
 		}
-		return new AuthDtos.AuthResponse(user.userId(), user.username(), jwtService.generateToken(user.userId(), user.username()));
-	}
-
-	public record UserAccount(String userId, String username, String passwordHash) {
+		return new AuthDtos.AuthResponse(user.getUserId(), user.getUsername(), jwtService.generateToken(user.getUserId(), user.getUsername()));
 	}
 }
