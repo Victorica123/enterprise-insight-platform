@@ -9,7 +9,7 @@ spring:
       enabled: true
       lifecycle-management: start_only
       profiles:
-        active: ""
+        active: mysql
   servlet:
     multipart:
       max-file-size: 256MB
@@ -25,34 +25,21 @@ spring:
           max-active: 8
           max-idle: 8
           min-idle: 0
-  # ===== 本地开发用 H2（内存模式，不锁文件）=====
+  # ===== 默认使用 MySQL（Spring Boot 启动时由 docker-compose 自动拉起 mysql 容器）=====
+  # 零依赖本地开发可用 H2：-Dspring-boot.run.profiles=h2（见文件末尾 h2 profile）
   datasource:
-    url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8&useUnicode=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     show-sql: false
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-  # ===== 生产环境切换到 MySQL（部署时取消下面注释，注释掉上面的 H2）=====
-  # datasource:
-  #   url: jdbc:mysql://localhost:3306/videoplatform?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-  #   username: root
-  #   password: your_password
-  #   driver-class-name: com.mysql.cj.jdbc.Driver
-  # jpa:
-  #   hibernate:
-  #     ddl-auto: update
-  #   show-sql: false
-  #   properties:
-  #     hibernate:
-  #       dialect: org.hibernate.dialect.MySQLDialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
 
 rocketmq:
   nameServer: localhost:9876
@@ -94,19 +81,31 @@ app:
       system-prompt: 请将以下视频转写内容总结为3-5条要点，并给出一个简短结论。
 
 ---
+# ===== 零依赖本地开发：H2 内存库 + 关闭 Redis/MQ/Docker（-Dspring-boot.run.profiles=h2）=====
 spring:
   config:
     activate:
-      on-profile: mysql
+      on-profile: h2
+  docker:
+    compose:
+      enabled: false
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:123456}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: false
+      ddl-auto: create-drop
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
+        dialect: org.hibernate.dialect.H2Dialect
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+app:
+  redis:
+    enabled: false
+  mq:
+    enabled: false
