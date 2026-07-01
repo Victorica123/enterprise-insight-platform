@@ -16,8 +16,9 @@ spring:
       max-request-size: 256MB
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      # 宿主机 6379 在本机被系统保留无法绑定，docker-compose 将 redis 暴露在 7379
+      port: ${REDIS_PORT:7379}
       database: 0
       timeout: 5s
       lettuce:
