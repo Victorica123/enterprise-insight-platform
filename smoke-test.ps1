@@ -100,8 +100,45 @@ if (-not $mergedTask) {
     throw "Merged task was not returned by task list. taskId=$($merge.data.taskId)"
 }
 
+# ---- Multi-chunk scenario: split the payload into 2 parts to exercise chunk assembly/ordering ----
+$half = [int]($videoBytes.Length / 2)
+$part0 = Join-Path $env:TEMP "video-platform-smoke-0.part"
+$part1 = Join-Path $env:TEMP "video-platform-smoke-1.part"
+[System.IO.File]::WriteAllBytes($part0, $videoBytes[0..($half - 1)])
+[System.IO.File]::WriteAllBytes($part1, $videoBytes[$half..($videoBytes.Length - 1)])
+
+$multiInit = Invoke-JsonPost -Path "/api/media/upload/init" -Headers $headers -Body @{
+    fileName = "multi-chunk-smoke.mp4"
+    fileSize = $videoBytes.Length
+    totalChunks = 2
+    chunkSize = $half
+    fileMd5 = ""
+}
+if (-not $multiInit.success -or -not $multiInit.data.uploadId) {
+    throw "Multi-chunk init failed: $($multiInit | ConvertTo-Json -Compress)"
+}
+
+foreach ($idx in 0, 1) {
+    $partPath = if ($idx -eq 0) { $part0 } else { $part1 }
+    $partResp = & curl.exe -s -X POST "$BaseUrl/api/media/upload/chunk?uploadId=$($multiInit.data.uploadId)&chunkIndex=$idx" `
+        -H "Authorization: Bearer $($login.data.token)" `
+        -F "file=@$partPath;type=application/octet-stream;filename=$idx.part"
+    $partJson = $partResp | ConvertFrom-Json
+    if (-not $partJson.success -or $partJson.data.uploadedChunks -ne ($idx + 1)) {
+        throw "Multi-chunk upload failed at index ${idx}: $partResp"
+    }
+}
+
+$multiMerge = Invoke-JsonPost -Path "/api/media/upload/merge" -Headers $headers -Body @{
+    uploadId = $multiInit.data.uploadId
+}
+if (-not $multiMerge.success -or -not $multiMerge.data.taskId) {
+    throw "Multi-chunk merge failed: $($multiMerge | ConvertTo-Json -Compress)"
+}
+
 Write-Host "Smoke test passed"
 Write-Host "User: $username"
 Write-Host "Single upload task: $($uploadJson.data.taskId)"
-Write-Host "Chunk upload task: $($merge.data.taskId)"
+Write-Host "Chunk upload task (1 chunk): $($merge.data.taskId)"
+Write-Host "Chunk upload task (2 chunks): $($multiMerge.data.taskId)"
 Write-Host "Status: $($createdTask.status)"

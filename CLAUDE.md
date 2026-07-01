@@ -100,7 +100,7 @@ GET /api/workflow/tasks/{id}           → detailed task view with transcript/su
 ### Redis Startup Rule
 - The default configuration enables Redis (`app.redis.enabled=true`) and Spring Boot Docker Compose support (`spring.docker.compose.enabled=true`). Starting Spring Boot (`mvn spring-boot:run` or `start-video-service.ps1`) starts the `redis` service from `docker-compose.yml` automatically when Docker is already running.
 - Do not use VS Code `runOn: folderOpen` tasks to start Redis; opening the project should not occupy a terminal.
-- If Docker is unavailable, either start Redis manually on `localhost:6379` or explicitly run local-only tests with `mvn test "-Dapp.redis.enabled=false"`.
+- If Docker is unavailable, run zero-dependency instead: `mvn spring-boot:run -Dspring-boot.run.profiles=h2` (H2 + no Redis). Note the app connects to Redis on **host port 7379** (`docker-compose` maps `7379:6379` because 6379 is unbindable on this machine); override with `REDIS_PORT`.
 
 ### Build & Test
 ```bash
@@ -120,16 +120,19 @@ mvn test -Dtest=VideoTaskServiceTest#testCreateTask
 ### Local Development
 
 ```bash
-# Mode 1: Zero dependencies (H2 memory, no Redis/RocketMQ)
+# Mode 1: Zero dependencies (H2 in-memory, no Redis/MySQL/RocketMQ) — needs no Docker
+mvn spring-boot:run -Dspring-boot.run.profiles=h2
+
+# Mode 2: Default (MySQL + Redis, no MQ) — start infra first, then run
+docker-compose --profile mysql up -d mysql redis
 mvn spring-boot:run
 
-# Mode 2: With Redis (default)
-mvn spring-boot:run
-
-# Mode 3: Full stack (Redis + RocketMQ)
-docker-compose up -d
-mvn spring-boot:run -Dspring-boot.run.profiles=mysql,redis
+# Mode 3: Full stack (MySQL + Redis + RocketMQ)
+docker-compose --profile mysql up -d
+mvn spring-boot:run -Dapp.mq.enabled=true
 ```
+
+> **Note (2026-07-01):** The default DB is now **MySQL** (was H2). H2 is available only via the `h2` profile for zero-dependency dev. Tests still run on H2 (see `src/test/resources/application-test.yml` + surefire-activated `test` profile).
 
 ### Database & Docker
 ```bash
@@ -181,16 +184,22 @@ app:
       model: "deepseek-chat"
 
 spring:
-  datasource:
-    url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+  datasource:                       # Default is now MySQL (see docker-compose mysql service)
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?...
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
+    properties:
+      hibernate.dialect: org.hibernate.dialect.MySQLDialect
+  data:
+    redis:
+      port: ${REDIS_PORT:7379}      # host 6379 is unbindable on this machine; compose maps 7379:6379
 ```
 
-**Profiles** (use `-Dspring-boot.run.profiles=mysql` to switch):
-- `default`: H2 in-memory (data cleared on restart)
-- `mysql`: External MySQL (requires `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD` env vars)
+**Profiles**:
+- `default`: **MySQL** + Redis (requires the `mysql`+`redis` containers, or `MYSQL_*`/`REDIS_*` env vars)
+- `h2`: Zero-dependency dev — H2 in-memory + Redis/MQ disabled (`-Dspring-boot.run.profiles=h2`)
+- `test` (tests only): H2 + all external deps off; auto-activated by surefire
 
 ---
 
