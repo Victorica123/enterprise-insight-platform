@@ -78,6 +78,8 @@ app:
     enabled: ${APP_MQ_ENABLED:false}
   transcript:
     enabled: ${APP_TRANSCRIPT_ENABLED:false}
+    # 压测用：Mock 转写模拟处理耗时（毫秒）。默认 0 即刻返回；P2 压测时设为秒级还原慢消费者（见 docs/LOADTEST.md）
+    mock-delay-ms: ${APP_TRANSCRIPT_MOCK_DELAY_MS:0}
     whisper:
       # 硅基流动 API: https://api.siliconflow.cn/v1
       api-base-url: ${WHISPER_API_BASE_URL:https://api.siliconflow.cn/v1}

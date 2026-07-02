@@ -1,0 +1,12 @@
+# Grafana 仪表盘自动预置：加载 /var/lib/grafana/dashboards 下的 JSON（由 compose 挂载 observability/grafana/dashboards）
+apiVersion: 1
+
+providers:
+  - name: video-platform
+    folder: Video Platform
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

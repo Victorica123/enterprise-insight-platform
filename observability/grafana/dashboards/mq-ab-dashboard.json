@@ -1,0 +1,98 @@
+{
+  "uid": "video-platform-mq-ab",
+  "title": "视频平台 · MQ 开/关 A/B 压测对比",
+  "description": "P2 MQ 量化验证：对比 app.mq.enabled=false（本地 @Async）与 =true（RocketMQ）两轮压测。所有序列带 mq 标签区分。",
+  "tags": ["video-platform", "loadtest", "P2"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "上传接口响应时间分位数（/api/media/upload/file）",
+      "description": "用户视角的接口快慢。MQ 关：线程池饱和后请求被拒（错误变多但成功请求仍快）；MQ 开：syncSend 毫秒级，稳定。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, mq) (rate(http_server_requests_seconds_bucket{uri=\"/api/media/upload/file\"}[$__rate_interval])))", "legendFormat": "mq={{mq}} P50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, mq) (rate(http_server_requests_seconds_bucket{uri=\"/api/media/upload/file\"}[$__rate_interval])))", "legendFormat": "mq={{mq}} P95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le, mq) (rate(http_server_requests_seconds_bucket{uri=\"/api/media/upload/file\"}[$__rate_interval])))", "legendFormat": "mq={{mq}} P99" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "上传接口吞吐 · 按状态码",
+      "description": "核心对比点：MQ 关时线程池(queue50+max4)打满 → TaskRejectedException → 500 飙升；MQ 开时 broker 兜住 → 全 200。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (mq, status) (rate(http_server_requests_seconds_count{uri=\"/api/media/upload/file\"}[$__rate_interval]))", "legendFormat": "mq={{mq}} HTTP {{status}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "任务端到端耗时分位数（入队 → 终态）",
+      "description": "video.task.e2e：任务 createdAt 到完成的全程耗时，包含排队。MQ 开时接口不拒单，代价是积压转化为 e2e 拉长——削峰不是免费的，这里量化它。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, mq) (rate(video_task_e2e_seconds_bucket[$__rate_interval])))", "legendFormat": "mq={{mq}} P50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, mq) (rate(video_task_e2e_seconds_bucket[$__rate_interval])))", "legendFormat": "mq={{mq}} P95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le, mq) (rate(video_task_e2e_seconds_bucket[$__rate_interval])))", "legendFormat": "mq={{mq}} P99" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "单次处理耗时 P95 · 按处理路径",
+      "description": "video.task.processing：dedup（去重秒完成）/ standalone / single_flight。验证纯处理耗时两种模式应一致（差异都在排队），且去重路径接近 0。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, mq, path) (rate(video_task_processing_seconds_bucket[$__rate_interval])))", "legendFormat": "mq={{mq}} {{path}} P95" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "videoTaskExecutor 线程池：积压 / 活跃 / 拒绝",
+      "description": "MQ 关：queued 顶到 50 上限后 rejected/s 出现（用户请求直接失败）。MQ 开：queued 同样会满，但溢出由 RocketMQ 重投递兜底，不打到用户。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "executor_queued_tasks{name=\"videoTaskExecutor\"}", "legendFormat": "mq={{mq}} queued" },
+        { "refId": "B", "expr": "executor_active_threads{name=\"videoTaskExecutor\"}", "legendFormat": "mq={{mq}} active" },
+        { "refId": "C", "expr": "executor_pool_size_threads{name=\"videoTaskExecutor\"}", "legendFormat": "mq={{mq}} pool size" },
+        { "refId": "D", "expr": "rate(executor_rejected_tasks_total{name=\"videoTaskExecutor\"}[$__rate_interval])", "legendFormat": "mq={{mq}} rejected/s" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "任务完成吞吐 & 跳过原因",
+      "description": "completed/s 上限≈线程数/单任务耗时（两种模式一致，MQ 不提高处理能力只削峰）。skipped 量化幂等/去重/单飞省下的重复处理。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (mq) (rate(video_task_processing_seconds_count{result=\"completed\"}[$__rate_interval]))", "legendFormat": "mq={{mq}} completed/s" },
+        { "refId": "B", "expr": "sum by (mq, reason) (rate(video_task_skipped_total[$__rate_interval]))", "legendFormat": "mq={{mq}} skip:{{reason}}" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Prometheus 抓取配置（P2「MQ 量化验证」）
+# 由 docker-compose 的 observability profile 挂载：docker compose --profile observability up -d
+#
+# 压测节奏短（分钟级），5s 间隔保证分位数曲线有足够采样点；生产可放宽到 15s+。
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: video-platform
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # 应用跑在宿主机（mvn spring-boot:run，端口 8081），容器内经 host.docker.internal 访问宿主
+      - targets: ["host.docker.internal:8081"]

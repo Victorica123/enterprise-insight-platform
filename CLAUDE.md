@@ -69,6 +69,16 @@ The processing pipeline (`WorkflowProcessor.processAsync`) was reworked around a
 - **Watchdog**: `DistributedLockService.tryLockWithWatchdog(key)` — Redisson acquires with NO explicit leaseTime so the watchdog auto-renews the lock across the minutes-long transcode (a fixed-TTL lock would expire mid-processing → duplicate work). Redis-fallback impl has no watchdog → uses a long fixed lease (`WATCHDOG_FALLBACK_LEASE_SECONDS`); local impl is an in-JVM ReentrantLock. Contrast: the existing `tryLock(key, seconds)` (used for merge) deliberately passes a leaseTime, which **disables** the watchdog.
 - **Known gap** (documented, not yet handled): if the single-flight winner crashes mid-processing, lock-loser tasks stay stuck in TRANSCRIBING. The intended fix is a scheduled reaper that requeues stale non-terminal tasks (candidate for a later phase).
 
+### P2 可观测与压测支撑 (2026-07-02)
+
+Metrics + observability stack + k6 script for quantifying MQ on/off (run recipe & interpretation: `docs/LOADTEST.md`):
+
+- **`WorkflowMetrics`**: `video.task.processing` (Timer, tag `path=dedup|standalone|single_flight`, `result`), `video.task.e2e` (createdAt→terminal, shows queueing delay), `video.task.skipped` (Counter, tag `reason`). `http.server.requests` and `executor.*` (videoTaskExecutor queue/active/rejected) come free from actuator. **All metrics carry common tags `application` + `mq=true|false`** (`MetricsConfig`) so two load-test rounds compare directly in one Prometheus.
+- `/actuator/{prometheus,metrics,info}` are permit-all in `SecurityConfig` (intranet scrape; tighten to a separate management port at P5).
+- **`app.transcript.mock-delay-ms`** (default 0 = no behavior change): simulates real transcription latency during load tests — without it the mock returns instantly, the pool never saturates, and MQ A/B shows nothing.
+- docker-compose `observability` profile: Prometheus (host port **19090** — 9090 is in a Windows excluded port range, same story as redis 6379→7379) + Grafana (3000, anonymous, auto-provisioned dashboard `视频平台 · MQ 开/关 A/B 压测对比`).
+- `loadtest/upload-load.js` (k6) hits `POST /api/media/upload/file` — full submit→publish→async chain with no MD5/dedup interference, so `app.mq.enabled` is the only variable.
+
 ### Key Components
 
 | Package | Purpose | Conditional? |
@@ -317,6 +327,7 @@ src/main/resources/
 ## Documentation References
 
 - **Detailed troubleshooting & past issues**: `docs/TROUBLESHOOTING.md`
+- **Load testing (MQ on/off A/B)**: `docs/LOADTEST.md`
 - **Interview-ready architecture explanation**: `docs/INTERVIEW_PREP.html` (deep dive); `INTERVIEW_GUIDE.md` (current features + interview points, authoritative)
 - **Project launch script**: `start-video-service.ps1` (Windows PowerShell)
 - **README.md**: Feature overview, quick-start guide, tech stack

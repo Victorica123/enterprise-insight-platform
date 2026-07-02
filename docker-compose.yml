@@ -54,5 +54,38 @@ services:
     depends_on:
       - rocketmq-namesrv
 
+  # ===== 可观测栈（P2 MQ 量化验证）：docker compose --profile observability up -d =====
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: video-platform-prometheus
+    profiles:
+      - observability
+    ports:
+      # 宿主机 9090 落在系统保留端口段（netsh excludedportrange，9079-9478）无法绑定，
+      # 与 redis 6379→7379 同理，映射到 19090；容器内仍是 9090（Grafana 数据源不受影响）
+      - "19090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      # 应用跑在宿主机（8081）；Linux 下需显式 host-gateway，Docker Desktop 原生支持
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: video-platform-grafana
+    profiles:
+      - observability
+    ports:
+      - "3000:3000"
+    environment:
+      # 本地压测看板免登录（P5 公网部署时移除匿名并配真实账号）
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   mysql-data:
