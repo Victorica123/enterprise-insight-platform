@@ -138,7 +138,7 @@ class ChunkUploadServiceTests {
 		when(setOperations.size("upload:upload-1:chunks")).thenReturn(2L);
 		when(lockService.tryLock("lock:merge:upload-1", 30)).thenReturn(true);
 		VideoTask task = new VideoTask("task-1", "video-1", "alice", "demo.mp4", "storage/demo.mp4");
-		when(videoTaskService.createTask(eq("alice"), eq("demo.mp4"), any())).thenReturn(task);
+		when(videoTaskService.createTask(eq("alice"), eq("demo.mp4"), any(), any())).thenReturn(task);
 		Path chunkDir = storageRoot.resolve("chunks").resolve("upload-1");
 		Files.createDirectories(chunkDir);
 		Files.write(chunkDir.resolve("0"), new byte[] {1, 2});
@@ -152,9 +152,104 @@ class ChunkUploadServiceTests {
 		assertThat(storageRoot.resolve("chunks").resolve("upload-1")).doesNotExist();
 		verify(redisTemplate).delete("upload:upload-1:meta");
 		verify(redisTemplate).delete("upload:upload-1:chunks");
-		verify(videoTaskService).createTask(eq("alice"), eq("demo.mp4"), any());
+		verify(videoTaskService).createTask(eq("alice"), eq("demo.mp4"), any(), any());
 		verify(workflowPublisher).publish("task-1");
 		verify(lockService).unlock("lock:merge:upload-1");
+	}
+
+	@Test
+	void getUploadStatusReturnsSortedUploadedChunks() {
+		when(hashOperations.entries("upload:upload-1:meta")).thenReturn(uploadMeta("alice", "3"));
+		when(setOperations.members("upload:upload-1:chunks"))
+				.thenReturn(new java.util.HashSet<>(java.util.List.of("2", "0")));
+
+		MediaDtos.UploadStatusResponse status = service.getUploadStatus("alice", "upload-1");
+
+		assertThat(status.totalChunks()).isEqualTo(3);
+		assertThat(status.uploadedChunks()).containsExactly(0, 2);
+		assertThat(status.completed()).isFalse();
+	}
+
+	@Test
+	void getUploadStatusRejectsDifferentOwner() {
+		when(hashOperations.entries("upload:upload-1:meta")).thenReturn(uploadMeta("bob", "2"));
+
+		assertThatThrownBy(() -> service.getUploadStatus("alice", "upload-1"))
+				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void initUploadResumesInProgressSessionForSameMd5() {
+		MediaDtos.InitUploadRequest request = new MediaDtos.InitUploadRequest("demo.mp4", 1024L, 3, 512, "md5-r");
+		when(valueOperations.get("file:md5:md5-r")).thenReturn(null);
+		when(valueOperations.get("upload:inprogress:md5-r")).thenReturn("existing-upload");
+		when(hashOperations.entries("upload:existing-upload:meta")).thenReturn(uploadMeta("alice", "3"));
+		when(setOperations.members("upload:existing-upload:chunks"))
+				.thenReturn(new java.util.HashSet<>(java.util.List.of("0", "1")));
+
+		MediaDtos.InitUploadResponse response = service.initUpload("alice", request);
+
+		assertThat(response.uploadId()).isEqualTo("existing-upload");
+		assertThat(response.exists()).isFalse();
+		assertThat(response.uploadedChunks()).containsExactly(0, 1);
+		// 复用会话，不应再创建新会话
+		verify(hashOperations, never()).putAll(any(), any());
+	}
+
+	@Test
+	void mergeChunksFailsIntegrityCheckAndCleansUpOnMd5Mismatch() throws Exception {
+		Map<Object, Object> meta = uploadMeta("alice", "2");
+		meta.put("fileMd5", "deadbeefdeadbeefdeadbeefdeadbeef");
+		when(hashOperations.entries("upload:upload-1:meta")).thenReturn(meta);
+		when(setOperations.size("upload:upload-1:chunks")).thenReturn(2L);
+		when(lockService.tryLock("lock:merge:upload-1", 30)).thenReturn(true);
+		Path chunkDir = storageRoot.resolve("chunks").resolve("upload-1");
+		Files.createDirectories(chunkDir);
+		Files.write(chunkDir.resolve("0"), new byte[] {1, 2});
+		Files.write(chunkDir.resolve("1"), new byte[] {3, 4});
+
+		assertThatThrownBy(() -> service.mergeChunks("alice", new MediaDtos.MergeRequest("upload-1")))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("完整性校验失败");
+
+		// 校验失败的半成品文件必须清理，且不创建任务
+		try (var stream = Files.list(storageRoot.resolve("uploads"))) {
+			assertThat(stream.findAny()).isEmpty();
+		}
+		verify(videoTaskService, never()).createTask(any(), any(), any(), any());
+		verify(lockService).unlock("lock:merge:upload-1");
+	}
+
+	@Test
+	void mergeChunksPassesIntegrityCheckOnMatchingMd5() throws Exception {
+		String md5 = md5Hex(new byte[] {1, 2, 3, 4});
+		Map<Object, Object> meta = uploadMeta("alice", "2");
+		meta.put("fileMd5", md5);
+		when(hashOperations.entries("upload:upload-1:meta")).thenReturn(meta);
+		when(setOperations.size("upload:upload-1:chunks")).thenReturn(2L);
+		when(lockService.tryLock("lock:merge:upload-1", 30)).thenReturn(true);
+		VideoTask task = new VideoTask("task-1", "video-1", "alice", "demo.mp4", "storage/demo.mp4");
+		when(videoTaskService.createTask(eq("alice"), eq("demo.mp4"), any(), any())).thenReturn(task);
+		Path chunkDir = storageRoot.resolve("chunks").resolve("upload-1");
+		Files.createDirectories(chunkDir);
+		Files.write(chunkDir.resolve("0"), new byte[] {1, 2});
+		Files.write(chunkDir.resolve("1"), new byte[] {3, 4});
+
+		MediaDtos.MergeResponse response = service.mergeChunks("alice", new MediaDtos.MergeRequest("upload-1"));
+
+		assertThat(response.taskId()).isEqualTo("task-1");
+		verify(workflowPublisher).publish("task-1");
+		verify(redisTemplate).delete("upload:inprogress:" + md5);
+	}
+
+	private static String md5Hex(byte[] data) throws Exception {
+		byte[] digest = java.security.MessageDigest.getInstance("MD5").digest(data);
+		StringBuilder sb = new StringBuilder();
+		for (byte b : digest) {
+			sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+			sb.append(Character.forDigit(b & 0xF, 16));
+		}
+		return sb.toString();
 	}
 
 	private static Map<Object, Object> uploadMeta(String owner, String totalChunks) {

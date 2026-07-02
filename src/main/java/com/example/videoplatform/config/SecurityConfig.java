@@ -26,6 +26,8 @@ public class SecurityConfig {
 						.requestMatchers("/", "/index.html", "/app.css", "/app.js", "/api/auth/**",
 								"/actuator/health", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
 						.permitAll()
+						// 视频流式播放：<video> 无法带 Authorization 头，改用查询参数中的签名播放令牌自校验
+						.requestMatchers("/api/media/video/*/stream").permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.build();

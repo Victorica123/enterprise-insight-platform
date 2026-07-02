@@ -51,6 +51,24 @@ GET /api/workflow/tasks                → paginated task list (owner-filtered)
 GET /api/workflow/tasks/{id}           → detailed task view with transcript/summary
 ```
 
+### 上传链路增强 (2026-07-02, P1)
+
+Real-video-platform-style upload/playback added on top of the base chunked flow:
+
+- `GET /api/media/upload/status?uploadId=` → 断点续传：returns already-uploaded chunk indices (owner-checked). Frontend also keys resume state in `localStorage` by `name+size+lastModified`, re-confirms via this endpoint, and skips uploaded chunks.
+- **秒传 & 断点续传 by MD5**: `initUpload` resumes an in-progress session for the same `fileMd5` (`upload:inprogress:{md5}` → uploadId) and instant-completes on a fully-uploaded MD5 hit (`file:md5:{md5}`). NOTE: the frontend currently sends `fileMd5:""`, so these MD5 paths are backend-ready but dormant in the UI until content hashing (SparkMD5 web worker) is wired.
+- **完整性校验**: `mergeChunks` computes the merged file's MD5 and rejects+cleans up on mismatch (only when `fileMd5` was supplied).
+- **视频流式播放** (`VideoPlaybackController`): `GET /api/media/video/{taskId}/playback-token` (JWT-auth) issues a short-lived signed token; `GET /api/media/video/{taskId}/stream?token=` self-validates the token (permit-all in `SecurityConfig` because `<video>` can't send Authorization) and serves HTTP Range partial content. This mirrors CDN presigned URLs — the migration path for P4 object storage.
+
+### 内容级去重 + 看门狗单飞 + 幂等消费 (2026-07-02)
+
+The processing pipeline (`WorkflowProcessor.processAsync`) was reworked around a content-addressed `MediaAsset` so identical content is transcribed/summarized **once** and shared:
+
+- **`MediaAsset`** (`media_asset` table, PK = `contentMd5`, status PROCESSING/READY/FAILED) holds the expensive results (transcript/summary). `VideoTask` gained a `contentMd5` column set at `createTask` from the chunked-upload MD5. Frontend computes the MD5 via **SparkMD5** (CDN, chunked incremental, graceful-degrades to empty) and sends it on `init`.
+- **processAsync strategy** (in order): (1) **dedup hit** — asset already READY → `completeFromAsset`, instant, no FFmpeg/Whisper/LLM; (2) **idempotency** — `claimForProcessing` does `QUEUED→TRANSCRIBING` and only the winner of that transition proceeds (guards MQ at-least-once redelivery); (3) **no MD5** (e.g. single-file upload) → `processStandalone` (original per-stage short-transaction flow); (4) **single-flight** — `tryLockWithWatchdog("lock:asset:{md5}")`; the lock holder processes once then `completeAllByContentMd5` **fans out** results to every same-MD5 task; lock losers return immediately and are completed by the winner's fan-out (they do NOT reprocess or hold threads).
+- **Watchdog**: `DistributedLockService.tryLockWithWatchdog(key)` — Redisson acquires with NO explicit leaseTime so the watchdog auto-renews the lock across the minutes-long transcode (a fixed-TTL lock would expire mid-processing → duplicate work). Redis-fallback impl has no watchdog → uses a long fixed lease (`WATCHDOG_FALLBACK_LEASE_SECONDS`); local impl is an in-JVM ReentrantLock. Contrast: the existing `tryLock(key, seconds)` (used for merge) deliberately passes a leaseTime, which **disables** the watchdog.
+- **Known gap** (documented, not yet handled): if the single-flight winner crashes mid-processing, lock-loser tasks stay stuck in TRANSCRIBING. The intended fix is a scheduled reaper that requeues stale non-terminal tasks (candidate for a later phase).
+
 ### Key Components
 
 | Package | Purpose | Conditional? |
@@ -205,7 +223,7 @@ spring:
 
 ## Recent Optimizations (2026-06-13)
 
-See `TROUBLESHOOTING.md` → "代码优化与质量改进记录（2026-06-13）" for full details.
+See `docs/TROUBLESHOOTING.md` → "代码优化与质量改进记录（2026-06-13）" for full details.
 
 **Critical fixes**:
 1. **WorkflowProcessor**: Removed 4 redundant DB writes per video (now 1 per @Transactional exit)
@@ -298,8 +316,8 @@ src/main/resources/
 
 ## Documentation References
 
-- **Detailed troubleshooting & past issues**: `TROUBLESHOOTING.md`
-- **Interview-ready architecture explanation**: `INTERVIEW_PREP.html`
+- **Detailed troubleshooting & past issues**: `docs/TROUBLESHOOTING.md`
+- **Interview-ready architecture explanation**: `docs/INTERVIEW_PREP.html` (deep dive); `INTERVIEW_GUIDE.md` (current features + interview points, authoritative)
 - **Project launch script**: `start-video-service.ps1` (Windows PowerShell)
 - **README.md**: Feature overview, quick-start guide, tech stack
 

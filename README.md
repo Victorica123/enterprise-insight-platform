@@ -180,7 +180,7 @@ mvn test
 
 ## 求职路线图
 
-后续迭代计划见 [CAREER_ROADMAP.md](CAREER_ROADMAP.md)。
+后续迭代计划见 [CAREER_ROADMAP.md](docs/CAREER_ROADMAP.md)。
 
 建议下一阶段继续推进：
 

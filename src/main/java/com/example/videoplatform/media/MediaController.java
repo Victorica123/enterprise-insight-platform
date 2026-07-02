@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +55,14 @@ public class MediaController {
 			@Valid @RequestBody MediaDtos.MergeRequest request) {
 		ensureChunkUploadServiceAvailable();
 		return ResponseEntity.ok(ApiResponse.ok(chunkUploadService.mergeChunks(authentication.getName(), request)));
+	}
+
+	/** 断点续传：前端在续传前查询已上传分片，跳过重复上传。 */
+	@GetMapping("/status")
+	public ResponseEntity<ApiResponse<MediaDtos.UploadStatusResponse>> uploadStatus(Authentication authentication,
+			@RequestParam String uploadId) {
+		ensureChunkUploadServiceAvailable();
+		return ResponseEntity.ok(ApiResponse.ok(chunkUploadService.getUploadStatus(authentication.getName(), uploadId)));
 	}
 
 	private void ensureChunkUploadServiceAvailable() {

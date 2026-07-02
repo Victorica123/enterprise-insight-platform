@@ -19,6 +19,12 @@ public class LocalLockService implements DistributedLockService {
 	}
 
 	@Override
+	public boolean tryLockWithWatchdog(String key) {
+		// 单 JVM 内的可重入锁，没有过期概念，看门狗语义等同于普通非阻塞加锁。
+		return tryLock(key, 0);
+	}
+
+	@Override
 	public void unlock(String key) {
 		ReentrantLock lock = locks.get(key);
 		if (lock != null && lock.isHeldByCurrentThread()) {

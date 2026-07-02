@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 @ConditionalOnMissingBean(org.redisson.api.RedissonClient.class)
 public class RedisDistributedLockService implements DistributedLockService {
 
+	/** 兜底实现无看门狗，长任务锁用一个较长的固定租约（10 分钟）尽量覆盖处理时长。 */
+	private static final long WATCHDOG_FALLBACK_LEASE_SECONDS = 600;
+
 	private static final String UNLOCK_SCRIPT =
 			"if redis.call('get', KEYS[1]) == ARGV[1] then " +
 					"return redis.call('del', KEYS[1]) " +
@@ -35,6 +38,12 @@ public class RedisDistributedLockService implements DistributedLockService {
 			return true;
 		}
 		return false;
+	}
+
+	@Override
+	public boolean tryLockWithWatchdog(String key) {
+		// 无看门狗，退化为较长固定租约。unlock 语义与 tryLock 一致（ThreadLocal 持有 lockValue）。
+		return tryLock(key, WATCHDOG_FALLBACK_LEASE_SECONDS);
 	}
 
 	@Override

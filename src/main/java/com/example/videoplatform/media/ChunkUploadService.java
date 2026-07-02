@@ -30,6 +30,8 @@ public class ChunkUploadService {
 	private static final String UPLOAD_CHUNKS_KEY = "upload:%s:chunks";
 	private static final String LOCK_MERGE_KEY = "lock:merge:%s";
 	private static final String FILE_MD5_KEY = "file:md5:%s";
+	// 断点续传：文件 MD5 → 进行中的 uploadId，使刷新页面后仍能找回未完成的会话。
+	private static final String INPROGRESS_MD5_KEY = "upload:inprogress:%s";
 
 	private final StringRedisTemplate redisTemplate;
 	private final AppProperties appProperties;
@@ -53,10 +55,17 @@ public class ChunkUploadService {
 		if (fileMd5 != null && !fileMd5.isBlank()) {
 			String existingPath = redisTemplate.opsForValue().get(String.format(FILE_MD5_KEY, fileMd5));
 			if (existingPath != null) {
-				VideoTask task = videoTaskService.createTask(owner, safeName, existingPath);
+				VideoTask task = videoTaskService.createTask(owner, safeName, existingPath, fileMd5);
 				workflowPublisher.publish(task.getTaskId());
 				return new MediaDtos.InitUploadResponse(
-						task.getTaskId(), null, request.totalChunks(), null, fileMd5, true);
+						task.getTaskId(), null, request.totalChunks(), null, fileMd5, true, java.util.List.of());
+			}
+
+			// 断点续传：同一文件（相同 MD5）存在未完成的会话时，复用它并回传已上传分片，
+			// 让前端跳过已传部分。刷新页面 / 断网重连都能续传。
+			MediaDtos.InitUploadResponse resumed = tryResume(owner, fileMd5);
+			if (resumed != null) {
+				return resumed;
 			}
 		}
 
@@ -76,9 +85,53 @@ public class ChunkUploadService {
 
 		redisTemplate.opsForHash().putAll(metaKey, meta);
 		redisTemplate.expire(metaKey, Duration.ofHours(24));
+		if (fileMd5 != null && !fileMd5.isBlank()) {
+			redisTemplate.opsForValue().set(String.format(INPROGRESS_MD5_KEY, fileMd5), uploadId, Duration.ofHours(24));
+		}
 
 		return new MediaDtos.InitUploadResponse(uploadId, "/api/media/upload/chunk", request.totalChunks(),
-				Instant.now().plusSeconds(86400).toEpochMilli(), fileMd5, false);
+				Instant.now().plusSeconds(86400).toEpochMilli(), fileMd5, false, java.util.List.of());
+	}
+
+	/**
+	 * 若该 MD5 存在归属于 owner 的未完成会话，返回复用响应（含已上传分片）；否则返回 null。
+	 * 会话已过期或属于他人时，清理悬空映射并当作新会话处理。
+	 */
+	private MediaDtos.InitUploadResponse tryResume(String owner, String fileMd5) {
+		String inprogressKey = String.format(INPROGRESS_MD5_KEY, fileMd5);
+		String existingUploadId = redisTemplate.opsForValue().get(inprogressKey);
+		if (existingUploadId == null) {
+			return null;
+		}
+		Map<Object, Object> meta = redisTemplate.opsForHash().entries(String.format(UPLOAD_META_KEY, existingUploadId));
+		if (meta == null || meta.isEmpty() || !owner.equals(meta.get("owner"))) {
+			redisTemplate.delete(inprogressKey);
+			return null;
+		}
+		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
+		return new MediaDtos.InitUploadResponse(existingUploadId, "/api/media/upload/chunk", totalChunks, null,
+				fileMd5, false, uploadedChunks(existingUploadId));
+	}
+
+	/** 断点续传状态查询：返回该会话已完成的分片索引（升序）。 */
+	public MediaDtos.UploadStatusResponse getUploadStatus(String owner, String uploadId) {
+		String metaKey = String.format(UPLOAD_META_KEY, uploadId);
+		Map<Object, Object> meta = redisTemplate.opsForHash().entries(metaKey);
+		if (meta == null || meta.isEmpty()) {
+			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
+		}
+		requireUploadOwner(meta, owner);
+		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
+		java.util.List<Integer> uploaded = uploadedChunks(uploadId);
+		return new MediaDtos.UploadStatusResponse(uploadId, totalChunks, uploaded, uploaded.size() >= totalChunks);
+	}
+
+	private java.util.List<Integer> uploadedChunks(String uploadId) {
+		java.util.Set<String> members = redisTemplate.opsForSet().members(String.format(UPLOAD_CHUNKS_KEY, uploadId));
+		if (members == null || members.isEmpty()) {
+			return java.util.List.of();
+		}
+		return members.stream().map(Integer::parseInt).sorted().collect(Collectors.toList());
 	}
 
 	public MediaDtos.ChunkUploadResponse uploadChunk(String owner, String uploadId, int chunkIndex, MultipartFile file) {
@@ -169,6 +222,16 @@ public class ChunkUploadService {
 				throw e;
 			}
 
+			// 完整性校验：合并后按整文件 MD5 比对，防止分片丢失/损坏/乱序导致的静默损坏。
+			if (fileMd5 != null && !fileMd5.isBlank()) {
+				String actualMd5 = computeMd5(stored);
+				if (!fileMd5.equalsIgnoreCase(actualMd5)) {
+					deleteQuietly(stored);
+					throw new IllegalStateException(
+							"文件完整性校验失败：期望 MD5=" + fileMd5 + "，实际=" + actualMd5 + "，请重新上传");
+				}
+			}
+
 			// 清理分片文件
 			Path chunkDir = Path.of(appProperties.getStorage().getBasePath())
 					.resolve("chunks")
@@ -183,9 +246,10 @@ public class ChunkUploadService {
 			if (fileMd5 != null && !fileMd5.isBlank()) {
 				redisTemplate.opsForValue().set(String.format(FILE_MD5_KEY, fileMd5), stored.toString(),
 						Duration.ofDays(7));
+				redisTemplate.delete(String.format(INPROGRESS_MD5_KEY, fileMd5));
 			}
 
-			VideoTask task = videoTaskService.createTask(owner, safeName, stored.toString());
+			VideoTask task = videoTaskService.createTask(owner, safeName, stored.toString(), fileMd5);
 			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.MergeResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());
@@ -214,6 +278,28 @@ public class ChunkUploadService {
 			Files.deleteIfExists(path);
 		} catch (IOException ignored) {
 			// Best effort cleanup.
+		}
+	}
+
+	/** 计算文件 MD5（十六进制小写），用于合并后的完整性校验。流式读取，避免大文件占用内存。 */
+	private static String computeMd5(Path path) {
+		try {
+			java.security.MessageDigest digest = java.security.MessageDigest.getInstance("MD5");
+			byte[] buffer = new byte[8192];
+			try (InputStream in = Files.newInputStream(path)) {
+				int read;
+				while ((read = in.read(buffer)) != -1) {
+					digest.update(buffer, 0, read);
+				}
+			}
+			StringBuilder sb = new StringBuilder();
+			for (byte b : digest.digest()) {
+				sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+				sb.append(Character.forDigit(b & 0xF, 16));
+			}
+			return sb.toString();
+		} catch (java.security.NoSuchAlgorithmException | IOException e) {
+			throw new IllegalStateException("计算文件 MD5 失败", e);
 		}
 	}
 

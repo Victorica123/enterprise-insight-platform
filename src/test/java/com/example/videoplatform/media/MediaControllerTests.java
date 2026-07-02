@@ -64,7 +64,7 @@ class MediaControllerTests {
 	void initializesChunkUploadForAuthenticatedOwner() throws Exception {
 		when(chunkUploadService.initUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any()))
 				.thenReturn(new MediaDtos.InitUploadResponse("upload-1", "/api/media/upload/chunk", 2, 1000L,
-						null, false));
+						null, false, java.util.List.of()));
 
 		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 						.post("/api/media/upload/init")

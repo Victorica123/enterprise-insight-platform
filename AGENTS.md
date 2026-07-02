@@ -195,7 +195,7 @@ spring:
 
 ## Recent Optimizations (2026-06-13)
 
-See `TROUBLESHOOTING.md` → "代码优化与质量改进记录（2026-06-13）" for full details.
+See `docs/TROUBLESHOOTING.md` → "代码优化与质量改进记录（2026-06-13）" for full details.
 
 **Critical fixes**:
 1. **WorkflowProcessor**: Removed 4 redundant DB writes per video (now 1 per @Transactional exit)
@@ -288,8 +288,8 @@ src/main/resources/
 
 ## Documentation References
 
-- **Detailed troubleshooting & past issues**: `TROUBLESHOOTING.md`
-- **Interview-ready architecture explanation**: `INTERVIEW_PREP.html`
+- **Detailed troubleshooting & past issues**: `docs/TROUBLESHOOTING.md`
+- **Interview-ready architecture explanation**: `docs/INTERVIEW_PREP.html` (deep dive); `INTERVIEW_GUIDE.md` (current features + interview points, authoritative)
 - **Project launch script**: `start-video-service.ps1` (Windows PowerShell)
 - **README.md**: Feature overview, quick-start guide, tech stack
 

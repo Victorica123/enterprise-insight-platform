@@ -22,6 +22,8 @@ const refreshButton = document.getElementById("refreshButton");
 const myVideosCard = document.getElementById("myVideosCard");
 const loadMyVideosButton = document.getElementById("loadMyVideos");
 const videoList = document.getElementById("videoList");
+const videoPreview = document.getElementById("videoPreview");
+const videoPlayer = document.getElementById("videoPlayer");
 const pipelineSteps = Array.from(document.querySelectorAll(".pipeline-step"));
 const strategyOptions = Array.from(document.querySelectorAll(".strategy-option"));
 
@@ -377,47 +379,73 @@ async function uploadFileChunked() {
     refreshButton.disabled = true;
 
     try {
-        const initStartedAt = performance.now();
-        const initResponse = await fetch("/api/media/upload/init", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                fileName: currentFile.name,
-                fileSize: currentFile.size,
-                totalChunks: metrics.totalChunks,
-                chunkSize: CHUNK_SIZE,
-                fileMd5: ""
-            })
-        });
-        metrics.initMs = performance.now() - initStartedAt;
-        renderLiveMetrics(metrics);
+        let uploadId = null;
+        let uploadedSet = new Set();
 
-        if (initResponse.status === 503) {
-            throw new Error("Redis 分片上传未启用。请用 Redis 模式启动后再测试分片上传。");
+        // 计算内容指纹（秒传 / 去重 / 完整性校验的前提）
+        const fileMd5 = await computeFileMd5(currentFile);
+
+        // 断点续传：本地记录了同一文件未完成的会话时，先向服务端确认再续传，跳过已传分片。
+        const saved = loadResume(currentFile);
+        if (saved && saved.chunkSize === CHUNK_SIZE) {
+            const status = await fetchUploadStatus(saved.uploadId);
+            if (status && !status.completed && status.totalChunks === metrics.totalChunks) {
+                uploadId = saved.uploadId;
+                uploadedSet = new Set(status.uploadedChunks || []);
+                writeMessage(`检测到未完成的上传，断点续传：已传 ${uploadedSet.size}/${metrics.totalChunks} 个分片`);
+            } else {
+                clearResume(currentFile);
+            }
         }
 
-        if (handleAuthFailure(initResponse)) return;
-        const initResult = await initResponse.json();
-        if (!initResponse.ok || !initResult.success) {
-            throw new Error(initResult.message || "初始化上传失败");
+        if (!uploadId) {
+            const initStartedAt = performance.now();
+            const initResponse = await fetch("/api/media/upload/init", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    fileName: currentFile.name,
+                    fileSize: currentFile.size,
+                    totalChunks: metrics.totalChunks,
+                    chunkSize: CHUNK_SIZE,
+                    fileMd5: fileMd5
+                })
+            });
+            metrics.initMs = performance.now() - initStartedAt;
+            renderLiveMetrics(metrics);
+
+            if (initResponse.status === 503) {
+                throw new Error("Redis 分片上传未启用。请用 Redis 模式启动后再测试分片上传。");
+            }
+
+            if (handleAuthFailure(initResponse)) return;
+            const initResult = await initResponse.json();
+            if (!initResponse.ok || !initResult.success) {
+                throw new Error(initResult.message || "初始化上传失败");
+            }
+
+            if (initResult.data.exists) {
+                clearResume(currentFile);
+                taskIdInput.value = initResult.data.uploadId;
+                taskField.style.display = "grid";
+                setProgress(100, "文件已存在");
+                setStatus("已完成", "success");
+                finishMetrics(metrics);
+                writeMessage(`文件已存在，触发秒传，总耗时 ${formatDuration(metrics.totalMs)}`);
+                refreshButton.disabled = false;
+                startPolling();
+                return;
+            }
+
+            uploadId = initResult.data.uploadId;
+            uploadedSet = new Set(initResult.data.uploadedChunks || []);
+            saveResume(currentFile, uploadId);
         }
 
-        if (initResult.data.exists) {
-            taskIdInput.value = initResult.data.uploadId;
-            taskField.style.display = "grid";
-            setProgress(100, "文件已存在");
-            setStatus("已完成", "success");
-            finishMetrics(metrics);
-            writeMessage(`文件已存在，触发秒传，总耗时 ${formatDuration(metrics.totalMs)}`);
-            refreshButton.disabled = false;
-            startPolling();
-            return;
-        }
-
-        await uploadChunksConcurrently(initResult.data.uploadId, metrics);
+        await uploadChunksConcurrently(uploadId, metrics, uploadedSet);
 
         setProgress(95, "合并文件");
         setStatus("合并中", "running");
@@ -428,7 +456,7 @@ async function uploadFileChunked() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ uploadId: initResult.data.uploadId })
+            body: JSON.stringify({ uploadId: uploadId })
         });
         metrics.mergeMs = performance.now() - mergeStartedAt;
         renderLiveMetrics(metrics);
@@ -439,6 +467,7 @@ async function uploadFileChunked() {
             throw new Error(mergeResult.message || "合并失败");
         }
 
+        clearResume(currentFile);
         setProgress(100, "Redis 并发分片上传完成");
         finishMetrics(metrics);
         writeMessage(`Redis 并发分片上传完成，总耗时 ${formatDuration(metrics.totalMs)}，平均分片 ${formatDuration(average(metrics.chunkDurations))}`);
@@ -451,14 +480,17 @@ async function uploadFileChunked() {
     }
 }
 
-async function uploadChunksConcurrently(uploadId, metrics) {
+async function uploadChunksConcurrently(uploadId, metrics, uploadedSet = new Set()) {
     let nextIndex = 0;
-    let completed = 0;
+    let completed = uploadedSet.size;
 
     async function worker() {
         while (nextIndex < metrics.totalChunks) {
             const chunkIndex = nextIndex;
             nextIndex += 1;
+            if (uploadedSet.has(chunkIndex)) {
+                continue; // 断点续传：跳过服务端已确认收到的分片
+            }
             await uploadOneChunk(uploadId, chunkIndex, metrics);
             completed += 1;
             const percent = Math.round((completed / metrics.totalChunks) * 80) + 10;
@@ -469,6 +501,70 @@ async function uploadChunksConcurrently(uploadId, metrics) {
 
     const workerCount = Math.min(CHUNK_CONCURRENCY, metrics.totalChunks);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
+// ===== 断点续传本地状态：按 文件名+大小+修改时间 记住未完成的 uploadId =====
+const RESUME_STORE_PREFIX = "vp_resume_";
+
+function resumeKey(file) {
+    return `${RESUME_STORE_PREFIX}${file.name}_${file.size}_${file.lastModified}`;
+}
+
+function saveResume(file, uploadId) {
+    try {
+        localStorage.setItem(resumeKey(file), JSON.stringify({ uploadId, chunkSize: CHUNK_SIZE }));
+    } catch (error) {
+        // localStorage 不可用时降级为不续传，不影响正常上传
+    }
+}
+
+function loadResume(file) {
+    try {
+        const raw = localStorage.getItem(resumeKey(file));
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function clearResume(file) {
+    try {
+        localStorage.removeItem(resumeKey(file));
+    } catch (error) {
+        // ignore
+    }
+}
+
+async function fetchUploadStatus(uploadId) {
+    try {
+        const response = await fetch(`/api/media/upload/status?uploadId=${encodeURIComponent(uploadId)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) return null;
+        const result = await response.json();
+        return result.success ? result.data : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+// 分块增量计算文件 MD5（内容指纹）。用于秒传 / 内容级去重 / 合并完整性校验。
+// SparkMD5 缺失（如 CDN 未加载）时优雅降级为空串——上传照常，只是去重/校验休眠。
+async function computeFileMd5(file) {
+    if (typeof SparkMD5 === "undefined" || !SparkMD5.ArrayBuffer) {
+        return "";
+    }
+    const spark = new SparkMD5.ArrayBuffer();
+    const total = Math.ceil(file.size / CHUNK_SIZE);
+    for (let i = 0; i < total; i++) {
+        const start = i * CHUNK_SIZE;
+        const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
+        spark.append(await blob.arrayBuffer());
+        // 分块间让出事件循环，避免大文件计算卡住 UI
+        const percent = Math.round(((i + 1) / total) * 5);
+        setProgress(percent, `校验文件指纹 ${i + 1}/${total}`);
+    }
+    return spark.end();
 }
 
 async function uploadOneChunk(uploadId, chunkIndex, metrics) {
@@ -499,6 +595,7 @@ function handleUploadSuccess(taskId, status) {
     taskField.style.display = "grid";
     transcriptArea.value = "";
     summaryArea.value = "";
+    hideVideoPlayer();
     setStatus(status || "处理中", "running");
     refreshButton.disabled = false;
     uploadButton.disabled = !currentFile;
@@ -516,6 +613,39 @@ function stopPolling() {
     if (pollingTimer) {
         window.clearInterval(pollingTimer);
         pollingTimer = null;
+    }
+}
+
+function hideVideoPlayer() {
+    if (!videoPreview) return;
+    videoPreview.style.display = "none";
+    if (videoPlayer) {
+        videoPlayer.pause();
+        videoPlayer.removeAttribute("src");
+        videoPlayer.load();
+    }
+}
+
+// 拉取短时效播放令牌，拼出带签名的流地址喂给 <video>，浏览器按 HTTP Range 边下边播。
+async function loadVideoPlayer(taskId) {
+    if (!videoPreview || !videoPlayer || !token || !taskId) return;
+    try {
+        const response = await fetch(`/api/media/video/${taskId}/playback-token`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            hideVideoPlayer();
+            return;
+        }
+        const result = await response.json();
+        if (!result.success || !result.data?.streamUrl) {
+            hideVideoPlayer();
+            return;
+        }
+        videoPlayer.src = result.data.streamUrl;
+        videoPreview.style.display = "block";
+    } catch (error) {
+        hideVideoPlayer();
     }
 }
 
@@ -542,6 +672,7 @@ async function fetchTask() {
             writeMessage("任务完成，转写和摘要已生成");
             stopPolling();
             loadMyVideos();
+            loadVideoPlayer(task.taskId);
             return;
         }
 
@@ -550,6 +681,7 @@ async function fetchTask() {
             writeMessage(`任务失败：${task.errorMessage || "无错误详情"}`, true);
             stopPolling();
             loadMyVideos();
+            hideVideoPlayer();
             return;
         }
 
@@ -581,6 +713,7 @@ async function deleteTask(taskId) {
             refreshButton.disabled = true;
             setStatus("未开始", "idle");
             stopPolling();
+            hideVideoPlayer();
         }
         writeMessage(`已删除任务：${taskId}`);
         loadMyVideos();

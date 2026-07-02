@@ -911,3 +911,16 @@ textarea {
         min-height: 280px;
     }
 }
+
+/* 视频播放器预览：任务完成后显示，支持拖动进度条边下边播 */
+.video-preview {
+    margin-bottom: 16px;
+}
+
+.video-preview video {
+    width: 100%;
+    max-height: 420px;
+    border-radius: 12px;
+    background: #000;
+    display: block;
+}

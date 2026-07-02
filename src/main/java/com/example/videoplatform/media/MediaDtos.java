@@ -21,15 +21,24 @@ public final class MediaDtos {
 	}
 
 	public record InitUploadResponse(String uploadId, String uploadUrl, Integer totalChunks, Long expiresAt,
-			String fileMd5, Boolean exists) {
+			String fileMd5, Boolean exists, java.util.List<Integer> uploadedChunks) {
 	}
 
 	public record ChunkUploadResponse(Integer chunkIndex, Integer uploadedChunks, Integer totalChunks) {
+	}
+
+	/** 断点续传：查询某个上传会话已完成的分片，前端据此跳过已传分片。 */
+	public record UploadStatusResponse(String uploadId, Integer totalChunks, java.util.List<Integer> uploadedChunks,
+			Boolean completed) {
 	}
 
 	public record MergeRequest(@NotBlank String uploadId) {
 	}
 
 	public record MergeResponse(String taskId, String videoId, String storagePath, String status) {
+	}
+
+	/** 播放令牌：前端用它拼出可直接喂给 &lt;video&gt; 的带签名播放地址。 */
+	public record PlaybackTokenResponse(String token, String streamUrl, Long expiresInSeconds) {
 	}
 }

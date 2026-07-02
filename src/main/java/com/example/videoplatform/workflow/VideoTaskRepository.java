@@ -18,4 +18,9 @@ public interface VideoTaskRepository extends JpaRepository<VideoTask, String> {
 	 * 按owner + taskId查询（带权限校验）
 	 */
 	Optional<VideoTask> findByTaskIdAndOwner(String taskId, String owner);
+
+	/**
+	 * 按内容指纹查询所有任务（用于处理完成后向同内容的所有任务 fan-out 结果）
+	 */
+	List<VideoTask> findByContentMd5(String contentMd5);
 }

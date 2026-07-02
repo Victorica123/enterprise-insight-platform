@@ -23,6 +23,9 @@ public class VideoTask {
 
 	private String storagePath;
 
+	/** 内容指纹（文件 MD5）。用于内容级去重与单飞处理；单文件上传等无指纹场景可为 null。 */
+	private String contentMd5;
+
 	@Column(length = 10000)
 	private String transcript;
 
@@ -44,11 +47,17 @@ public class VideoTask {
 	}
 
 	public VideoTask(String taskId, String videoId, String owner, String fileName, String storagePath) {
+		this(taskId, videoId, owner, fileName, storagePath, null);
+	}
+
+	public VideoTask(String taskId, String videoId, String owner, String fileName, String storagePath,
+			String contentMd5) {
 		this.taskId = taskId;
 		this.videoId = videoId;
 		this.owner = owner;
 		this.fileName = fileName;
 		this.storagePath = storagePath;
+		this.contentMd5 = contentMd5;
 		this.status = TaskStatus.QUEUED;
 		this.createdAt = Instant.now();
 		this.updatedAt = this.createdAt;
@@ -72,6 +81,10 @@ public class VideoTask {
 
 	public String getStoragePath() {
 		return storagePath;
+	}
+
+	public String getContentMd5() {
+		return contentMd5;
 	}
 
 	public String getTranscript() {

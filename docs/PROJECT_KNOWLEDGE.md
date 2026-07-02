@@ -21,12 +21,15 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 
 ## Source Of Truth
 
-- `AGENTS.md`: project rules and coding constraints.
-- `README.md`: user-facing overview and run instructions.
+> 归类说明(2026-07-02):参考类文档已移入 `docs/`;根目录仅保留 `README.md`、`CLAUDE.md`、`AGENTS.md`、`INTERVIEW_GUIDE.md`。下列相对路径以本文件(`docs/`)为基准。
+
+- `../AGENTS.md`: project rules and coding constraints (Codex). `../CLAUDE.md` is the Claude-Code equivalent.
+- `../README.md`: user-facing overview and run instructions.
+- `../INTERVIEW_GUIDE.md`: 权威的功能清单 + 面试要点总结(截至当前代码).
 - `CAREER_ROADMAP.md`: product direction, implementation roadmap, interview framing.
 - `TROUBLESHOOTING.md`: real engineering problem cards and historical debugging notes.
 - `DEMO_SCRIPT.md`: short demo flow for interview or stakeholder walkthroughs.
-- `INTERVIEW_PREP.html`: deeper architecture explanation.
+- `INTERVIEW_PREP.html`: deeper architecture explanation (静态,可能滞后于代码).
 
 ## Working Rules
 

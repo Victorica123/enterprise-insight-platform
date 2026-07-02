@@ -212,6 +212,9 @@
                             <p>转写用于还原内容，摘要用于快速理解</p>
                         </div>
                     </div>
+                    <div class="video-preview" id="videoPreview" style="display:none">
+                        <video id="videoPlayer" controls preload="metadata" playsinline></video>
+                    </div>
                     <div class="tabs" role="tablist" aria-label="结果类型">
                         <button class="tab active" data-target="pane-transcript" type="button">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -301,6 +304,7 @@
         </main>
     </div>
 
-    <script src="/app.js?v=4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+    <script src="/app.js?v=5"></script>
 </body>
 </html>

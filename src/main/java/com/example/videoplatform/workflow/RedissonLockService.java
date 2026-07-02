@@ -32,6 +32,20 @@ public class RedissonLockService implements DistributedLockService {
 	}
 
 	@Override
+	public boolean tryLockWithWatchdog(String key) {
+		RLock lock = redissonClient.getLock(key);
+		try {
+			// 不传 leaseTime → 启用 Redisson 看门狗：持有者存活期间锁自动续期，
+			// 使锁能安全横跨分钟级的转码/转写/摘要，不会中途过期被他人抢占。
+			// waitTime=0 → 非阻塞，抢不到立即返回 false（交由 fan-out 完成，不占用线程）。
+			return lock.tryLock(0, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return false;
+		}
+	}
+
+	@Override
 	public void unlock(String key) {
 		RLock lock = redissonClient.getLock(key);
 		// 只有当前线程持有锁时才释放，避免误释放其他线程的锁
