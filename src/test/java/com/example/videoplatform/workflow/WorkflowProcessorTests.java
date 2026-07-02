@@ -12,6 +12,7 @@ import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,8 +26,10 @@ class WorkflowProcessorTests {
 	private final DistributedLockService lockService = org.mockito.Mockito.mock(DistributedLockService.class);
 	private final TranscriptService transcriptService = org.mockito.Mockito.mock(TranscriptService.class);
 	private final SummaryService summaryService = org.mockito.Mockito.mock(SummaryService.class);
+	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+	private final WorkflowMetrics workflowMetrics = new WorkflowMetrics(meterRegistry);
 	private final WorkflowProcessor processor = new WorkflowProcessor(
-			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService);
+			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics);
 
 	private static VideoTask task(String contentMd5) {
 		return new VideoTask("task-1", "video-1", "user-1", "demo.mp4", "storage/demo.mp4", contentMd5);
@@ -156,6 +159,35 @@ class WorkflowProcessorTests {
 			verify(videoTaskService).completeTranscript("task-1", "transcript");
 			verify(videoTaskService).markFailed("task-1", "summary failed");
 		});
+	}
+
+	@Test
+	void recordsProcessingAndEndToEndMetricsOnStandaloneCompletion() {
+		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
+		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
+		when(transcriptService.extract("storage/demo.mp4", "demo.mp4")).thenReturn("transcript");
+		when(summaryService.summarize("transcript")).thenReturn("summary");
+
+		processor.processAsync("task-1");
+
+		// 处理耗时按 path/result 打点；端到端耗时按 result 打点，供 Prometheus 聚合 P50/P99
+		assertThat(meterRegistry.get("video.task.processing")
+				.tags("path", "standalone", "result", "completed").timer().count()).isEqualTo(1L);
+		assertThat(meterRegistry.get("video.task.e2e")
+				.tags("result", "completed").timer().count()).isEqualTo(1L);
+	}
+
+	@Test
+	void countsSkippedTasksByReason() {
+		VideoTask completed = task("md5-1");
+		completed.setStatus(VideoTask.TaskStatus.COMPLETED);
+		when(videoTaskService.requireTask("task-1")).thenReturn(completed);
+
+		processor.processAsync("task-1");
+
+		// 去重/幂等/单飞省下的处理次数可量化：已完成任务被重复投递时计入 already_completed
+		assertThat(meterRegistry.get("video.task.skipped")
+				.tags("reason", "already_completed").counter().count()).isEqualTo(1.0);
 	}
 
 	private static void runWithWorkflowProcessorLogLevel(Level level, Runnable runnable) {

@@ -26,6 +26,10 @@ public class SecurityConfig {
 						.requestMatchers("/", "/index.html", "/app.css", "/app.js", "/api/auth/**",
 								"/actuator/health", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
 						.permitAll()
+						// 可观测端点：供 Prometheus 抓取 /actuator/prometheus（P2「MQ 量化验证」）。
+						// 自托管内网抓取可直接放行；P5 公网部署时应改由独立 management 端口 + 内网/反代限制，不对公网暴露。
+						.requestMatchers("/actuator/prometheus", "/actuator/metrics/**", "/actuator/info")
+						.permitAll()
 						// 视频流式播放：<video> 无法带 Authorization 头，改用查询参数中的签名播放令牌自校验
 						.requestMatchers("/api/media/video/*/stream").permitAll()
 						.anyRequest().authenticated())

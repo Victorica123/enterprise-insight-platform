@@ -2,6 +2,7 @@ package com.example.videoplatform.workflow;
 
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
+import io.micrometer.core.instrument.Timer;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,15 +21,17 @@ public class WorkflowProcessor {
 	private final DistributedLockService lockService;
 	private final TranscriptService transcriptService;
 	private final SummaryService summaryService;
+	private final WorkflowMetrics metrics;
 
 	public WorkflowProcessor(VideoTaskService videoTaskService, MediaAssetService mediaAssetService,
 			DistributedLockService lockService, TranscriptService transcriptService,
-			SummaryService summaryService) {
+			SummaryService summaryService, WorkflowMetrics metrics) {
 		this.videoTaskService = videoTaskService;
 		this.mediaAssetService = mediaAssetService;
 		this.lockService = lockService;
 		this.transcriptService = transcriptService;
 		this.summaryService = summaryService;
+		this.metrics = metrics;
 	}
 
 	/**
@@ -52,6 +55,7 @@ public class WorkflowProcessor {
 		VideoTask task = videoTaskService.requireTask(taskId);
 		if (task.getStatus() == VideoTask.TaskStatus.COMPLETED) {
 			log.info("Task {} already completed, skip", taskId);
+			metrics.incrementSkip("already_completed");
 			return;
 		}
 
@@ -62,7 +66,10 @@ public class WorkflowProcessor {
 			Optional<MediaAsset> ready = readyAsset(md5);
 			if (ready.isPresent()) {
 				log.info("Content {} already processed, reusing result for task {}", md5, taskId);
+				Timer.Sample sample = metrics.startProcessing();
 				videoTaskService.completeFromAsset(taskId, ready.get().getTranscript(), ready.get().getSummary());
+				metrics.stopProcessing(sample, "dedup", "completed");
+				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
 			}
 		}
@@ -70,6 +77,7 @@ public class WorkflowProcessor {
 		// 2) 幂等占位：只有从 QUEUED 抢占成功的 worker 继续
 		if (!videoTaskService.claimForProcessing(taskId)) {
 			log.info("Task {} already claimed/processed by another delivery, skip", taskId);
+			metrics.incrementSkip("claim_lost");
 			return;
 		}
 
@@ -89,13 +97,17 @@ public class WorkflowProcessor {
 			// 别的 worker 正在处理同一内容；本任务已占位，交由赢家 fan-out 完成，避免重复处理与占用线程。
 			log.info("Content {} is being processed by another worker; task {} will be completed by the winner",
 					md5, taskId);
+			metrics.incrementSkip("single_flight_loser");
 			return;
 		}
+		Timer.Sample sample = metrics.startProcessing();
 		try {
 			// double-check：抢锁期间赢家可能刚写好结果
 			Optional<MediaAsset> ready = readyAsset(md5);
 			if (ready.isPresent()) {
 				videoTaskService.completeFromAsset(taskId, ready.get().getTranscript(), ready.get().getSummary());
+				metrics.stopProcessing(sample, "dedup", "completed");
+				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
 			}
 
@@ -107,17 +119,21 @@ public class WorkflowProcessor {
 			mediaAssetService.markReady(md5, transcript, summary);
 			int completed = videoTaskService.completeAllByContentMd5(md5, transcript, summary);
 			log.info("Content {} processed; fanned out to {} task(s)", md5, completed);
+			metrics.stopProcessing(sample, "single_flight", "completed");
+			metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 		} catch (Exception exception) {
 			log.warn("Video task {} (content {}) failed: {}", taskId, md5, exception.getMessage(), exception);
 			String message = truncate(exception.getMessage());
 			mediaAssetService.markFailed(md5, message);
 			videoTaskService.failAllByContentMd5(md5, message);
+			metrics.stopProcessing(sample, "single_flight", "failed");
 		} finally {
 			lockService.unlock(lockKey);
 		}
 	}
 
 	private void processStandalone(String taskId, VideoTask task) {
+		Timer.Sample sample = metrics.startProcessing();
 		try {
 			String transcript = transcriptService.extract(task.getStoragePath(), task.getFileName());
 			videoTaskService.completeTranscript(taskId, transcript);
@@ -125,9 +141,12 @@ public class WorkflowProcessor {
 			String summary = summaryService.summarize(transcript);
 			videoTaskService.completeSummary(taskId, summary);
 			log.info("Video task {} completed", taskId);
+			metrics.stopProcessing(sample, "standalone", "completed");
+			metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 		} catch (Exception exception) {
 			log.warn("Video task {} failed: {}", taskId, exception.getMessage(), exception);
 			videoTaskService.markFailed(taskId, truncate(exception.getMessage()));
+			metrics.stopProcessing(sample, "standalone", "failed");
 		}
 	}
 

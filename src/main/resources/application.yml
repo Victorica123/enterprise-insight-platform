@@ -52,7 +52,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    distribution:
+      # 开启直方图桶（Prometheus 端用 histogram_quantile 聚合 P50/P95/P99）；
+      # 同时暴露服务端预聚合分位数，便于 /actuator/metrics 直接查看。
+      percentiles-histogram:
+        http.server.requests: true
+        video.task.processing: true
+        video.task.e2e: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+        video.task.processing: 0.5, 0.95, 0.99
+        video.task.e2e: 0.5, 0.95, 0.99
 
 app:
   jwt:
