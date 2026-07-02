@@ -27,10 +27,10 @@ public class MediaAsset {
 
 	private String storagePath;
 
-	@Column(length = 10000)
+	@Column(columnDefinition = "TEXT")
 	private String transcript;
 
-	@Column(length = 5000)
+	@Column(columnDefinition = "TEXT")
 	private String summary;
 
 	@Column(columnDefinition = "TEXT")

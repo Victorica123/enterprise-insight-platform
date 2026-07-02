@@ -26,10 +26,10 @@ public class VideoTask {
 	/** 内容指纹（文件 MD5）。用于内容级去重与单飞处理；单文件上传等无指纹场景可为 null。 */
 	private String contentMd5;
 
-	@Column(length = 10000)
+	@Column(columnDefinition = "TEXT")
 	private String transcript;
 
-	@Column(length = 5000)
+	@Column(columnDefinition = "TEXT")
 	private String summary;
 
 	@Enumerated(EnumType.STRING)
