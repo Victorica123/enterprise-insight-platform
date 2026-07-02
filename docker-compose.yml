@@ -50,7 +50,10 @@ services:
     environment:
       - NAMESRV_ADDR=rocketmq-namesrv:9876
       - JAVA_OPT_EXT=-server -Xms256m -Xmx256m -Xmn128m
-    command: sh mqbroker -n rocketmq-namesrv:9876 -c ../conf/broker.conf
+    volumes:
+      # brokerIP1=127.0.0.1：让 broker 对宿主机客户端通告可达地址（详见该文件注释）
+      - ./observability/rocketmq/broker.conf:/home/rocketmq/broker-custom.conf:ro
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/broker-custom.conf
     depends_on:
       - rocketmq-namesrv
 

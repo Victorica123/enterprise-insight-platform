@@ -65,6 +65,11 @@ management:
         http.server.requests: 0.5, 0.95, 0.99
         video.task.processing: 0.5, 0.95, 0.99
         video.task.e2e: 0.5, 0.95, 0.99
+      # 直方图桶上界。Micrometer Timer 默认封顶 30s：过载时端到端耗时可达数分钟，
+      # 不抬高上界则 P99 会被钳在 30s。e2e 给到 10min 覆盖重度积压场景。
+      maximum-expected-value:
+        video.task.e2e: 600s
+        video.task.processing: 60s
 
 app:
   jwt:
