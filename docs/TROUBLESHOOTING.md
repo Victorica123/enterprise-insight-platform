@@ -1084,4 +1084,56 @@ mvn -q clean test -Dapp.redis.enabled=false
 
 ---
 
-*最后更新：2026-07-01*
+## 工程问题卡（2026-07-02）：MD5 完整性校验失败不应返回 500
+
+### Symptom
+
+Redis 分片上传合并时，如果客户端声明的文件 MD5 与服务端合并后的实际 MD5 不一致，后端能正确拒绝合并并清理半成品文件，但客户端收到的是通用 `500`：
+
+```text
+服务器内部错误，请稍后重试
+```
+
+这会让用户误以为服务器坏了，而不是文件传输损坏、声明 MD5 错误或需要重新上传。
+
+### Cause
+
+`ChunkUploadService.mergeChunks()` 在 MD5 不匹配时抛出 `IllegalStateException`。全局异常处理器只把 `IllegalArgumentException` 归类为 `400 Bad Request`，其余未预期异常会进入兜底 `500`。
+
+但 MD5 不匹配属于“请求内容与声明不一致”，是调用方可修正的输入/传输完整性错误，不是服务端内部故障。
+
+### Fix
+
+仅调整 MD5 不匹配这一处异常语义：
+
+```java
+throw new IllegalArgumentException(
+    "文件完整性校验失败：期望 MD5=" + fileMd5 + "，实际=" + actualMd5 + "，请重新上传");
+```
+
+保留其他真正的服务端异常语义，例如磁盘 IO 失败、MD5 算法不可用、并发合并锁冲突等仍按原路径处理。
+
+### Verify yourself
+
+```bash
+mvn test -Dtest=ChunkUploadServiceTests
+mvn test
+```
+
+本次验证结果：
+
+- `ChunkUploadServiceTests`：12 tests, 0 failures, 0 errors。
+- 全量 `mvn test`：48 tests, 0 failures, 0 errors。
+
+### Interview point
+
+后端接口设计里，异常类型不是随便选的，它会直接影响 HTTP 语义和前端体验：
+
+- `4xx`：客户端可修正的问题，例如参数缺失、越权、上传会话过期、文件完整性校验失败。
+- `5xx`：服务端不可预期故障，例如数据库异常、磁盘写入失败、代码 bug。
+
+这个项目里的改动体现的是“错误归因要准确”：安全上不能泄漏内部异常细节，体验上也不能把用户可处理的问题伪装成服务器故障。
+
+---
+
+*最后更新：2026-07-02*

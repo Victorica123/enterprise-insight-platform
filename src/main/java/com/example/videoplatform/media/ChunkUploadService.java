@@ -227,7 +227,7 @@ public class ChunkUploadService {
 				String actualMd5 = computeMd5(stored);
 				if (!fileMd5.equalsIgnoreCase(actualMd5)) {
 					deleteQuietly(stored);
-					throw new IllegalStateException(
+					throw new IllegalArgumentException(
 							"文件完整性校验失败：期望 MD5=" + fileMd5 + "，实际=" + actualMd5 + "，请重新上传");
 				}
 			}

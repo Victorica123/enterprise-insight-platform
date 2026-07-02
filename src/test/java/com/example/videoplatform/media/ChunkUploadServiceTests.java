@@ -209,7 +209,7 @@ class ChunkUploadServiceTests {
 		Files.write(chunkDir.resolve("1"), new byte[] {3, 4});
 
 		assertThatThrownBy(() -> service.mergeChunks("alice", new MediaDtos.MergeRequest("upload-1")))
-				.isInstanceOf(IllegalStateException.class)
+				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("完整性校验失败");
 
 		// 校验失败的半成品文件必须清理，且不创建任务
