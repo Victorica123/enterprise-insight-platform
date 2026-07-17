@@ -1,0 +1,31 @@
+{$PUBLIC_APP_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	route {
+		@health path /actuator/health
+		reverse_proxy @health app:8081
+
+		@private path /actuator /actuator/* /swagger-ui* /v3/api-docs*
+		respond @private 404
+
+		reverse_proxy app:8081
+	}
+}
+
+{$PUBLIC_FILES_DOMAIN} {
+	header {
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	reverse_proxy minio:9000 {
+		header_up Host {host}
+	}
+}

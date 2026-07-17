@@ -24,10 +24,15 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 > 归类说明(2026-07-02):参考类文档已移入 `docs/`;根目录仅保留 `README.md`、`CLAUDE.md`、`AGENTS.md`、`INTERVIEW_GUIDE.md`。下列相对路径以本文件(`docs/`)为基准。
 
 - `../AGENTS.md`: project rules and coding constraints (Codex). `../CLAUDE.md` is the Claude-Code equivalent.
+- `AI_HANDOFF.md`: shared cross-model handoff entrypoint for Codex, Claude, and future AI agents.
 - `../README.md`: user-facing overview and run instructions.
 - `../INTERVIEW_GUIDE.md`: 权威的功能清单 + 面试要点总结(截至当前代码).
 - `CAREER_ROADMAP.md`: product direction, implementation roadmap, interview framing.
 - `TROUBLESHOOTING.md`: real engineering problem cards and historical debugging notes.
+- `P3_RELIABILITY_VERIFICATION.md`: task reaper/retry verification flow and high-concurrency engineering notes.
+- `P4_OBJECT_STORAGE.md`: MinIO/S3-compatible storage verification and interview framing.
+- `P5_SMALL_SCALE_DEPLOYMENT.md`: single-server deployment, smoke verification, debug playbook, and interview framing.
+- `LOADTEST.md`: MQ on/off A/B load-test method and measured results.
 - `DEMO_SCRIPT.md`: short demo flow for interview or stakeholder walkthroughs.
 - `INTERVIEW_PREP.html`: deeper architecture explanation (静态,可能滞后于代码).
 
@@ -46,10 +51,21 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 3. Establish upload performance baseline before optimizing chunk concurrency.
 4. Prepare server deployment only after the user workflow is coherent enough for real users.
 
+## Session Notes 2026-07-03
+
+- P3 reliability now has both automatic and manual recovery: `StaleWorkflowTaskReaper` requeues stale non-terminal tasks, and `POST /api/workflow/tasks/{taskId}/retry` lets the owner retry a `FAILED` task.
+- `video.task.requeued` records recovery counts with `source=reaper|manual`, useful for later Prometheus/Grafana explanation.
+- Frontend history shows a retry button for failed tasks and a right-side “工程验证” panel explaining MQ, P3, P4, and retry in user-facing terms.
+- Verification passed: `node --check src/main/resources/static/app.js`, focused workflow tests (`13 tests`), and full `mvn test` (`60 tests`).
+- Full-stack verification passed with real Docker Redis + MySQL + RocketMQ using `scripts/verify-full-stack.ps1`: register user, Redis chunk init/status/chunk/merge, RocketMQ workflow completion, MySQL `video_task` row check, Redis upload key cleanup.
+- Fixed MQ consumer backpressure bug: RocketMQ now calls `WorkflowProcessor.process(...)` synchronously instead of `processAsync(...)`, so MQ controls consumption/backpressure instead of flooding the local `videoTaskExecutor`.
+- Latest full `mvn test`: `61 tests, 0 failures, 0 errors`.
+
 ## Verification
 
 - Frontend JS syntax: `node --check src/main/resources/static/app.js`
 - Full test suite: `mvn test`
+- Full-stack middleware check after starting Redis/MySQL/RocketMQ and the app in MQ mode: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1`
 - Lightweight local run:
 
 ```powershell

@@ -27,6 +27,9 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Local AI permission hooks can broaden command approval; keep them machine-local.
+.claude/hooks/
+
 # Temporary files
 *.tmp
 *.bak
