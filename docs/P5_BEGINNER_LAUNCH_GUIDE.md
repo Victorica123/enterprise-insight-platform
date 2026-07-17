@@ -14,11 +14,10 @@
 - 容器日志轮转、应用健康检查；
 - 上线前体检脚本和部署后业务链路验证脚本；
 - Prometheus/Grafana 可选监控。
+- GitHub 私有仓库 `Victorica123/video-platform` 和可部署的 `main` 分支。
 
 当前还没有完成：
 
-- Git 远程仓库未配置；
-- 当前约有 57 项工作区变化尚未提交；
 - 云服务器、域名和 DNS 还需要你购买或提供；
 - 真实 Whisper/LLM API 暂不建议在第一次部署时打开。
 
@@ -36,13 +35,15 @@
 
 不要开放 MySQL 3306、Redis 6379、RocketMQ 9876/10911、MinIO 9000/9001。
 
-## 第一关：保存并上传当前代码
+## 第一关：保存并上传当前代码（已完成）
 
-这一步需要你先在 GitHub/Gitee 创建一个空的私有仓库。创建后，把仓库地址交给 Codex/Claude，再由模型帮助检查本次变更、整理提交并推送。
+当前私有仓库：
 
-不要现在直接执行 `git add -A`，因为工作区积累了多个阶段的改动，应该先做一次提交范围和敏感信息检查。
+```text
+https://github.com/Victorica123/video-platform
+```
 
-完成标志：
+代码已经经过敏感信息、大文件和提交范围检查，并整理到 `main` 分支。后续服务器直接从该仓库拉取。
 
 ```bash
 git remote -v
@@ -252,4 +253,4 @@ docker compose -f docker-compose.prod.yml logs -f --tail=200 app
 
 ## 你下一步只做一件事
 
-先创建一个 GitHub/Gitee 私有空仓库，把仓库地址交给模型。模型随后可以帮助你完成敏感信息检查、整理 commit、推送代码，再进入服务器和域名步骤。
+准备一台 Ubuntu 云服务器和一个可用域名。记录服务器公网 IP，并决定两个子域名，例如 `video.你的域名` 和 `files.你的域名`；拿到这些信息后，再由模型带你完成 DNS、安全组和服务器部署。

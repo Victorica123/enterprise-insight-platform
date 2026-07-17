@@ -35,8 +35,8 @@ Help real users upload videos, wait for processing, receive transcript/summary r
 - Generated at: 2026-07-17 +08:00
 - Last agent: Codex
 - Branch: main
-- Last commit: `55b9067 feat: add reliable object storage workflow`
-- Working tree: P5 deployment/harness commit is being prepared. Local `.claude/settings.json` hook changes and `.claude/hooks/` are intentionally excluded from GitHub because they broaden automatic command approval.
+- Last commit: `e10279a feat: add small-scale production deployment`
+- Repository state: P3-P5 implementation and deployment commits are ready on `main`. Local `.claude/settings.json` hook changes are intentionally excluded from GitHub because they broaden automatic command approval.
 
 ## Latest Session Summary
 
@@ -86,6 +86,6 @@ When `APP_REDIS_ENABLED=false` (lightweight mode) the Spring Boot Redis health i
 
 ## Recommended Next Step
 
-Next step: create an empty private GitHub/Gitee repository, review the accumulated changes for sensitive/generated files, create a deployment commit, and push it. Then follow `docs/P5_BEGINNER_LAUNCH_GUIDE.md`: point two DNS records at the server, fill `.env`, run `scripts/preflight-deploy.ps1`, start Compose, and run `scripts/verify-deploy.ps1 -SkipDocker` from the local machine.
+Next step: obtain an Ubuntu server and a domain, point the app/files DNS records to the server, then follow `docs/P5_BEGINNER_LAUNCH_GUIDE.md`: fill `.env`, run `scripts/preflight-deploy.ps1`, start Compose, and run `scripts/verify-deploy.ps1 -SkipDocker` from the local machine.
 
 ## Handoff Log
