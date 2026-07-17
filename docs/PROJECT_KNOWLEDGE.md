@@ -14,7 +14,7 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 
 - Backend: Java 17, Spring Boot 3.3.5, Spring Security, JPA.
 - Auth: JWT login/register with persisted users.
-- Upload: single-file mode and optional Redis chunk upload.
+- Upload: normal multipart, Redis chunk/resume, and MinIO/S3 presigned direct upload.
 - Workflow: local `@Async` publisher or optional RocketMQ.
 - Processing: FFmpeg audio extraction, Whisper-compatible transcription, OpenAI-compatible summary, mock fallback.
 - Frontend: static HTML/CSS/JS under `src/main/resources/static/`.
@@ -33,7 +33,8 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 - `P4_OBJECT_STORAGE.md`: MinIO/S3-compatible storage verification and interview framing.
 - `P5_SMALL_SCALE_DEPLOYMENT.md`: single-server deployment, smoke verification, debug playbook, and interview framing.
 - `LOADTEST.md`: MQ on/off A/B load-test method and measured results.
-- `DEMO_SCRIPT.md`: short demo flow for interview or stakeholder walkthroughs.
+- `VERIFICATION_MATRIX.md`: feature-to-evidence map across unit, Web, runtime, and manual verification.
+- `DEMO_SCRIPT.md`: 5-10 minute interview or stakeholder walkthrough.
 - `INTERVIEW_PREP.html`: deeper architecture explanation (静态,可能滞后于代码).
 
 ## Working Rules
@@ -46,10 +47,10 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 
 ## Near-Term Direction
 
-1. Confirm the core user workflow: login, upload, task status, transcript/summary, history.
-2. Improve missing product feedback: failure reason, retry path, task detail, upload/processing timing.
-3. Establish upload performance baseline before optimizing chunk concurrency.
-4. Prepare server deployment only after the user workflow is coherent enough for real users.
+1. Keep the core workflow demonstrable: login, three upload paths, task status, transcript/summary, playback, export, retry, and history.
+2. Use `VERIFICATION_MATRIX.md` and saved MQ A/B data to separate tested facts from future plans.
+3. Improve production gaps only when useful: schema migrations, upload-session audit/cleanup, quotas/rate limits, backup restore, and CI/CD.
+4. Preserve the original platform vision without requiring paid public hosting or inventing production usage data.
 
 ## Session Notes 2026-07-03
 

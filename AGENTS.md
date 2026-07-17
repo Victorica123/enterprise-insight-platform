@@ -14,6 +14,7 @@ Codex startup harness for this repository. Keep this file short; detailed contex
    - Small-scale deployment: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
    - Beginner launch guide: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
    - Troubleshooting history: `docs/TROUBLESHOOTING.md`
+   - Feature evidence: `docs/VERIFICATION_MATRIX.md`
    - Interview framing: `INTERVIEW_GUIDE.md`
 
 ## Non-Negotiables

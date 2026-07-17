@@ -221,6 +221,45 @@ textarea {
     line-height: 1.3;
 }
 
+.result-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.result-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.result-action:hover:not(:disabled) {
+    border-color: #9ac5bf;
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.result-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.result-action svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+}
+
 .step-badge {
     display: inline-flex;
     align-items: center;
@@ -1057,10 +1096,15 @@ textarea {
     }
 
     .panel-heading .status-pill,
-    .panel-heading .icon-button {
+    .panel-heading .icon-button,
+    .panel-heading .result-actions {
         grid-column: 2;
         justify-self: start;
         margin-top: 6px;
+    }
+
+    .result-actions {
+        flex-wrap: wrap;
     }
 
     .tabs {

@@ -1,80 +1,96 @@
 # 视频内容理解平台
 
-一个基于 Spring Boot 3 的视频内容理解后台系统。项目主线是让真实用户完成“上传视频 -> 自动理解内容 -> 查看转写和总结 -> 管理历史任务”的完整需求；大文件上传、高并发处理和服务器上线是为这个需求服务的工程问题。
+一个围绕“大文件上传、异步 AI 处理和高并发削峰”构建的多用户视频内容理解平台。
 
-## 项目亮点
+用户登录后可以通过普通上传、Redis 分片上传或 MinIO 对象存储直传提交视频。后台将上传转换为可追踪的任务，经 FFmpeg、Whisper 兼容接口和 LLM 兼容接口处理，最终返回转写、摘要、播放和历史记录。
 
-- 多用户体系：注册、登录、JWT 鉴权，上传和任务查询按用户隔离。
-- 视频上传：支持单文件上传，也支持 Redis 分片上传、TTL 会话和合并锁；后续根据用户体验优化并发分片、断点续传、秒传和上传耗时统计。
-- 异步工作流：上传后创建任务，后台执行 FFmpeg 音频提取、Whisper 转写、LLM 摘要。
-- 用户体验：后续优先补齐任务详情、失败原因、重试提示、历史结果管理和上传/处理耗时反馈。
-- 高并发演进：在真实用户访问增长后，通过限流、队列削峰、线程池隔离、幂等和状态机保护支撑多用户同时上传和处理。
-- 上线目标：后续提供 Docker/Nginx/HTTPS/MySQL/日志监控等部署能力，让项目可以稳定给真实用户使用。
-- 可视化演示：首页展示业务闭环、运行模式、Swagger、Health 和任务状态流水线。
-- 条件装配：同一套代码支持本地模式、Redis 模式、Redis + RocketMQ 分布式模式。
-- 可测试设计：默认测试不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
-- API 文档：集成 Springdoc OpenAPI，可通过 Swagger UI 查看接口。
+当前定位是：功能完整、可本地复现、可量化验证、可用于后端工程师面试讲解。项目保留生产部署能力，但不虚构线上用户量或商业数据。
 
-## 技术栈
+## 核心链路
 
-| 领域 | 技术 |
-| --- | --- |
-| 后端 | Java 17, Spring Boot 3.3.5 |
-| Web/API | Spring MVC, Bean Validation, Springdoc OpenAPI |
-| 安全 | Spring Security, JWT |
-| 数据库 | JPA, H2, MySQL profile |
-| 缓存/锁 | Redis, Redisson |
-| 消息队列 | RocketMQ |
-| AI 工作流 | FFmpeg, Whisper-compatible API, OpenAI-compatible LLM API |
-| 前端 | 原生 HTML, CSS, JavaScript |
-| 测试 | JUnit 5, AssertJ, Mockito, Spring Boot Test |
-
-## 架构模式
-
-项目通过配置开关支持三种运行方式：
-
-| 模式 | 配置 | 用途 |
-| --- | --- | --- |
-| 本地轻量模式 | `APP_REDIS_ENABLED=false`, `APP_MQ_ENABLED=false` | 不依赖中间件，适合快速开发和面试演示 |
-| 默认 Redis 模式 | `APP_REDIS_ENABLED=true`, `APP_MQ_ENABLED=false` | 支持分片上传，本地异步处理 |
-| 分布式模式 | `APP_REDIS_ENABLED=true`, `APP_MQ_ENABLED=true` | Redis + RocketMQ，适合讲解横向扩展 |
-
-核心链路：
-
-```text
-注册/登录 -> 上传视频 -> 创建 VideoTask -> 发布工作流任务
--> FFmpeg 提取音频 -> Whisper 转写 -> LLM 摘要 -> 查询任务结果
+```mermaid
+flowchart LR
+    U["浏览器 / 用户"] -->|"JWT API"| A["Spring Boot"]
+    U -->|"预签名 PUT"| O["MinIO / S3"]
+    A -->|"用户与任务"| D["MySQL"]
+    A -->|"分片会话 / 锁"| R["Redis + Redisson"]
+    A -->|"发布 taskId"| M["RocketMQ"]
+    M --> W["WorkflowProcessor"]
+    A -->|"本地异步模式"| W
+    W --> F["FFmpeg"]
+    F --> T["Whisper 兼容 API"]
+    T --> L["LLM 兼容 API"]
+    W -->|"阶段状态 / 结果"| D
+    O -->|"临时下载处理"| W
+    U -->|"预签名播放"| O
 ```
 
-## 需求落地路线
+业务状态：
 
-项目后续先围绕用户需求迭代，再解决阻碍需求落地的工程问题：
+```text
+上传 -> QUEUED -> TRANSCRIBING -> SUMMARIZING -> COMPLETED
+                                      |
+                                      +-> FAILED -> 用户重试 / 定时补偿
+```
 
-1. 核心需求：用户能注册登录、上传视频、看到处理状态、获得转写和总结、回看历史任务。
-2. 体验问题：上传和处理等待时间要可见，失败原因要清楚，必要时能重试。
-3. 大文件问题：当大视频上传慢时，建立上传耗时基线，再实现并发分片、失败 chunk 重试、断点续传和秒传。
-4. 上线问题：补齐 MySQL migration、Docker 部署、Nginx/HTTPS、上传大小限制、日志监控和文件清理策略。
-5. 并发问题：当真实用户变多后，用限流、队列、线程池隔离、幂等和状态机保护避免服务被拖垮。
+## 已实现能力
 
-需求和优化都必须可验证，后续会记录这些指标：
+| 领域 | 能力 | 可验证证据 |
+| --- | --- | --- |
+| 用户体系 | 注册、登录、JWT、owner 数据隔离 | 安全集成测试、越权测试 |
+| 大文件上传 | 普通上传、并发分片、断点状态、MD5 完整性校验 | 前端上传观测、`ChunkUploadServiceTests` |
+| 秒传与去重 | 文件 MD5 命中、内容级 single-flight、结果复用 | 工作流测试、P3/P4 文档 |
+| 对象存储 | MinIO/S3、预签名直传、预签名播放、Range 播放 | `verify-deploy.ps1`、媒体测试 |
+| 异步工作流 | 本地 `@Async` 与 RocketMQ 两种发布路径 | MQ A/B 压测 |
+| 可靠性 | 幂等 claim、分布式锁、失败状态、手动重试、stale task reaper | P3 验证流程 |
+| AI 处理 | FFmpeg 抽音频、Whisper 转写、LLM 摘要、Mock 回退 | 单元测试不依赖外部 API |
+| 用户体验 | 任务状态、错误原因、历史记录、播放、删除、重试 | 首页工作台 |
+| 可观测性 | Actuator、Micrometer、Prometheus、Grafana | MQ A/B 仪表盘 |
+| 部署 | Docker、MySQL、Redis、RocketMQ、MinIO、Caddy HTTPS | 生产 Compose、preflight/smoke 脚本 |
 
-- 文件大小、chunk size、chunk 数量。
-- 上传总耗时、平均 chunk 耗时、merge 耗时。
-- 任务排队时间、转写耗时、总结耗时。
-- 并发用户数、成功率、失败原因和重试次数。
+## 三种运行模式
+
+| 模式 | 配置 | 适用场景 |
+| --- | --- | --- |
+| 轻量模式 | Redis 关、MQ 关、本地存储 | 开发、单元测试、快速面试演示 |
+| 分片模式 | Redis 开、MQ 关 | 分片上传、断点续传、锁与幂等验证 |
+| 完整模式 | Redis、MQ、MinIO、MySQL 全开 | 大文件、削峰、对象存储和完整工程演示 |
+
+条件装配让中间件是可选能力，而不是让测试和本地开发被 Docker 或外部 API 绑死。
+
+## 真实 MQ A/B 结果
+
+短压测使用真实 Redis、MySQL、RocketMQ，Mock 转写延迟 2 秒，5 VU，单文件 16 KB：
+
+| 指标 | MQ 关 | MQ 开 |
+| --- | ---: | ---: |
+| k6 checks | 1365 | 1399 |
+| 请求成功率 | 10.25% | 100% |
+| HTTP 失败率 | 89.61% | 0% |
+| 上传接口 p95 | 22.04 ms | 14.44 ms |
+
+结论：
+
+> RocketMQ 没有加快单个视频，也没有提升处理吞吐。它把线程池饱和时用户可见的 HTTP 失败，转换成 broker 中可恢复的排队延迟。
+
+这是项目对“MQ 削峰”的核心工程结论，而不是简单地宣称用了消息队列就更快。
+
+完整方法和原始结果见：
+
+- [MQ A/B 测试方法](docs/LOADTEST.md)
+- [实测结果快照](loadtest/results/RESULTS.md)
 
 ## 快速启动
 
-### 环境要求
+环境要求：
 
 - JDK 17+
 - Maven 3.8+
-- 可选：Docker Desktop，用于启动 Redis/RocketMQ/MySQL 等中间件
-- 可选：FFmpeg，用于真实音频提取
+- 可选：Docker Desktop、FFmpeg、外部 AI API
 
-### 方式一：本地轻量模式
+### 轻量模式
 
-适合第一次运行和面试演示，不需要 Redis、RocketMQ、外部 AI API。
+不依赖 Redis、RocketMQ、Docker、Whisper 或 LLM：
 
 ```powershell
 $env:APP_REDIS_ENABLED="false"
@@ -83,161 +99,118 @@ $env:APP_TRANSCRIPT_ENABLED="false"
 $env:APP_SUMMARY_ENABLED="false"
 $env:SPRING_DOCKER_COMPOSE_ENABLED="false"
 $env:MANAGEMENT_HEALTH_REDIS_ENABLED="false"
-mvn spring-boot:run
+mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 ```
 
-启动后访问：
+访问：
 
-- 前端页面：http://localhost:8081
-- API 文档：http://localhost:8081/swagger-ui.html
-- 健康检查：http://localhost:8081/actuator/health
+- 工作台：<http://localhost:8081>
+- Swagger：<http://localhost:8081/swagger-ui.html>
+- Health：<http://localhost:8081/actuator/health>
 
-### 方式二：默认 Redis 模式
+### 完整中间件验证
 
-适合展示分片上传。
+启动真实 MySQL、Redis、RocketMQ 后运行端到端验证：
 
 ```powershell
-docker compose up -d redis
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-mvn spring-boot:run
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1
 ```
 
-### 方式三：Redis + RocketMQ 分布式模式
+脚本会验证：
 
-适合面试时讲分布式架构，但本地启动成本更高。
+1. 注册并获得 JWT；
+2. Redis 分片 init/status/chunk/merge；
+3. RocketMQ 消费并完成工作流；
+4. MySQL 任务持久化；
+5. Redis 上传会话清理。
+
+### 生产配置检查
 
 ```powershell
-docker compose --profile mq up -d
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="true"
-mvn spring-boot:run
+Copy-Item .env.example .env
+# 修改 .env 中所有 CHANGE_ME 和域名
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preflight-deploy.ps1
 ```
 
-## 常用命令
+部署细节见 [小范围部署说明](docs/P5_SMALL_SCALE_DEPLOYMENT.md)。
+
+## 自动化验证
 
 ```powershell
-# 运行全部测试
+# 全量测试
 mvn test
 
-# 清理后编译
-mvn clean compile
+# 上传、对象存储、播放
+mvn test "-Dtest=MediaControllerTests,DirectUploadServiceTests,S3MediaStorageServiceTests,VideoPlaybackControllerTests"
 
-# 打包
-mvn clean package -DskipTests
+# 工作流、重试、补偿
+mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskServiceTests,StaleWorkflowTaskReaperTests"
 
-# 运行指定测试
-mvn test "-Dtest=WorkflowProcessorTests"
+# 前端语法
+node --check src/main/resources/static/app.js
 ```
 
-## API 入口
+当前基线：70 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
 
-| 功能 | 路径 |
-| --- | --- |
-| 注册 | `POST /api/auth/register` |
-| 登录 | `POST /api/auth/login` |
-| 单文件上传 | `POST /api/media/upload/file` |
-| 初始化分片上传 | `POST /api/media/upload/init` |
-| 上传分片 | `POST /api/media/upload/chunk` |
-| 合并分片 | `POST /api/media/upload/merge` |
-| 查询我的任务 | `GET /api/workflow/tasks` |
-| 查询任务详情 | `GET /api/workflow/tasks/{taskId}` |
-| API 文档 | `GET /swagger-ui.html` |
-| OpenAPI JSON | `GET /v3/api-docs` |
+## 关键设计取舍
 
-除注册、登录、健康检查和 API 文档外，业务接口都需要 `Authorization: Bearer <token>`。
+### Redis 分片不等于天然加速
 
-## 面试讲解重点
+Redis 保存上传会话、已上传 chunk、TTL 和锁。真正影响速度的是并发 chunk、chunk size、网络和失败重传。它首先解决可靠性与可恢复性。
 
-建议按这个顺序讲：
+### MQ 削峰不等于处理加速
 
-1. 用户需求：用户上传视频后，要稳定拿到可用的转写和总结，并能管理历史任务。
-2. 页面演示：从首页“面试演示台”讲业务闭环和三种运行模式。
-3. 用户隔离：每个任务和上传会话都绑定当前登录用户。
-4. 上传设计：单文件上传用于轻量模式，Redis 分片上传用于大文件、断点续传和后续体验优化。
-5. 工作流设计：`WorkflowPublisher` 抽象本地异步和 RocketMQ 两种调度方式，用队列削峰处理耗时任务。
-6. 工程取舍：大文件、高并发、部署和监控都服务于用户需求，不为了技术而技术。
-7. 事务边界：工作流状态在 `@Transactional` 方法中推进，失败时落库为 `FAILED`。
-8. 稳定性：错误信息截断、FFmpeg 临时文件清理、外部 API mock fallback。
-9. 测试策略：核心边界用单元测试锁住，测试环境不依赖中间件。
+队列只能移动积压位置。消费者能力不变时，接受更多请求会提高端到端等待时间，因此系统同时保留任务状态、监控和 stale task 补偿。
 
-## 当前测试覆盖
+### 对象存储不等于转写加速
 
-当前测试覆盖点包括：
+浏览器直传减少应用服务器带宽和磁盘压力；工作流仍需要下载媒体并调用 FFmpeg/AI 服务。
 
-- 视频文件名和 content-type 校验。
-- Mock 摘要空白输入和长文本截断。
-- 工作流成功、总结失败、长错误信息截断。
-- 爬取服务空白站点参数防御。
-- JWT 鉴权、Controller 用户隔离、上传越权、分片边界、合并锁和清理。
-- Spring Boot 上下文在无 Redis/MQ/Docker 环境下启动。
+### 外部 I/O 不放在长事务中
 
-运行：
+数据库状态通过短事务逐阶段推进。FFmpeg、Whisper、LLM 等慢 I/O 不长期占用数据库连接。
 
-```powershell
-mvn test
+### 单元测试与中间件解耦
+
+核心边界用 H2、Mock 和接口抽象锁住；真实 Redis/MySQL/RocketMQ 链路由独立 smoke 脚本验证。
+
+## 项目结构
+
+```text
+src/main/java/com/example/videoplatform/
+├── auth/          JWT 与用户
+├── media/         普通/分片/直传、存储、播放
+├── workflow/      任务状态机、MQ、锁、重试、补偿
+├── transcript/    FFmpeg 与 Whisper
+├── summary/       LLM 摘要
+├── crawl/         视频信息抓取实验
+└── config/        安全、异步、指标、Redis
+
+src/main/resources/static/   前端工作台
+loadtest/                    k6 与实测结果
+observability/               Prometheus/Grafana
+scripts/                     preflight、smoke、handoff
+docs/                        P3/P4/P5、演示和排障文档
 ```
 
-## 求职路线图
+## 演示与面试
 
-后续迭代计划见 [CAREER_ROADMAP.md](docs/CAREER_ROADMAP.md)。
+- [5-10 分钟演示脚本](docs/DEMO_SCRIPT.md)
+- [面试知识点](INTERVIEW_GUIDE.md)
+- [功能验证矩阵](docs/VERIFICATION_MATRIX.md)
+- [故障排查记录](docs/TROUBLESHOOTING.md)
+- [可靠性验证](docs/P3_RELIABILITY_VERIFICATION.md)
+- [对象存储验证](docs/P4_OBJECT_STORAGE.md)
+- [跨模型项目交接](docs/AI_HANDOFF.md)
 
-建议下一阶段继续推进：
+## 已知边界
 
-- 核心体验确认：上传、任务状态、结果展示、历史任务是否满足真实用户需求。
-- 体验补齐：任务详情、失败原因、重试提示、上传/处理耗时反馈。
-- 上传性能基线：记录总耗时、chunk 耗时、merge 耗时，为后续大文件优化做对照。
-- Flyway/Liquibase 数据库迁移。
-- Dockerfile、Nginx/HTTPS、GitHub Actions、日志监控和服务器部署。
+- 当前使用 Hibernate `ddl-auto=update`，更大规模上线前应引入 Flyway/Liquibase。
+- S3 实现使用 JDK HttpClient + Signature V4，后续可替换官方 SDK。
+- 直传完成接口已做 owner/token/idempotency 保护，但还没有独立 upload-session 审计表。
+- 当前压测证明 MQ 的削峰语义，不代表生产容量承诺。
+- 项目暂未长期运营公网 SaaS，不虚构用户量、收入或 SLA。
 
----
+## 一句话介绍
 
-## 2026-07-01 当前可验证能力
-
-- 首页提供上传实验面板，可切换普通上传和 Redis 并发分片上传。
-- Redis 分片上传当前前端并发数为 `4`，用于观察并发 chunk 对上传耗时的影响。
-- 上传观测面板显示最近一次上传结果，并保留普通上传和 Redis 分片上传的最近对比记录；切换上传方式不会污染历史记录。
-- 历史任务支持删除，接口为 `DELETE /api/workflow/tasks/{taskId}`，按当前登录用户做 owner 校验。
-- Docker Compose 中 Redis 使用宿主机 `7379` 端口映射到容器 `6379`，用于避开本机 Windows 保留端口段。
-- Docker Compose 中 MySQL 使用 `mysql` profile，适合验证 H2 切换到 MySQL 后用户和任务是否能持久化。
-
-Redis 模式启动：
-
-```powershell
-docker compose up -d redis
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:SPRING_DATA_REDIS_PORT="7379"
-mvn spring-boot:run
-```
-
-MySQL + Redis 模式启动：
-
-```powershell
-docker compose --profile mysql up -d redis mysql
-$env:MYSQL_HOST="localhost"
-$env:MYSQL_PORT="3306"
-$env:MYSQL_DATABASE="videoplatform"
-$env:MYSQL_USERNAME="root"
-$env:MYSQL_PASSWORD="123456"
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:SPRING_DATA_REDIS_PORT="7379"
-mvn spring-boot:run "-Dspring-boot.run.profiles=mysql"
-```
-
-快速验证：
-
-```powershell
-.\smoke-test.ps1
-```
-
-重要结论：
-
-Redis 分片上传不一定比普通上传更快。Redis 提供的是上传会话、chunk 状态、merge 锁以及后续断点续传、失败重试、秒传的基础。真正的提速来自并发 chunk 上传、chunk size 调优和失败 chunk 重试。RocketMQ 解决的是上传后的异步处理和削峰，不直接加速文件上传。
+> 这是一个多用户视频内容理解平台：用 Redis 分片会话和锁保证大文件上传可靠性，用 MinIO 直传降低应用服务器压力，用 RocketMQ 把流量峰值从 HTTP 失败转换为内部排队，再通过幂等、重试、补偿和指标保障 FFmpeg/Whisper/LLM 异步工作流可追踪、可恢复。

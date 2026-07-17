@@ -15,6 +15,8 @@ const progressText = document.getElementById("progressText");
 const progressPercent = document.getElementById("progressPercent");
 const transcriptArea = document.getElementById("transcript");
 const summaryArea = document.getElementById("summary");
+const copyResultButton = document.getElementById("copyResult");
+const downloadResultButton = document.getElementById("downloadResult");
 const messagesArea = document.getElementById("messages");
 const statusPill = document.getElementById("statusPill");
 const loginButton = document.getElementById("loginButton");
@@ -57,6 +59,7 @@ let pollingTimer = null;
 let currentFile = null;
 let uploadMode = localStorage.getItem("vp_upload_mode") || "single";
 let activeMetrics = null;
+let currentTask = null;
 let lastMetrics = {
     single: null,
     chunk: null,
@@ -146,6 +149,8 @@ refreshButton.addEventListener("click", async () => {
 });
 
 loadMyVideosButton.addEventListener("click", loadMyVideos);
+copyResultButton.addEventListener("click", copyTaskResult);
+downloadResultButton.addEventListener("click", downloadTaskResult);
 
 // 历史列表用事件委托：无论重渲染多少次都只在容器上绑定一次，避免逐项重复绑定与监听泄漏。
 videoList.addEventListener("click", (event) => {
@@ -306,6 +311,10 @@ function clearAuthState(message = "登录已过期，请重新登录") {
     myVideosCard.style.display = "none";
     uploadButton.disabled = true;
     refreshButton.disabled = true;
+    currentTask = null;
+    transcriptArea.value = "";
+    summaryArea.value = "";
+    updateResultActions();
     stopPolling();
     writeMessage(message, true);
 }
@@ -726,6 +735,8 @@ function handleUploadSuccess(taskId, status) {
     taskField.style.display = "grid";
     transcriptArea.value = "";
     summaryArea.value = "";
+    currentTask = null;
+    updateResultActions();
     hideVideoPlayer();
     setStatus(status || "处理中", "running");
     refreshButton.disabled = false;
@@ -776,8 +787,10 @@ async function fetchTask() {
 
     try {
         const task = await apiRequest(`/api/workflow/tasks/${taskId}`);
+        currentTask = task;
         transcriptArea.value = task.transcript || "";
         summaryArea.value = task.summary || "";
+        updateResultActions();
 
         if (task.status === "COMPLETED") {
             setStatus("已完成", "success");
@@ -819,6 +832,8 @@ async function deleteTask(taskId, triggerButton) {
             taskField.style.display = "none";
             transcriptArea.value = "";
             summaryArea.value = "";
+            currentTask = null;
+            updateResultActions();
             refreshButton.disabled = true;
             setStatus("未开始", "idle");
             stopPolling();
@@ -973,9 +988,81 @@ function selectTask(taskId) {
     taskField.style.display = "grid";
     transcriptArea.value = "";
     summaryArea.value = "";
+    currentTask = null;
+    updateResultActions();
     refreshButton.disabled = false;
     writeMessage(`已选择历史任务：${taskId}`);
     startPolling();
+}
+
+function updateResultActions() {
+    const hasResult = Boolean(transcriptArea.value.trim() || summaryArea.value.trim());
+    copyResultButton.disabled = !hasResult;
+    downloadResultButton.disabled = !hasResult;
+}
+
+function buildTaskMarkdown() {
+    const fileName = currentTask?.fileName || "视频理解结果";
+    const taskId = currentTask?.taskId || taskIdInput.value.trim() || "-";
+    const createdAt = currentTask?.createdAt ? formatDate(currentTask.createdAt) : "-";
+    const transcript = transcriptArea.value.trim() || "（暂无转写内容）";
+    const summary = summaryArea.value.trim() || "（暂无摘要内容）";
+    return [
+        `# ${fileName}`,
+        "",
+        `- 任务 ID：${taskId}`,
+        `- 创建时间：${createdAt}`,
+        "",
+        "## AI 摘要",
+        "",
+        summary,
+        "",
+        "## 转写文本",
+        "",
+        transcript,
+        ""
+    ].join("\n");
+}
+
+async function copyTaskResult() {
+    if (copyResultButton.disabled) return;
+    const markdown = buildTaskMarkdown();
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(markdown);
+        } else {
+            const helper = document.createElement("textarea");
+            helper.value = markdown;
+            helper.style.position = "fixed";
+            helper.style.opacity = "0";
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand("copy");
+            helper.remove();
+        }
+        writeMessage("已复制完整转写与摘要");
+    } catch (error) {
+        writeMessage("复制失败，请手动选择结果文本", true);
+    }
+}
+
+function downloadTaskResult() {
+    if (downloadResultButton.disabled) return;
+    const markdown = buildTaskMarkdown();
+    const originalName = currentTask?.fileName || "video-result";
+    const baseName = originalName.replace(/\.[^/.]+$/, "")
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+        .slice(0, 80) || "video-result";
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${baseName}-notes.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    writeMessage(`已下载 Markdown：${link.download}`);
 }
 
 function formatDate(value) {

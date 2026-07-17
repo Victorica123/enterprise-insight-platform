@@ -42,6 +42,8 @@ Engineering topics such as Redis, RocketMQ, object storage, load tests, and obse
 - P5 public-entry hardening now includes Compose-managed Caddy automatic HTTPS, public blocking for metrics/Swagger, container log rotation, app/Redis health checks, `scripts/preflight-deploy.ps1`, and the Chinese beginner guide `docs/P5_BEGINNER_LAUNCH_GUIDE.md`.
 - S3 direct upload has separate internal and browser-visible endpoints: `APP_STORAGE_S3_ENDPOINT` for the app container and `APP_STORAGE_S3_PUBLIC_ENDPOINT` for presigned browser URLs.
 - Full-stack verification script exists: `scripts/verify-full-stack.ps1`.
+- Feature-to-evidence map exists: `docs/VERIFICATION_MATRIX.md`.
+- Frontend result delivery supports copying transcript/summary and downloading Markdown notes.
 - Latest focused media verification after direct-upload UI/idempotency/CORS work: JS syntax passed; media tests passed, 16 tests.
 
 ## High-Value Rules
@@ -66,6 +68,7 @@ Open only what the current task needs:
 - Need small-scale deployment/debug: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
 - Need step-by-step first launch: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
 - Need real bug history: `docs/TROUBLESHOOTING.md`
+- Need proof for a capability: `docs/VERIFICATION_MATRIX.md`
 - Need interview phrasing: `INTERVIEW_GUIDE.md`
 
 ## Verification Ladder

@@ -252,6 +252,23 @@
                             <h2>结果</h2>
                             <p>转写用于还原内容，摘要用于快速理解</p>
                         </div>
+                        <div class="result-actions" aria-label="结果操作">
+                            <button id="copyResult" class="result-action" type="button" disabled title="复制完整结果">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span>复制结果</span>
+                            </button>
+                            <button id="downloadResult" class="result-action" type="button" disabled title="下载 Markdown 笔记">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M12 3v12"></path>
+                                    <path d="m7 10 5 5 5-5"></path>
+                                    <path d="M5 21h14"></path>
+                                </svg>
+                                <span>Markdown</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="video-preview" id="videoPreview" style="display:none">
                         <video id="videoPlayer" controls preload="metadata" playsinline></video>

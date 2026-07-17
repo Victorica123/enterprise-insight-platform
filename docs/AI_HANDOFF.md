@@ -15,10 +15,12 @@ Help real users upload videos, wait for processing, receive transcript/summary r
 - docs/AI_STARTUP_HARNESS.md - compact startup cache/harness for future agents.
 - docs/P5_SMALL_SCALE_DEPLOYMENT.md - small-scale single-server deployment, smoke verification, and debug playbook.
 - docs/P5_BEGINNER_LAUNCH_GUIDE.md - step-by-step Chinese guide for the first public trial.
-- CLAUDE.md - most complete architecture notes as of 2026-07-02, including MD5 resume/dedup, Range playback, content-level single-flight, metrics, and load testing.
+- CLAUDE.md - short Claude startup harness and load-order rules.
 - AGENTS.md - Codex working rules. Keep it aligned with CLAUDE.md when architecture changes.
 - docs/TROUBLESHOOTING.md - real engineering problem cards. Add new issues with Symptom, Cause, Fix, Verify yourself, and Interview point.
 - docs/LOADTEST.md - MQ on/off A/B load-test method and measured results.
+- docs/VERIFICATION_MATRIX.md - feature-to-evidence map and claim boundaries.
+- docs/DEMO_SCRIPT.md - current 5-10 minute presentation flow.
 - INTERVIEW_GUIDE.md - interview-facing feature and architecture summary.
 
 ## Shared Rules
@@ -32,13 +34,15 @@ Help real users upload videos, wait for processing, receive transcript/summary r
 
 ## Quick State
 
-- Generated at: 2026-07-17 +08:00
+- Generated at: 2026-07-18 +08:00
 - Last agent: Codex
 - Branch: main
-- Last commit: `e10279a feat: add small-scale production deployment`
-- Repository state: P3-P5 implementation and deployment commits are ready on `main`. Local `.claude/settings.json` hook changes are intentionally excluded from GitHub because they broaden automatic command approval.
+- Last commit before current work: `2ee33b3 docs: refresh deployment handoff`
+- Repository state: presentation/export changes are being finalized. Local `.claude/settings.json` changes remain user-owned and must stay out of commits.
 
 ## Latest Session Summary
+
+2026-07-18 presentation update (Codex): rebuilt the GitHub README around the business flow, architecture, evidence and honest limitations; added `docs/VERIFICATION_MATRIX.md`; added frontend copy and Markdown result export; rewrote `docs/DEMO_SCRIPT.md` into a 5-10 minute current demo; and replaced the stale interview guide with current Redis/MQ/MinIO/reliability/deployment knowledge and measured MQ conclusions.
 
 Expanded P3 verification and continued P4. P3 now has docs/P3_RELIABILITY_VERIFICATION.md with user-verifiable stale-task requeue steps and high-concurrency failure-mode explanations. P4 added MediaStorageService abstraction, LocalMediaStorageService as default, S3MediaStorageService for MinIO/S3-compatible storage without extra Maven dependencies, object-storage MinIO compose profile, playback 307 redirect to presigned object URL, and docs/P4_OBJECT_STORAGE.md.
 
@@ -86,6 +90,8 @@ When `APP_REDIS_ENABLED=false` (lightweight mode) the Spring Boot Redis health i
 
 ## Recommended Next Step
 
-Next step: obtain an Ubuntu server and a domain, point the app/files DNS records to the server, then follow `docs/P5_BEGINNER_LAUNCH_GUIDE.md`: fill `.env`, run `scripts/preflight-deploy.ps1`, start Compose, and run `scripts/verify-deploy.ps1 -SkipDocker` from the local machine.
+Use the current package for repeatable local demos and interview practice. Prioritize schema migrations, upload-session lifecycle, quotas/rate limits, backup restore, and CI only when continuing production hardening; public hosting is optional rather than the current blocker.
 
 ## Handoff Log
+
+- 2026-07-18 Codex: refreshed README/demo/interview/evidence docs and added user-visible result export. `node --check`, full `mvn test` (70/70), `git diff --check`, and desktop/mobile browser smoke passed; mobile had no horizontal overflow and result actions kept stable disabled states before a result exists.

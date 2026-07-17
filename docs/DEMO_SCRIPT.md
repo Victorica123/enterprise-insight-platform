@@ -1,10 +1,12 @@
-# 面试演示脚本
+# 5-10 分钟项目演示脚本
 
-目标：用 3 分钟展示这个项目不是简单 CRUD，而是一个完整的后端工程项目。
+目标：让面试官先看到完整业务，再看到 Redis、RocketMQ、MinIO 和可靠性设计如何解决真实问题。不要只展示代码目录。
 
 ## 演示前准备
 
-推荐使用本地轻量模式，避免中间件或外部 API 影响演示。
+最稳妥的顺序：先用轻量模式演示业务，再展示已经保存的真实中间件验证证据。需要现场验证完整链路时再运行 full-stack 脚本。
+
+轻量模式：
 
 ```powershell
 $env:APP_REDIS_ENABLED="false"
@@ -13,146 +15,119 @@ $env:APP_TRANSCRIPT_ENABLED="false"
 $env:APP_SUMMARY_ENABLED="false"
 $env:SPRING_DOCKER_COMPOSE_ENABLED="false"
 $env:MANAGEMENT_HEALTH_REDIS_ENABLED="false"
-mvn spring-boot:run
+mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 ```
 
 打开：
 
-- 前端页面：http://localhost:8081
-- API 文档：http://localhost:8081/swagger-ui.html
-- 健康检查：http://localhost:8081/actuator/health
+- 工作台：<http://localhost:8081>
+- 健康检查：<http://localhost:8081/actuator/health>
+- 项目首页：`README.md`
+- 验证证据：`docs/VERIFICATION_MATRIX.md`
 
-## 3 分钟讲解顺序
+准备一个较小的 MP4。真实 AI API 未配置时，系统会使用 Mock 转写和摘要，适合稳定演示业务状态流。
 
-### 0:00 - 0:30 打开首页讲需求
+## 推荐讲解流程
 
-可以这样说：
+### 0:00-1:00 业务问题
 
-> 这是一个视频内容理解平台。用户登录后上传视频，系统自动创建任务，后台完成音频提取、语音转写和 AI 总结，最后用户可以查看自己的历史结果。页面上的演示台展示了业务闭环：登录、上传、任务、转写、总结、结果。
+页面打开后直接说：
 
-页面上重点指：
+> 这是一个多用户视频内容理解平台。用户上传视频后，系统异步完成音频提取、语音转写和 AI 摘要，并提供历史记录、播放、失败重试和结果导出。项目重点解决三个工程问题：大文件上传不稳定、耗时任务拖垮请求链路，以及多人使用时文件和任务必须严格隔离。
 
-- 面试演示台：业务闭环和三种运行模式。
-- Swagger API：接口文档入口。
-- Health Check：服务健康检查入口。
-- 状态流水线：上传、排队、转写、总结、完成。
+此时只指向页面上的上传区、当前任务和历史任务，不先讲中间件名词。
 
-### 0:30 - 1:30 完成一次用户链路
+### 1:00-3:00 完整用户链路
 
-展示：
+1. 注册或登录。
+2. 选择普通上传，提交一个小视频。
+3. 观察任务从 `QUEUED` 进入转写、摘要和完成状态。
+4. 在历史任务中切换任务，查看转写和摘要。
+5. 点击“复制结果”和“下载 Markdown”。
+6. 展示播放、删除；如果有 `FAILED` 任务，再展示重试。
 
-1. 注册或登录用户。
-2. 选择一个小视频。
-3. 点击上传。
-4. 观察状态流水线变化。
-5. 打开“我的视频”，说明历史任务按当前用户隔离。
+讲解：
 
-可以这样说：
+> 上传接口创建的是可追踪的 `VideoTask`，慢处理不占着 HTTP 请求等待。每条任务都绑定 owner，查询、播放令牌、重试和删除都会校验当前用户。结果不只停留在页面里，还可以直接复制或导出为 Markdown。
 
-> 这不是只做了一个上传按钮。后端会把上传行为转成一个可追踪的 VideoTask，前端用状态流水线展示任务生命周期。登录用户只能看到自己的任务，这对应真实系统里的数据隔离要求。
+### 3:00-5:00 三种上传方式
 
-### 1:30 - 2:10 接口和运行模式
+在上传策略中依次指出：
 
-展示：
+- **普通上传**：实现简单，适合小文件和本地开发；失败通常需要重传整个文件。
+- **Redis 并发分片**：记录上传会话、已完成分片和 merge 锁，支持断点续传、失败分片重试、MD5 校验和秒传。
+- **MinIO 对象存储直传**：后端签发短期 PUT URL，文件正文从浏览器直达对象存储，减少应用服务器带宽、磁盘和连接压力。
 
-1. 打开 http://localhost:8081/swagger-ui.html。
-2. 打开 http://localhost:8081/actuator/health。
-3. 回到首页演示台的运行模式。
+必须主动说明：
 
-可以这样说：
+> Redis 本身不会让上传天然变快。速度主要受并发分片数、分片大小和网络影响；Redis 首先解决可恢复性和一致性。MinIO 直传也不会加快转写，它优化的是上传和播放的流量路径。
 
-> API 文档由 Springdoc OpenAPI 自动生成，接口变更后文档能同步更新。系统支持本地异步、Redis 分片上传、Redis + RocketMQ 三种模式，所以面试演示可以轻量运行，生产扩展时也有架构空间。
+如果 MinIO 已启动，可打开 Console，展示 `uploads/direct/` 对象；否则展示 `docs/P4_OBJECT_STORAGE.md` 的三段式验证流程。
 
-### 2:10 - 2:45 技术亮点
+### 5:00-7:00 MQ 削峰实测
 
-重点讲 4 个点：
+打开 `README.md` 的 MQ A/B 表格或 `loadtest/results/RESULTS.md`。
 
-- 用户隔离：所有上传 session 和任务查询都绑定当前认证用户。
-- 条件装配：Redis、RocketMQ、Whisper、LLM 都可以通过配置开关启用或关闭。
-- 事务边界：工作流失败会把任务状态持久化为 `FAILED`，避免任务卡死。
-- 可测试性：核心边界测试不依赖 Redis、RocketMQ、Docker 或外部 API。
+短压测数据：
 
-### 2:45 - 3:00 后续规划
+| 指标 | MQ 关 | MQ 开 |
+| --- | ---: | ---: |
+| checks | 1365 | 1399 |
+| 请求成功率 | 10.25% | 100% |
+| HTTP 失败率 | 89.61% | 0% |
+| 上传接口 p95 | 22.04 ms | 14.44 ms |
 
-可以这样说：
+讲解：
 
-> 下一步我会把它继续往生产化作品推进：数据库 migration、任务幂等、MQ 重复消费保护、结构化日志和 Docker/GitHub Actions。
+> 两轮使用同样的真实 Redis、MySQL、RocketMQ 和 2 秒 Mock 处理延迟。MQ 关闭时，本地线程池饱和后大量请求被拒绝；MQ 开启后，请求全部被接收，但积压进入 broker，消费者仍按原速度处理。因此 MQ 的价值是削峰、解耦和可恢复，不是让单个视频更快，也没有凭空增加处理吞吐。
 
-## 一句话背诵版
+加分点：指出大压测里 MQ 模式端到端等待曾达到 22 分钟，说明“100% 接收”还必须配合队列深度告警、限流、扩容和用户等待预期。
 
-> 我这个项目不是简单 CRUD，而是一个视频处理后台系统：前端完成登录、上传和结果展示，后端负责 JWT 用户隔离、文件上传、任务状态机、异步处理和可选 Redis/MQ 扩展；测试重点覆盖鉴权、越权、上传边界和工作流失败。
+### 7:00-9:00 可靠性与可上线性
 
-## 面试官可能追问
+按一次处理链路讲四个保护：
 
-### 为什么支持三种部署模式？
+1. `claimForProcessing` 只允许 `QUEUED` 首次占位，抵御 MQ 重复投递。
+2. 内容 MD5 + single-flight 锁保证同一内容只执行一次昂贵处理，结果 fan-out 给其他任务。
+3. 异常统一落为 `FAILED`，用户可以手动重试。
+4. stale-task reaper 扫描长时间卡住的任务并重新发布，处理 worker 宕机等场景。
 
-回答方向：
+然后展示健康检查或部署文件：
 
-> 开发和面试演示不应该强依赖中间件，所以保留本地轻量模式。Redis 模式用于展示分片上传和锁。RocketMQ 模式用于展示任务解耦和横向扩展能力。
+> 小规模部署使用 Docker Compose 和 Caddy。应用与文件域名走 HTTPS，MySQL、Redis、RocketMQ、Prometheus 和 Grafana 不直接暴露公网。preflight 负责上线前配置检查，smoke 脚本按认证、上传、存储、MQ、数据库边界定位故障。
 
-### 为什么上传合并需要锁？
+### 9:00-10:00 诚实边界与收尾
 
-回答方向：
+> 当前已经完成代码测试、本地真实中间件链路和 MQ A/B 实测，但没有虚构公网用户量、SLA 或收入。更大规模上线前还需要 Flyway 数据库迁移、正式 S3 SDK、上传会话审计与清理、限流配额、备份恢复演练和 CI/CD。这些是明确的工程边界，不会把规划说成已经上线。
 
-> merge 是有副作用的操作，会写文件、清 Redis、创建任务。如果用户重复点击或请求重试，锁可以避免重复合并和生成脏数据。后续还可以继续做幂等返回。
+一句话收尾：
 
-### 为什么工作流要有事务？
+> 我不是把 Redis、MQ 和 MinIO 堆进项目，而是分别用它们解决上传可恢复、处理削峰和文件流量卸载，再用幂等、锁、补偿、指标和验证脚本把完整链路闭环。
 
-回答方向：
+## 现场追问速答
 
-> 状态、转写结果、摘要和失败原因属于同一个任务生命周期。如果中途异常，事务边界可以保证失败状态被统一处理，避免任务长期卡在处理中。
+**为什么分片有时比普通上传慢？**
 
-### 为什么测试不依赖 Redis/MQ？
+小文件会多出 MD5、init、多个 HTTP 请求和 merge 开销。分片的第一价值是大文件失败后只重传缺失部分；并行在高带宽、高时延环境下才可能明显提速。
 
-回答方向：
+**MQ 为什么没有提升处理吞吐？**
 
-> 单元测试应该稳定、快速、低成本。Redis/MQ 可以放到后续集成测试里；当前测试先覆盖业务边界和状态流转。
+吞吐取决于消费者数量、CPU、FFmpeg 和外部 AI 限额。MQ 只提供缓冲和解耦。要增加吞吐，需要扩消费者，并同时处理幂等、数据库连接、API 限流和积压监控。
 
-## 演示失败时的备用方案
+**为什么 MinIO 需要 internal/public 两个 endpoint？**
 
-- 服务启动失败：执行 `mvn clean compile`。
-- 端口占用：修改 `src/main/resources/application.yml` 中的 `server.port`。
-- 登录后 403：浏览器控制台执行 `localStorage.clear(); location.reload();`。
-- 上传接口 503：当前是 Redis 分片上传未启用，可以改用单文件上传或开启 Redis。
+应用容器通过 Docker 内网访问 `minio:9000`，浏览器只能访问公网文件域名。预签名 URL 把 host 纳入签名，因此签名时必须使用浏览器真正访问的 public endpoint。
 
----
+**如何防止用户访问别人的视频？**
 
-## Redis 上传实验演示补充（2026-07-01）
+任务查询、删除、重试和播放令牌都绑定当前认证用户；播放 token 还绑定 owner、taskId 和 purpose。只改 URL 中的 taskId 会被拒绝。
 
-启动 Redis 模式：
+## 演示失败备用路径
 
-```powershell
-docker compose up -d redis
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:SPRING_DATA_REDIS_PORT="7379"
-mvn spring-boot:run
-```
+- Docker 不可用：用 H2 轻量模式走完整用户链路，再展示保存的 A/B 数据和验证矩阵。
+- AI API 不可用：关闭 transcript/summary 外部调用，使用 Mock 结果，明确这是链路演示而非模型质量评测。
+- 8081 被占用：先用 `Get-NetTCPConnection -LocalPort 8081` 查占用，不要随意修改已提交配置。
+- 登录状态异常：浏览器控制台执行 `localStorage.clear(); location.reload();`。
+- 完整验证：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1`。
 
-演示步骤：
-
-1. 打开首页并登录。
-2. 选择同一个视频文件。
-3. 先选择“普通上传”，点击开始上传，观察“上传观测”的总耗时和吞吐。
-4. 再选择“Redis 分片”，点击开始上传，观察 chunk 数、平均 chunk 耗时、初始化和合并耗时。
-5. 对比“最近普通上传”和“最近 Redis 分片”。
-6. 在“我的视频”中删除不需要的历史任务，说明历史记录支持用户自主管理。
-
-推荐解释：
-
-> Redis 分片上传不等于天然更快。Redis 主要保存上传会话、chunk 状态和 merge 锁，为失败重试、断点续传和秒传打基础。真正的上传提速来自并发 chunk 上传、chunk size 调优和失败 chunk 重试。RocketMQ 解决的是上传后的任务削峰和异步处理，不直接加速浏览器到服务器的文件传输。
-
-验证命令：
-
-```powershell
-.\smoke-test.ps1
-```
-
-预期输出包含：
-
-```text
-Smoke test passed
-```
+每项能力的测试层级和通过标准见 `docs/VERIFICATION_MATRIX.md`。
