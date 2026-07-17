@@ -6,10 +6,6 @@ import com.example.videoplatform.workflow.VideoTaskService;
 import com.example.videoplatform.workflow.WorkflowPublisher;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,26 +15,27 @@ public class SingleUploadService {
 	private final AppProperties appProperties;
 	private final VideoTaskService videoTaskService;
 	private final WorkflowPublisher workflowPublisher;
+	private final MediaStorageService mediaStorageService;
 
 	public SingleUploadService(AppProperties appProperties,
 			VideoTaskService videoTaskService,
-			WorkflowPublisher workflowPublisher) {
+			WorkflowPublisher workflowPublisher,
+			MediaStorageService mediaStorageService) {
 		this.appProperties = appProperties;
 		this.videoTaskService = videoTaskService;
 		this.workflowPublisher = workflowPublisher;
+		this.mediaStorageService = mediaStorageService;
 	}
 
 	public MediaDtos.SingleUploadResponse uploadSingleFile(String owner, MultipartFile file) {
 		MediaFileValidator.requireVideoFile(file);
 		try {
-			Path baseDir = Path.of(appProperties.getStorage().getBasePath()).resolve("uploads");
-			Files.createDirectories(baseDir);
 			String safeName = MediaFileValidator.safeVideoFileName(file.getOriginalFilename());
-			Path stored = baseDir.resolve(UUID.randomUUID() + "-" + safeName);
+			String stored;
 			try (InputStream inputStream = file.getInputStream()) {
-				Files.copy(inputStream, stored, StandardCopyOption.REPLACE_EXISTING);
+				stored = mediaStorageService.saveUpload(safeName, inputStream);
 			}
-			VideoTask task = videoTaskService.createTask(owner, safeName, stored.toString());
+			VideoTask task = videoTaskService.createTask(owner, safeName, stored);
 			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.SingleUploadResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());

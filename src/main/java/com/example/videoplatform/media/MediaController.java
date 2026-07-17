@@ -22,17 +22,32 @@ public class MediaController {
 
 	private final SingleUploadService singleUploadService;
 	private final ChunkUploadService chunkUploadService;
+	private final DirectUploadService directUploadService;
 
 	public MediaController(SingleUploadService singleUploadService,
-			@Autowired(required = false) ChunkUploadService chunkUploadService) {
+			@Autowired(required = false) ChunkUploadService chunkUploadService,
+			DirectUploadService directUploadService) {
 		this.singleUploadService = singleUploadService;
 		this.chunkUploadService = chunkUploadService;
+		this.directUploadService = directUploadService;
 	}
 
 	@PostMapping("/file")
 	public ApiResponse<MediaDtos.SingleUploadResponse> uploadSingleFile(Authentication authentication,
 			@RequestPart MultipartFile file) {
 		return ApiResponse.ok(singleUploadService.uploadSingleFile(authentication.getName(), file));
+	}
+
+	@PostMapping("/direct/init")
+	public ApiResponse<MediaDtos.DirectUploadInitResponse> initDirectUpload(Authentication authentication,
+			@Valid @RequestBody MediaDtos.DirectUploadInitRequest request) {
+		return ApiResponse.ok(directUploadService.initDirectUpload(authentication.getName(), request));
+	}
+
+	@PostMapping("/direct/complete")
+	public ApiResponse<MediaDtos.DirectUploadCompleteResponse> completeDirectUpload(Authentication authentication,
+			@Valid @RequestBody MediaDtos.DirectUploadCompleteRequest request) {
+		return ApiResponse.ok(directUploadService.completeDirectUpload(authentication.getName(), request));
 	}
 
 	@PostMapping("/init")

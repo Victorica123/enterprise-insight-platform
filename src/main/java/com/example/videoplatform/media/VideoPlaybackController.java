@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -38,10 +39,13 @@ public class VideoPlaybackController {
 
 	private final VideoTaskService videoTaskService;
 	private final JwtService jwtService;
+	private final MediaStorageService mediaStorageService;
 
-	public VideoPlaybackController(VideoTaskService videoTaskService, JwtService jwtService) {
+	public VideoPlaybackController(VideoTaskService videoTaskService, JwtService jwtService,
+			MediaStorageService mediaStorageService) {
 		this.videoTaskService = videoTaskService;
 		this.jwtService = jwtService;
+		this.mediaStorageService = mediaStorageService;
 	}
 
 	/** 颁发播放令牌（需登录，且只能为自己的任务申请）。 */
@@ -64,7 +68,15 @@ public class VideoPlaybackController {
 		String owner = verifyPlaybackToken(token, taskId);
 		VideoTask task = videoTaskService.requireTask(taskId, owner);
 
-		Path file = Path.of(task.getStoragePath());
+		java.util.Optional<String> redirectUrl = mediaStorageService.createPlaybackRedirectUrl(task.getStoragePath(),
+				Duration.ofSeconds(jwtService.getPlaybackTokenSeconds()));
+		if (redirectUrl.isPresent()) {
+			response.setStatus(HttpStatus.TEMPORARY_REDIRECT.value());
+			response.setHeader(HttpHeaders.LOCATION, redirectUrl.get());
+			return;
+		}
+
+		Path file = mediaStorageService.requireLocalPath(task.getStoragePath());
 		if (!Files.exists(file) || !Files.isRegularFile(file)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "视频文件不存在");
 		}

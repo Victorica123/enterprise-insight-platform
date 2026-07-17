@@ -6,6 +6,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,9 +18,14 @@ import java.util.List;
 public class WorkflowController {
 
 	private final VideoTaskService videoTaskService;
+	private final WorkflowPublisher workflowPublisher;
+	private final WorkflowMetrics workflowMetrics;
 
-	public WorkflowController(VideoTaskService videoTaskService) {
+	public WorkflowController(VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
+			WorkflowMetrics workflowMetrics) {
 		this.videoTaskService = videoTaskService;
+		this.workflowPublisher = workflowPublisher;
+		this.workflowMetrics = workflowMetrics;
 	}
 
 	/**
@@ -46,6 +52,15 @@ public class WorkflowController {
 		String currentUser = currentUsername(authentication);
 		videoTaskService.deleteTask(taskId, currentUser);
 		return ApiResponse.ok(null);
+	}
+
+	@PostMapping("/tasks/{taskId}/retry")
+	public ApiResponse<WorkflowDtos.TaskView> retryTask(Authentication authentication, @PathVariable String taskId) {
+		String currentUser = currentUsername(authentication);
+		VideoTask task = videoTaskService.retryFailedTask(taskId, currentUser);
+		workflowMetrics.incrementRequeue("manual");
+		workflowPublisher.publish(taskId);
+		return ApiResponse.ok(WorkflowDtos.TaskView.from(task));
 	}
 
 	private String currentUsername(Authentication authentication) {

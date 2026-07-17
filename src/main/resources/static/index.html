@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>视频内容理解平台</title>
-    <link rel="stylesheet" href="/app.css?v=4">
+    <link rel="stylesheet" href="/app.css?v=6">
 </head>
 <body>
     <div class="shell">
@@ -17,15 +17,45 @@
                 </div>
                 <div>
                     <h1>视频内容理解平台</h1>
-                    <p>上传视频，观察普通上传与 Redis 分片上传的差异</p>
+                    <p>上传、排队、转写、摘要、播放与工程链路验证</p>
                 </div>
             </div>
             <nav class="top-links" aria-label="开发入口">
                 <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Swagger</a>
                 <a href="/actuator/health" target="_blank" rel="noreferrer">Health</a>
                 <a href="/v3/api-docs" target="_blank" rel="noreferrer">OpenAPI</a>
+                <a href="http://localhost:19001" target="_blank" rel="noreferrer">MinIO</a>
+                <a href="http://localhost:3000" target="_blank" rel="noreferrer">Grafana</a>
             </nav>
         </header>
+
+        <section class="capability-strip" aria-label="当前可验证能力">
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>MySQL 持久化</strong>
+                <small>任务与用户数据落库</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>Redis 分片</strong>
+                <small>断点续传 / 上传会话</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>RocketMQ 削峰</strong>
+                <small>上传后异步排队处理</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>MinIO 直传</strong>
+                <small>浏览器直传对象存储</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot standby"></span>
+                <strong>Mock AI</strong>
+                <small>本地验证不用外部 API</small>
+            </div>
+        </section>
 
         <main class="workbench">
             <section class="left-rail" aria-label="操作区">
@@ -61,19 +91,26 @@
                     <div class="panel-heading">
                         <span class="step-badge">2</span>
                         <div>
-                            <h2>上传实验</h2>
-                            <p>同一个视频可分别用两种策略上传</p>
+                            <h2>上传入口</h2>
+                            <p>选择一种路径，上传后统一进入任务队列</p>
                         </div>
                     </div>
 
                     <div class="strategy-switch" role="radiogroup" aria-label="上传策略">
                         <button class="strategy-option active" type="button" data-upload-mode="single" aria-pressed="true">
+                            <b>01</b>
                             <span>普通上传</span>
-                            <small>一个请求传完整文件</small>
+                            <small>文件经过应用服务器，适合小文件基线</small>
                         </button>
                         <button class="strategy-option" type="button" data-upload-mode="chunk" aria-pressed="false">
+                            <b>02</b>
                             <span>Redis 分片</span>
-                            <small>init / chunk / merge</small>
+                            <small>init / chunk / merge，可观察断点续传</small>
+                        </button>
+                        <button class="strategy-option" type="button" data-upload-mode="direct" aria-pressed="false">
+                            <b>03</b>
+                            <span>对象存储直传</span>
+                            <small>浏览器 PUT 到 MinIO，降低服务器压力</small>
                         </button>
                     </div>
 
@@ -86,7 +123,7 @@
                                 <path d="M20 16.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5"></path>
                             </svg>
                             <strong>选择或拖入视频文件</strong>
-                            <span>建议先用同一个小视频分别验证两种上传方式</span>
+                            <span>建议用同一个小视频依次验证三种上传方式</span>
                         </div>
                         <div class="dropzone-file" id="dropzoneFile" style="display:none">
                             <div class="file-meta">
@@ -120,7 +157,7 @@
                         <span class="step-badge muted">ms</span>
                         <div>
                             <h2>上传观测</h2>
-                            <p>对比普通上传和 Redis 分片上传耗时</p>
+                            <p>对比普通、分片、直传的客户端可见耗时</p>
                         </div>
                     </div>
                     <div class="metric-grid">
@@ -166,6 +203,10 @@
                             <span>最近 Redis 分片</span>
                             <strong id="chunkCompare">尚未测试</strong>
                         </div>
+                        <div class="compare-card">
+                            <span>最近对象存储直传</span>
+                            <strong id="directCompare">尚未测试</strong>
+                        </div>
                     </div>
                 </section>
             </section>
@@ -178,7 +219,7 @@
                             <h2>当前任务</h2>
                             <p>上传后这里会显示处理进度</p>
                         </div>
-                        <span class="status-pill idle" id="statusPill">未开始</span>
+                        <span class="status-pill idle" id="statusPill" role="status" aria-live="polite">未开始</span>
                     </div>
                     <div class="pipeline" aria-label="任务处理状态">
                         <div class="pipeline-step" data-status="UPLOADING">
@@ -253,7 +294,7 @@
                             <p>定位上传、认证、任务查询问题</p>
                         </div>
                     </div>
-                    <textarea id="messages" readonly placeholder="等待操作..."></textarea>
+                    <textarea id="messages" readonly placeholder="等待操作..." role="log" aria-live="polite" aria-label="操作日志"></textarea>
                 </section>
             </section>
 
@@ -263,21 +304,53 @@
                         <span class="step-badge muted">i</span>
                         <div>
                             <h2>模式说明</h2>
-                            <p>用于面试演示时解释工程取舍</p>
+                            <p>面试时可以按这三句话解释取舍</p>
                         </div>
                     </div>
                     <div class="mode-list" aria-label="上传模式说明">
                         <div class="mode-item">
                             <span>普通上传</span>
-                            <strong>实现简单，适合小文件</strong>
+                            <strong>简单可靠，但应用服务器压力最大</strong>
                         </div>
                         <div class="mode-item">
                             <span>Redis 分片</span>
-                            <strong>可扩展断点续传和重试</strong>
+                            <strong>解决大文件中断、重试、合并一致性</strong>
                         </div>
                         <div class="mode-item">
-                            <span>观测指标</span>
-                            <strong>先建基线，再谈优化</strong>
+                            <span>对象存储</span>
+                            <strong>让文件流量绕开应用服务器</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>MQ 异步</span>
+                            <strong>高峰先接住请求，后台慢慢消费</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel engineering-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">ops</span>
+                        <div>
+                            <h2>工程验证</h2>
+                            <p>把后端能力翻译成可以演示的业务现象</p>
+                        </div>
+                    </div>
+                    <div class="ops-list">
+                        <div class="ops-item">
+                            <strong>MQ 削峰</strong>
+                            <span>不是让单个任务更快，而是高峰时先接住请求，再排队处理，减少直接失败。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>P3 任务补偿</strong>
+                            <span>处理进程异常中断时，定时器会把卡住的任务重新放回队列。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>P4 对象存储</strong>
+                            <span>视频文件可从应用服务器磁盘迁到 MinIO/S3，降低服务器磁盘和播放流量压力。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>失败重试</strong>
+                            <span>历史任务失败后可手动重试，适合临时网络、转写服务抖动等可恢复问题。</span>
                         </div>
                     </div>
                 </section>
@@ -305,6 +378,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=7"></script>
 </body>
 </html>

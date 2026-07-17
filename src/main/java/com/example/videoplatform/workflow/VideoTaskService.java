@@ -3,7 +3,10 @@ package com.example.videoplatform.workflow;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -26,6 +29,11 @@ public class VideoTaskService {
 		String videoId = UUID.randomUUID().toString();
 		VideoTask task = new VideoTask(taskId, videoId, owner, fileName, storagePath, contentMd5);
 		return taskRepository.save(task);
+	}
+
+	@Transactional(readOnly = true)
+	public Optional<VideoTask> findLatestTaskByStoragePath(String owner, String storagePath) {
+		return taskRepository.findFirstByOwnerAndStoragePathOrderByCreatedAtDesc(owner, storagePath);
 	}
 
 	/**
@@ -55,6 +63,18 @@ public class VideoTaskService {
 	public void deleteTask(String taskId, String owner) {
 		VideoTask task = requireTask(taskId, owner);
 		taskRepository.delete(task);
+	}
+
+	@Transactional
+	public VideoTask retryFailedTask(String taskId, String owner) {
+		VideoTask task = taskRepository.findByTaskIdAndOwner(taskId, owner)
+				.orElseThrow(() -> new IllegalArgumentException("任务不存在或无权限: " + taskId));
+		if (task.getStatus() != VideoTask.TaskStatus.FAILED) {
+			throw new IllegalArgumentException("只有失败任务可以重试: " + taskId);
+		}
+		task.setErrorMessage(null);
+		task.setStatus(VideoTask.TaskStatus.QUEUED);
+		return task;
 	}
 
 	@Transactional
@@ -157,5 +177,26 @@ public class VideoTaskService {
 			}
 		}
 		return affected;
+	}
+
+	/**
+	 * 定时补偿：把长时间未推进的任务重置为 QUEUED 并返回 taskId，调用方随后重新发布。
+	 *
+	 * <p>纳入 QUEUED 是为了覆盖 MQ 投递失败、死信前后或本地线程池拒绝后留下的老任务；
+	 * 纳入 TRANSCRIBING/SUMMARIZING 是为了覆盖进程崩溃、单飞赢家中断等导致的悬挂任务。
+	 * 重复发布可由 {@link #claimForProcessing(String)} 的状态抢占保证幂等。
+	 */
+	@Transactional
+	public List<String> requeueStaleTasks(Instant cutoff) {
+		List<VideoTask.TaskStatus> retryableStatuses = List.of(
+				VideoTask.TaskStatus.QUEUED,
+				VideoTask.TaskStatus.TRANSCRIBING,
+				VideoTask.TaskStatus.SUMMARIZING);
+		List<String> taskIds = new ArrayList<>();
+		for (VideoTask task : taskRepository.findByStatusInAndUpdatedAtBefore(retryableStatuses, cutoff)) {
+			task.setStatus(VideoTask.TaskStatus.QUEUED);
+			taskIds.add(task.getTaskId());
+		}
+		return taskIds;
 	}
 }

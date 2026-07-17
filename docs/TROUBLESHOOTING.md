@@ -1136,4 +1136,140 @@ mvn test
 
 ---
 
+## 工程问题卡（2026-07-03）：MQ 消费端不应再塞入本地异步线程池
+
+### Symptom
+
+启动真实 Redis + MySQL + RocketMQ 后，RocketMQ broker 里存在历史压测消息。应用一启动，consumer 批量拉取消息，然后日志出现本地线程池拒绝：
+
+```text
+TaskRejectedException: ExecutorService in active state did not accept task
+ThreadPoolTaskExecutor ... active threads = 4, queued tasks = 50
+```
+
+这说明 MQ 已经把请求削峰接住了，但 consumer 又把消息二次提交到本地 `@Async` 线程池，导致本地队列再次成为瓶颈。
+
+### Cause
+
+`RocketMqWorkflowConsumer.onMessage()` 调用了 `workflowProcessor.processAsync(taskId)`。
+
+`processAsync()` 带 `@Async`，会把实际处理提交到 `videoTaskExecutor`。在 MQ 模式下，这形成了“双队列”：
+
+```text
+RocketMQ broker queue -> RocketMQ consumer thread -> local @Async thread pool queue
+```
+
+当 broker 中积压消息较多时，consumer 拉取得很快，本地线程池只有 `maxPoolSize=4`、`queueCapacity=50`，于是被打满并抛 `TaskRejectedException`。这会让 MQ 重试消息，制造额外噪声。
+
+### Fix
+
+把 `WorkflowProcessor` 拆成两个入口：
+
+- `processAsync(taskId)`：保留 `@Async`，仅供本地无 MQ 模式使用。
+- `process(taskId)`：同步执行核心工作流，供 RocketMQ consumer 使用。
+
+`RocketMqWorkflowConsumer` 改为调用同步入口：
+
+```java
+workflowProcessor.process(taskId);
+```
+
+这样 MQ consumer 线程本身就是背压边界；处理慢时 consumer 变慢，由 broker 保留积压，而不是把压力转移到应用内另一个小队列。
+
+### Verify yourself
+
+```powershell
+mvn test "-Dtest=RocketMqWorkflowConsumerTests,WorkflowProcessorTests"
+mvn test
+
+$env:APP_REDIS_ENABLED="true"
+$env:APP_MQ_ENABLED="true"
+$env:APP_TRANSCRIPT_ENABLED="false"
+$env:APP_SUMMARY_ENABLED="false"
+$env:APP_WORKFLOW_REAPER_ENABLED="false"
+$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
+mvn spring-boot:run
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1
+```
+
+本次验证结果：
+
+- `RocketMqWorkflowConsumerTests,WorkflowProcessorTests`：11 tests, 0 failures, 0 errors。
+- 全量 `mvn test`：61 tests, 0 failures, 0 errors。
+- `scripts/verify-full-stack.ps1`：`ok=true`，任务 `COMPLETED`，MySQL 行匹配，Redis upload key 清理为 `0`。
+- 修复后启动真实 MQ 模式，不再出现 `TaskRejectedException`。
+
+### Interview point
+
+MQ 削峰不是“加个 MQ 就完事”。关键是确定背压发生在哪里：
+
+- 没有 MQ 时，压力落在 HTTP 请求线程和本地异步线程池。
+- 有 MQ 时，压力应落在 broker 队列和消费者并发控制。
+- 如果 consumer 收到消息后又丢给本地小线程池，就会把 MQ 的削峰效果打折，甚至制造重复投递和本地拒绝。
+
+这个案例可以这样讲：
+
+> 我们压测后发现 MQ 能接住高峰，但 consumer 端又使用本地 @Async，形成双队列。历史消息一多，本地线程池被打满。修复方式是 MQ consumer 同步执行核心处理逻辑，让 RocketMQ 自己承担排队和背压，同时保留本地模式的 @Async。
+
+---
+
+## 工程问题卡（2026-07-02）：单飞赢家中断会导致同内容任务长期卡住
+
+### Symptom
+
+内容级单飞设计下，同一 MD5 的多个任务会竞争 `lock:asset:{md5}`。赢家负责执行 FFmpeg/转写/摘要并 fan-out 完成所有同内容任务；抢锁失败者为了避免重复处理，会直接返回。
+
+如果赢家进程崩溃、机器重启、MQ 消费异常或处理链路长时间中断，失败者可能已经被 `claimForProcessing()` 从 `QUEUED` 推进到 `TRANSCRIBING`，但再也等不到赢家 fan-out，前端就会看到任务长期停在处理中。
+
+### Cause
+
+原设计依赖“赢家最终一定会完成或失败 fan-out”。这在正常运行时成立，但异步系统必须考虑 worker 消失、消息丢失/死信、进程重启等现实故障。
+
+`claimForProcessing()` 已经保证重复投递幂等，但系统缺少一个定时补偿器来把长时间未推进的非终态任务重新交回调度链路。
+
+### Fix
+
+新增 `StaleWorkflowTaskReaper`：
+
+- 定时扫描超过 `app.workflow.stale-task-timeout` 仍停留在 `QUEUED` / `TRANSCRIBING` / `SUMMARIZING` 的任务。
+- 通过 `VideoTaskService.requeueStaleTasks()` 在短事务中重置为 `QUEUED`。
+- 调用现有 `WorkflowPublisher.publish(taskId)` 重新投递，兼容本地 `@Async` 和 RocketMQ 两种模式。
+- 默认阈值保守设为 `60m`，扫描间隔 `60s`，避免误伤长视频处理。
+
+相关配置：
+
+```yaml
+app:
+  workflow:
+    stale-task-timeout: 60m
+    reaper-enabled: true
+    reaper-interval-ms: 60000
+    reaper-initial-delay-ms: 60000
+```
+
+### Verify yourself
+
+```bash
+mvn test "-Dtest=VideoTaskServiceTests,StaleWorkflowTaskReaperTests,WorkflowProcessorTests"
+node --check src/main/resources/static/app.js
+mvn test
+```
+
+本次验证结果：
+
+- 聚焦测试：13 tests, 0 failures, 0 errors。
+- 全量测试：55 tests, 0 failures, 0 errors。
+- 前端 JS 语法检查通过。
+
+### Interview point
+
+这属于异步任务系统里的“补偿机制”：
+
+- MQ、分布式锁、单飞只能减少重复处理，不能保证 worker 永远不宕机。
+- 任务表必须有可恢复的状态机，非终态任务要能被扫描、重置、重投递。
+- 重投递要安全，前提是处理入口具备幂等保护。本项目用 `claimForProcessing()` 的 `QUEUED -> TRANSCRIBING` 状态抢占来保证同一任务不会被多个 worker 同时处理。
+
+---
+
 *最后更新：2026-07-02*

@@ -17,6 +17,8 @@ const transcriptArea = document.getElementById("transcript");
 const summaryArea = document.getElementById("summary");
 const messagesArea = document.getElementById("messages");
 const statusPill = document.getElementById("statusPill");
+const loginButton = document.getElementById("loginButton");
+const registerButton = document.getElementById("registerButton");
 const uploadButton = document.getElementById("uploadButton");
 const refreshButton = document.getElementById("refreshButton");
 const myVideosCard = document.getElementById("myVideosCard");
@@ -37,7 +39,8 @@ const metricEls = {
     init: document.getElementById("metricInit"),
     merge: document.getElementById("metricMerge"),
     singleCompare: document.getElementById("singleCompare"),
-    chunkCompare: document.getElementById("chunkCompare")
+    chunkCompare: document.getElementById("chunkCompare"),
+    directCompare: document.getElementById("directCompare")
 };
 
 const CHUNK_SIZE = 2 * 1024 * 1024;
@@ -45,7 +48,8 @@ const CHUNK_CONCURRENCY = 4;
 const PIPELINE_ORDER = ["UPLOADING", "QUEUED", "TRANSCRIBING", "SUMMARIZING", "COMPLETED"];
 const MODE_LABELS = {
     single: "普通上传",
-    chunk: "Redis 并发分片"
+    chunk: "Redis 并发分片",
+    direct: "对象存储直传"
 };
 
 let token = localStorage.getItem("vp_token") || "";
@@ -55,7 +59,8 @@ let uploadMode = localStorage.getItem("vp_upload_mode") || "single";
 let activeMetrics = null;
 let lastMetrics = {
     single: null,
-    chunk: null
+    chunk: null,
+    direct: null
 };
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -94,46 +99,45 @@ videoFileInput.addEventListener("change", () => {
     fileSizeEl.textContent = formatSize(file.size);
     dropzoneEmpty.style.display = "none";
     dropzoneFile.style.display = "block";
-    dropzone.style.borderStyle = "solid";
-    dropzone.style.borderColor = "#84bcb6";
+    dropzone.classList.add("has-file");
+    dropzone.classList.remove("is-dragover");
     uploadButton.disabled = !token;
     resetActiveMetrics();
 });
 
 dropzone.addEventListener("dragover", (event) => {
     event.preventDefault();
-    dropzone.style.borderStyle = "solid";
-    dropzone.style.borderColor = "#156f68";
+    dropzone.classList.add("is-dragover");
 });
 
 dropzone.addEventListener("dragleave", () => {
-    if (!currentFile) {
-        dropzone.style.borderStyle = "dashed";
-        dropzone.style.borderColor = "";
-    }
+    dropzone.classList.remove("is-dragover");
 });
 
 dropzone.addEventListener("drop", (event) => {
     event.preventDefault();
+    dropzone.classList.remove("is-dragover");
     const file = event.dataTransfer.files?.[0];
     if (!file) return;
     videoFileInput.files = event.dataTransfer.files;
     videoFileInput.dispatchEvent(new Event("change"));
 });
 
-document.getElementById("registerButton").addEventListener("click", async () => {
-    await authenticate("/api/auth/register");
+registerButton.addEventListener("click", async () => {
+    await authenticate("/api/auth/register", registerButton);
 });
 
-document.getElementById("loginButton").addEventListener("click", async () => {
-    await authenticate("/api/auth/login");
+loginButton.addEventListener("click", async () => {
+    await authenticate("/api/auth/login", loginButton);
 });
 
 uploadButton.addEventListener("click", async () => {
     if (uploadMode === "single") {
         await uploadSingleFile();
-    } else {
+    } else if (uploadMode === "chunk") {
         await uploadFileChunked();
+    } else {
+        await uploadFileDirect();
     }
 });
 
@@ -143,8 +147,30 @@ refreshButton.addEventListener("click", async () => {
 
 loadMyVideosButton.addEventListener("click", loadMyVideos);
 
+// 历史列表用事件委托：无论重渲染多少次都只在容器上绑定一次，避免逐项重复绑定与监听泄漏。
+videoList.addEventListener("click", (event) => {
+    const actionEl = event.target.closest("[data-action]");
+    if (!actionEl) return;
+    const item = actionEl.closest(".video-item");
+    if (!item) return;
+    const taskId = item.dataset.taskId;
+    switch (actionEl.dataset.action) {
+        case "select":
+            selectTask(taskId);
+            break;
+        case "delete":
+            deleteTask(taskId, actionEl);
+            break;
+        case "retry":
+            retryTask(taskId, actionEl);
+            break;
+        default:
+            break;
+    }
+});
+
 function setUploadMode(mode) {
-    uploadMode = mode === "chunk" ? "chunk" : "single";
+    uploadMode = ["single", "chunk", "direct"].includes(mode) ? mode : "single";
     localStorage.setItem("vp_upload_mode", uploadMode);
     strategyOptions.forEach((option) => {
         const active = option.dataset.uploadMode === uploadMode;
@@ -157,8 +183,7 @@ function resetDropzone() {
     currentFile = null;
     dropzoneEmpty.style.display = "grid";
     dropzoneFile.style.display = "none";
-    dropzone.style.borderStyle = "dashed";
-    dropzone.style.borderColor = "";
+    dropzone.classList.remove("has-file", "is-dragover");
     setProgress(0, "准备上传");
     uploadButton.disabled = true;
     resetActiveMetrics();
@@ -215,6 +240,11 @@ function renderMetricCompare() {
     metricEls.chunkCompare.textContent = lastMetrics.chunk
         ? `${formatDuration(lastMetrics.chunk.totalMs)} / ${lastMetrics.chunk.totalChunks} 片 / 并发 ${CHUNK_CONCURRENCY}`
         : "尚未测试";
+    if (metricEls.directCompare) {
+        metricEls.directCompare.textContent = lastMetrics.direct
+            ? `${formatDuration(lastMetrics.direct.totalMs)} / ${formatSpeed(lastMetrics.direct.fileSize, lastMetrics.direct.totalMs)}`
+            : "尚未测试";
+    }
 }
 
 function createMetrics(mode) {
@@ -280,38 +310,89 @@ function clearAuthState(message = "登录已过期，请重新登录") {
     writeMessage(message, true);
 }
 
-function handleAuthFailure(response) {
-    if (response.status === 401 || response.status === 403) {
-        clearAuthState();
-        return true;
+class ApiError extends Error {
+    constructor(message, status, handled = false) {
+        super(message);
+        this.name = "ApiError";
+        this.status = status;
+        this.handled = handled; // true 表示错误已被上报（如登录过期已提示），调用方不必重复 writeMessage
     }
-    return false;
 }
 
-async function authenticate(path) {
+// 统一封装后端 JSON API 调用，收敛「加 token 头 + 解析 ApiResponse 包裹 + 校验 success」这套重复样板。
+// - auth:false 用于登录/注册等尚未持有 token 的请求；
+// - json 传对象时自动 JSON.stringify 并设置 Content-Type；body 传 FormData 等原始体则原样发送；
+// - 401/403 自动清理登录态并抛出 handled 错误；
+// - soft:true 时任何失败都静默返回 null（不抛错、不清理登录态），用于播放/状态查询等非关键读取。
+// 成功返回 result.data；失败抛 ApiError(message, status)。
+async function apiRequest(path, { method = "GET", json, body, headers = {}, auth = true, soft = false } = {}) {
+    const finalHeaders = { ...headers };
+    if (auth && token) {
+        finalHeaders.Authorization = `Bearer ${token}`;
+    }
+    let finalBody = body;
+    if (json !== undefined) {
+        finalHeaders["Content-Type"] = "application/json";
+        finalBody = JSON.stringify(json);
+    }
+
+    let response;
     try {
-        const isRegister = path.includes("register");
+        response = await fetch(path, { method, headers: finalHeaders, body: finalBody });
+    } catch (error) {
+        if (soft) return null;
+        throw new ApiError("网络请求失败，请检查连接后重试", 0);
+    }
+
+    if (!soft && (response.status === 401 || response.status === 403)) {
+        clearAuthState();
+        throw new ApiError("登录已过期，请重新登录", response.status, true);
+    }
+
+    let result = null;
+    try {
+        result = await response.json();
+    } catch (error) {
+        result = null;
+    }
+
+    if (!response.ok || !result || result.success === false) {
+        if (soft) return null;
+        throw new ApiError((result && result.message) || `请求失败（HTTP ${response.status}）`, response.status);
+    }
+    return result ? result.data : null;
+}
+
+// 统一错误上报：已被处理过的错误（如登录过期）不再重复写日志。
+function reportError(error) {
+    if (!error || !error.handled) {
+        writeMessage(error?.message || "未知错误", true);
+    }
+}
+
+async function authenticate(path, triggerButton) {
+    const isRegister = path.includes("register");
+    if (triggerButton) triggerButton.disabled = true;
+    try {
         writeMessage(isRegister ? "正在注册账号..." : "正在登录...");
-        const response = await fetch(path, {
+        const data = await apiRequest(path, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            auth: false,
+            json: {
                 username: usernameInput.value.trim(),
                 password: passwordInput.value
-            })
+            }
         });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "认证失败");
-        }
 
-        token = result.data.token;
+        token = data.token;
         localStorage.setItem("vp_token", token);
-        showLoggedIn(`已登录：${result.data.username}`);
-        writeMessage(`${isRegister ? "注册" : "登录"}成功，用户：${result.data.username}`);
+        showLoggedIn(`已登录：${data.username}`);
+        writeMessage(`${isRegister ? "注册" : "登录"}成功，用户：${data.username}`);
         loadMyVideos();
     } catch (error) {
-        writeMessage(error.message, true);
+        reportError(error);
+    } finally {
+        if (triggerButton) triggerButton.disabled = false;
     }
 }
 
@@ -343,26 +424,20 @@ async function uploadSingleFile() {
         const formData = new FormData();
         formData.append("file", currentFile, currentFile.name);
 
-        const response = await fetch("/api/media/upload/file", {
+        const data = await apiRequest("/api/media/upload/file", {
             method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
             body: formData
         });
-        if (handleAuthFailure(response)) return;
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "上传失败");
-        }
 
         setProgress(100, "普通上传完成");
         finishMetrics(metrics);
         writeMessage(`普通上传完成，总耗时 ${formatDuration(metrics.totalMs)}，吞吐 ${formatSpeed(metrics.fileSize, metrics.totalMs)}`);
-        handleUploadSuccess(result.data.taskId, result.data.status);
+        handleUploadSuccess(data.taskId, data.status);
     } catch (error) {
         setProgress(0, "上传失败");
         setStatus("上传失败", "error");
-        writeMessage(error.message, true);
-        uploadButton.disabled = false;
+        reportError(error);
+        uploadButton.disabled = !token || !currentFile;
     }
 }
 
@@ -400,36 +475,31 @@ async function uploadFileChunked() {
 
         if (!uploadId) {
             const initStartedAt = performance.now();
-            const initResponse = await fetch("/api/media/upload/init", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    fileName: currentFile.name,
-                    fileSize: currentFile.size,
-                    totalChunks: metrics.totalChunks,
-                    chunkSize: CHUNK_SIZE,
-                    fileMd5: fileMd5
-                })
-            });
-            metrics.initMs = performance.now() - initStartedAt;
-            renderLiveMetrics(metrics);
-
-            if (initResponse.status === 503) {
-                throw new Error("Redis 分片上传未启用。请用 Redis 模式启动后再测试分片上传。");
+            let initData;
+            try {
+                initData = await apiRequest("/api/media/upload/init", {
+                    method: "POST",
+                    json: {
+                        fileName: currentFile.name,
+                        fileSize: currentFile.size,
+                        totalChunks: metrics.totalChunks,
+                        chunkSize: CHUNK_SIZE,
+                        fileMd5: fileMd5
+                    }
+                });
+            } catch (error) {
+                if (error.status === 503) {
+                    throw new Error("Redis 分片上传未启用。请用 Redis 模式启动后再测试分片上传。");
+                }
+                throw error;
+            } finally {
+                metrics.initMs = performance.now() - initStartedAt;
+                renderLiveMetrics(metrics);
             }
 
-            if (handleAuthFailure(initResponse)) return;
-            const initResult = await initResponse.json();
-            if (!initResponse.ok || !initResult.success) {
-                throw new Error(initResult.message || "初始化上传失败");
-            }
-
-            if (initResult.data.exists) {
+            if (initData.exists) {
                 clearResume(currentFile);
-                taskIdInput.value = initResult.data.uploadId;
+                taskIdInput.value = initData.uploadId;
                 taskField.style.display = "grid";
                 setProgress(100, "文件已存在");
                 setStatus("已完成", "success");
@@ -440,8 +510,8 @@ async function uploadFileChunked() {
                 return;
             }
 
-            uploadId = initResult.data.uploadId;
-            uploadedSet = new Set(initResult.data.uploadedChunks || []);
+            uploadId = initData.uploadId;
+            uploadedSet = new Set(initData.uploadedChunks || []);
             saveResume(currentFile, uploadId);
         }
 
@@ -450,33 +520,23 @@ async function uploadFileChunked() {
         setProgress(95, "合并文件");
         setStatus("合并中", "running");
         const mergeStartedAt = performance.now();
-        const mergeResponse = await fetch("/api/media/upload/merge", {
+        const mergeData = await apiRequest("/api/media/upload/merge", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ uploadId: uploadId })
+            json: { uploadId: uploadId }
         });
         metrics.mergeMs = performance.now() - mergeStartedAt;
         renderLiveMetrics(metrics);
-
-        if (handleAuthFailure(mergeResponse)) return;
-        const mergeResult = await mergeResponse.json();
-        if (!mergeResponse.ok || !mergeResult.success) {
-            throw new Error(mergeResult.message || "合并失败");
-        }
 
         clearResume(currentFile);
         setProgress(100, "Redis 并发分片上传完成");
         finishMetrics(metrics);
         writeMessage(`Redis 并发分片上传完成，总耗时 ${formatDuration(metrics.totalMs)}，平均分片 ${formatDuration(average(metrics.chunkDurations))}`);
-        handleUploadSuccess(mergeResult.data.taskId, mergeResult.data.status);
+        handleUploadSuccess(mergeData.taskId, mergeData.status);
     } catch (error) {
         setProgress(0, "上传失败");
         setStatus("上传失败", "error");
-        writeMessage(error.message, true);
-        uploadButton.disabled = false;
+        reportError(error);
+        uploadButton.disabled = !token || !currentFile;
     }
 }
 
@@ -501,6 +561,89 @@ async function uploadChunksConcurrently(uploadId, metrics, uploadedSet = new Set
 
     const workerCount = Math.min(CHUNK_CONCURRENCY, metrics.totalChunks);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
+// 对象存储直传：浏览器先向后端换取预签名 PUT 地址，把文件正文直接传到 S3/MinIO（不经应用服务器），
+// 再回调后端确认对象已就位并建任务。大文件在此路径下不占用应用服务器带宽与磁盘。
+async function uploadFileDirect() {
+    if (!assertCanUpload()) return;
+
+    const metrics = createMetrics("direct");
+    writeMessage(`开始对象存储直传：${currentFile.name}，大小 ${formatSize(currentFile.size)}`);
+    setStatus("初始化", "running");
+    setPipelineStatus("UPLOADING");
+    setProgress(5, "申请直传地址");
+    renderLiveMetrics(metrics);
+    uploadButton.disabled = true;
+    refreshButton.disabled = true;
+
+    try {
+        // 1. 后端签发预签名 PUT 地址 + 绑定 owner 的一次性 uploadToken
+        const initStartedAt = performance.now();
+        let initData;
+        try {
+            initData = await apiRequest("/api/media/upload/direct/init", {
+                method: "POST",
+                json: { fileName: currentFile.name, fileSize: currentFile.size }
+            });
+        } catch (error) {
+            if (error.status === 503) {
+                throw new Error("对象存储直传需以 S3/MinIO 模式启动（app.storage.type=s3），请改用普通或分片上传");
+            }
+            throw error;
+        } finally {
+            metrics.initMs = performance.now() - initStartedAt;
+            renderLiveMetrics(metrics);
+        }
+
+        // 2. 浏览器把文件直接 PUT 到对象存储（预签名只签 host，无需鉴权头/匹配 Content-Type）
+        setStatus("上传中", "running");
+        await putFileWithProgress(initData.uploadUrl, currentFile, (ratio) => {
+            const percent = Math.round(ratio * 85) + 10;
+            setProgress(percent, `直传对象存储 ${Math.round(ratio * 100)}%`);
+        });
+
+        // 3. 通知后端校验对象已存在并创建工作流任务
+        setProgress(96, "确认直传结果");
+        const completeData = await apiRequest("/api/media/upload/direct/complete", {
+            method: "POST",
+            json: { uploadToken: initData.uploadToken }
+        });
+
+        setProgress(100, "对象存储直传完成");
+        finishMetrics(metrics);
+        writeMessage(`对象存储直传完成，总耗时 ${formatDuration(metrics.totalMs)}，吞吐 ${formatSpeed(metrics.fileSize, metrics.totalMs)}`);
+        handleUploadSuccess(completeData.taskId, completeData.status);
+    } catch (error) {
+        setProgress(0, "上传失败");
+        setStatus("上传失败", "error");
+        reportError(error);
+        uploadButton.disabled = !token || !currentFile;
+    }
+}
+
+// 直传 PUT 用 XHR 而非 fetch：fetch 无法上报上传进度，大文件需要 upload.onprogress 驱动进度条。
+// 对象存储返回裸 HTTP（无 ApiResponse 包裹），成功判据为 2xx。
+function putFileWithProgress(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", url);
+        xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable && onProgress) {
+                onProgress(event.loaded / event.total);
+            }
+        });
+        xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve();
+            } else {
+                reject(new Error(`对象存储拒绝了直传：HTTP ${xhr.status}`));
+            }
+        });
+        xhr.addEventListener("error", () => reject(new Error("直传到对象存储失败，可能是网络或跨域(CORS)未放行")));
+        xhr.addEventListener("abort", () => reject(new Error("直传已取消")));
+        xhr.send(file);
+    });
 }
 
 // ===== 断点续传本地状态：按 文件名+大小+修改时间 记住未完成的 uploadId =====
@@ -536,16 +679,8 @@ function clearResume(file) {
 }
 
 async function fetchUploadStatus(uploadId) {
-    try {
-        const response = await fetch(`/api/media/upload/status?uploadId=${encodeURIComponent(uploadId)}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) return null;
-        const result = await response.json();
-        return result.success ? result.data : null;
-    } catch (error) {
-        return null;
-    }
+    // soft：查询失败静默返回 null，退化为「从头上传」，不打断用户也不清登录态。
+    return apiRequest(`/api/media/upload/status?uploadId=${encodeURIComponent(uploadId)}`, { soft: true });
 }
 
 // 分块增量计算文件 MD5（内容指纹）。用于秒传 / 内容级去重 / 合并完整性校验。
@@ -575,18 +710,14 @@ async function uploadOneChunk(uploadId, chunkIndex, metrics) {
     formData.append("file", chunk, currentFile.name);
 
     const chunkStartedAt = performance.now();
-    const chunkResponse = await fetch(`/api/media/upload/chunk?uploadId=${uploadId}&chunkIndex=${chunkIndex}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-    });
-    metrics.chunkDurations.push(performance.now() - chunkStartedAt);
-    renderLiveMetrics(metrics);
-
-    if (handleAuthFailure(chunkResponse)) return;
-    const chunkResult = await chunkResponse.json();
-    if (!chunkResponse.ok || !chunkResult.success) {
-        throw new Error(chunkResult.message || `分片 ${chunkIndex + 1} 上传失败`);
+    try {
+        await apiRequest(`/api/media/upload/chunk?uploadId=${uploadId}&chunkIndex=${chunkIndex}`, {
+            method: "POST",
+            body: formData
+        });
+    } finally {
+        metrics.chunkDurations.push(performance.now() - chunkStartedAt);
+        renderLiveMetrics(metrics);
     }
 }
 
@@ -629,24 +760,14 @@ function hideVideoPlayer() {
 // 拉取短时效播放令牌，拼出带签名的流地址喂给 <video>，浏览器按 HTTP Range 边下边播。
 async function loadVideoPlayer(taskId) {
     if (!videoPreview || !videoPlayer || !token || !taskId) return;
-    try {
-        const response = await fetch(`/api/media/video/${taskId}/playback-token`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) {
-            hideVideoPlayer();
-            return;
-        }
-        const result = await response.json();
-        if (!result.success || !result.data?.streamUrl) {
-            hideVideoPlayer();
-            return;
-        }
-        videoPlayer.src = result.data.streamUrl;
-        videoPreview.style.display = "block";
-    } catch (error) {
+    // soft：拿不到播放令牌就静默隐藏播放器，不影响转写/摘要展示。
+    const data = await apiRequest(`/api/media/video/${taskId}/playback-token`, { soft: true });
+    if (!data?.streamUrl) {
         hideVideoPlayer();
+        return;
     }
+    videoPlayer.src = data.streamUrl;
+    videoPreview.style.display = "block";
 }
 
 async function fetchTask() {
@@ -654,16 +775,7 @@ async function fetchTask() {
     if (!token || !taskId) return;
 
     try {
-        const response = await fetch(`/api/workflow/tasks/${taskId}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (handleAuthFailure(response)) return;
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "查询任务失败");
-        }
-
-        const task = result.data;
+        const task = await apiRequest(`/api/workflow/tasks/${taskId}`);
         transcriptArea.value = task.transcript || "";
         summaryArea.value = task.summary || "";
 
@@ -687,24 +799,21 @@ async function fetchTask() {
 
         setStatus(task.status, "running");
     } catch (error) {
-        setStatus("查询失败", "error");
-        writeMessage(error.message, true);
+        reportError(error);
         stopPolling();
+        // 会话过期属已处理错误，clearAuthState 已在日志说明原因，不再把状态胶囊误标成“查询失败”。
+        if (!error?.handled) {
+            setStatus("查询失败", "error");
+        }
     }
 }
 
-async function deleteTask(taskId) {
+async function deleteTask(taskId, triggerButton) {
     if (!token || !taskId) return;
+    if (!window.confirm(`确认删除任务 ${taskId}？删除后不可恢复。`)) return;
+    if (triggerButton) triggerButton.disabled = true;
     try {
-        const response = await fetch(`/api/workflow/tasks/${taskId}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (handleAuthFailure(response)) return;
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "删除任务失败");
-        }
+        await apiRequest(`/api/workflow/tasks/${taskId}`, { method: "DELETE" });
         if (taskIdInput.value === taskId) {
             taskIdInput.value = "";
             taskField.style.display = "none";
@@ -718,7 +827,33 @@ async function deleteTask(taskId) {
         writeMessage(`已删除任务：${taskId}`);
         loadMyVideos();
     } catch (error) {
-        writeMessage(error.message, true);
+        reportError(error);
+        if (triggerButton) triggerButton.disabled = false;
+    }
+}
+
+async function retryTask(taskId, triggerButton) {
+    if (!token || !taskId) return;
+    if (triggerButton) triggerButton.disabled = true;
+    try {
+        writeMessage(`正在重试失败任务：${taskId}`);
+        const data = await apiRequest(`/api/workflow/tasks/${taskId}/retry`, { method: "POST" });
+
+        taskIdInput.value = taskId;
+        taskField.style.display = "grid";
+        transcriptArea.value = "";
+        summaryArea.value = "";
+        hideVideoPlayer();
+        setProgress(0, "重新入队");
+        resetActiveMetrics();
+        refreshButton.disabled = false;
+        setStatus(data?.status || "QUEUED", "running");
+        writeMessage("任务已重新进入队列");
+        loadMyVideos();
+        startPolling();
+    } catch (error) {
+        reportError(error);
+        if (triggerButton) triggerButton.disabled = false;
     }
 }
 
@@ -788,17 +923,10 @@ function writeMessage(message, isError = false) {
 async function loadMyVideos() {
     if (!token) return;
     try {
-        const response = await fetch("/api/workflow/tasks", {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (handleAuthFailure(response)) return;
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "获取视频列表失败");
-        }
-        renderVideoList(result.data || []);
+        const data = await apiRequest("/api/workflow/tasks");
+        renderVideoList(data || []);
     } catch (error) {
-        writeMessage(error.message, true);
+        reportError(error);
     }
 }
 
@@ -818,6 +946,9 @@ function renderVideoList(tasks) {
 
     videoList.innerHTML = tasks.map((task) => {
         const status = statusMap[task.status] || { text: task.status, cls: "st-queued" };
+        const retryButton = task.status === "FAILED"
+            ? `<button class="retry-task" type="button" data-action="retry" aria-label="重试任务 ${escapeHtml(task.fileName)}">重试</button>`
+            : "";
         return `
             <div class="video-item" data-task-id="${escapeHtml(task.taskId)}">
                 <button class="video-main" type="button" data-action="select">
@@ -827,26 +958,24 @@ function renderVideoList(tasks) {
                     </span>
                     <span class="video-item-status ${status.cls}">${status.text}</span>
                 </button>
-                <button class="delete-task" type="button" data-action="delete" aria-label="删除任务 ${escapeHtml(task.fileName)}">删除</button>
+                <span class="video-actions">
+                    ${retryButton}
+                    <button class="delete-task" type="button" data-action="delete" aria-label="删除任务 ${escapeHtml(task.fileName)}">删除</button>
+                </span>
             </div>
         `;
     }).join("");
+}
 
-    videoList.querySelectorAll(".video-item").forEach((item) => {
-        const taskId = item.dataset.taskId;
-        item.querySelector('[data-action="select"]').addEventListener("click", () => {
-            taskIdInput.value = taskId;
-            taskField.style.display = "grid";
-            transcriptArea.value = "";
-            summaryArea.value = "";
-            refreshButton.disabled = false;
-            writeMessage(`已选择历史任务：${taskId}`);
-            startPolling();
-        });
-        item.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-            await deleteTask(taskId);
-        });
-    });
+// 历史任务的点击统一走 videoList 上的事件委托（见初始化处），此函数只负责渲染。
+function selectTask(taskId) {
+    taskIdInput.value = taskId;
+    taskField.style.display = "grid";
+    transcriptArea.value = "";
+    summaryArea.value = "";
+    refreshButton.disabled = false;
+    writeMessage(`已选择历史任务：${taskId}`);
+    startPolling();
 }
 
 function formatDate(value) {

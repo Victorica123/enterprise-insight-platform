@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,6 +30,12 @@ class WorkflowControllerTests {
 
 	@MockBean
 	private VideoTaskService videoTaskService;
+
+	@MockBean
+	private WorkflowPublisher workflowPublisher;
+
+	@MockBean
+	private WorkflowMetrics workflowMetrics;
 
 	@MockBean
 	private JwtService jwtService;
@@ -94,5 +101,31 @@ class WorkflowControllerTests {
 				.andExpect(status().isForbidden());
 
 		verifyNoInteractions(videoTaskService);
+	}
+
+	@Test
+	void retriesFailedTaskByAuthenticatedOwner() throws Exception {
+		VideoTask task = new VideoTask("task-1", "video-1", "alice", "demo.mp4", "storage/demo.mp4");
+		task.setStatus(VideoTask.TaskStatus.QUEUED);
+		when(videoTaskService.retryFailedTask("task-1", "alice")).thenReturn(task);
+
+		mockMvc.perform(post("/api/workflow/tasks/task-1/retry").with(user("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.taskId").value("task-1"))
+				.andExpect(jsonPath("$.data.status").value("QUEUED"));
+
+		verify(videoTaskService).retryFailedTask("task-1", "alice");
+		verify(workflowMetrics).incrementRequeue("manual");
+		verify(workflowPublisher).publish("task-1");
+	}
+
+	@Test
+	void rejectsAnonymousRetryRequest() throws Exception {
+		mockMvc.perform(post("/api/workflow/tasks/task-1/retry"))
+				.andExpect(status().isForbidden());
+
+		verifyNoInteractions(videoTaskService);
+		verifyNoInteractions(workflowPublisher);
 	}
 }

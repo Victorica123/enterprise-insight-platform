@@ -11,6 +11,8 @@ import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,6 +28,7 @@ class VideoPlaybackControllerTests {
 	Path storageRoot;
 
 	private final VideoTaskService videoTaskService = mock(VideoTaskService.class);
+	private final MediaStorageService mediaStorageService = mock(MediaStorageService.class);
 	private JwtService jwtService;
 	private VideoPlaybackController controller;
 
@@ -34,8 +37,13 @@ class VideoPlaybackControllerTests {
 		AppProperties props = new AppProperties();
 		props.getJwt().setSecret("01234567890123456789012345678901");
 		props.getJwt().setExpirationSeconds(3600);
+		props.getStorage().setBasePath(storageRoot.toString());
 		jwtService = new JwtService(props);
-		controller = new VideoPlaybackController(videoTaskService, jwtService);
+		when(mediaStorageService.createPlaybackRedirectUrl(org.mockito.Mockito.anyString(), org.mockito.Mockito.any()))
+				.thenReturn(Optional.empty());
+		when(mediaStorageService.requireLocalPath(org.mockito.Mockito.anyString()))
+				.thenAnswer(invocation -> Path.of(invocation.getArgument(0, String.class)));
+		controller = new VideoPlaybackController(videoTaskService, jwtService, mediaStorageService);
 	}
 
 	@Test
@@ -102,5 +110,23 @@ class VideoPlaybackControllerTests {
 
 		assertThatThrownBy(() -> controller.stream("task-1", token, null, response))
 				.isInstanceOf(ResponseStatusException.class);
+	}
+
+	@Test
+	void streamRedirectsToObjectStoragePresignedUrlWhenAvailable() throws Exception {
+		VideoTask task = new VideoTask("task-1", "video-1", "alice", "video.mp4",
+				"s3://video-platform/uploads/video.mp4");
+		when(videoTaskService.requireTask("task-1", "alice")).thenReturn(task);
+		when(mediaStorageService.createPlaybackRedirectUrl(org.mockito.Mockito.eq(task.getStoragePath()),
+				org.mockito.Mockito.any(Duration.class)))
+				.thenReturn(Optional.of("http://localhost:9000/video-platform/uploads/video.mp4?X-Amz-Signature=abc"));
+		String token = jwtService.generatePlaybackToken("task-1", "alice");
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		controller.stream("task-1", token, null, response);
+
+		assertThat(response.getStatus()).isEqualTo(307);
+		assertThat(response.getHeader(HttpHeaders.LOCATION))
+				.contains("X-Amz-Signature=abc");
 	}
 }

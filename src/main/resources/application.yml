@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 
 spring:
   application:
@@ -43,7 +43,7 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
 rocketmq:
-  nameServer: localhost:9876
+  nameServer: ${ROCKETMQ_NAMESERVER:localhost:9876}
   producer:
     group: video-platform-producer
     send-message-timeout: 5000
@@ -77,10 +77,26 @@ app:
     expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
+    type: ${APP_STORAGE_TYPE:local}
+    s3:
+      endpoint: ${APP_STORAGE_S3_ENDPOINT:http://localhost:19000}
+      public-endpoint: ${APP_STORAGE_S3_PUBLIC_ENDPOINT:}
+      region: ${APP_STORAGE_S3_REGION:us-east-1}
+      bucket: ${APP_STORAGE_S3_BUCKET:video-platform}
+      access-key: ${APP_STORAGE_S3_ACCESS_KEY:minioadmin}
+      secret-key: ${APP_STORAGE_S3_SECRET_KEY:minioadmin123}
+      path-style-access: ${APP_STORAGE_S3_PATH_STYLE_ACCESS:true}
   redis:
     enabled: ${APP_REDIS_ENABLED:true}
   mq:
     enabled: ${APP_MQ_ENABLED:false}
+  workflow:
+    # 定时补偿：超过该时间仍停留在 QUEUED/TRANSCRIBING/SUMMARIZING 的任务会被重新投递。
+    # 解决进程崩溃、MQ 异常、单飞赢家中断后任务永久卡住的问题；默认保守设为 1 小时，避免误伤长视频。
+    stale-task-timeout: ${APP_WORKFLOW_STALE_TASK_TIMEOUT:60m}
+    reaper-enabled: ${APP_WORKFLOW_REAPER_ENABLED:true}
+    reaper-interval-ms: ${APP_WORKFLOW_REAPER_INTERVAL_MS:60000}
+    reaper-initial-delay-ms: ${APP_WORKFLOW_REAPER_INITIAL_DELAY_MS:60000}
   transcript:
     enabled: ${APP_TRANSCRIPT_ENABLED:false}
     # 压测用：Mock 转写模拟处理耗时（毫秒）。默认 0 即刻返回；P2 压测时设为秒级还原慢消费者（见 docs/LOADTEST.md）

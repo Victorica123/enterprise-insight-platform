@@ -15,6 +15,7 @@ public class JwtService {
 
 	/** 播放令牌有效期：足够看完一次视频，又短到泄露后很快失效。 */
 	private static final long PLAYBACK_TOKEN_SECONDS = 3600;
+	private static final long DIRECT_UPLOAD_TOKEN_SECONDS = 900;
 
 	private final AppProperties appProperties;
 
@@ -50,8 +51,25 @@ public class JwtService {
 				.compact();
 	}
 
+	public String generateDirectUploadToken(String username, String fileName, String storagePath) {
+		Instant now = Instant.now();
+		return Jwts.builder()
+				.subject(username)
+				.claim("fileName", fileName)
+				.claim("storagePath", storagePath)
+				.claim("purpose", "direct-upload")
+				.issuedAt(Date.from(now))
+				.expiration(Date.from(now.plusSeconds(DIRECT_UPLOAD_TOKEN_SECONDS)))
+				.signWith(secretKey())
+				.compact();
+	}
+
 	public long getPlaybackTokenSeconds() {
 		return PLAYBACK_TOKEN_SECONDS;
+	}
+
+	public long getDirectUploadTokenSeconds() {
+		return DIRECT_UPLOAD_TOKEN_SECONDS;
 	}
 
 	public Claims parse(String token) {

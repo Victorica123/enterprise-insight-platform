@@ -1,5 +1,6 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.media.MediaStorageService;
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
 import io.micrometer.core.instrument.Timer;
@@ -22,16 +23,18 @@ public class WorkflowProcessor {
 	private final TranscriptService transcriptService;
 	private final SummaryService summaryService;
 	private final WorkflowMetrics metrics;
+	private final MediaStorageService mediaStorageService;
 
 	public WorkflowProcessor(VideoTaskService videoTaskService, MediaAssetService mediaAssetService,
 			DistributedLockService lockService, TranscriptService transcriptService,
-			SummaryService summaryService, WorkflowMetrics metrics) {
+			SummaryService summaryService, WorkflowMetrics metrics, MediaStorageService mediaStorageService) {
 		this.videoTaskService = videoTaskService;
 		this.mediaAssetService = mediaAssetService;
 		this.lockService = lockService;
 		this.transcriptService = transcriptService;
 		this.summaryService = summaryService;
 		this.metrics = metrics;
+		this.mediaStorageService = mediaStorageService;
 	}
 
 	/**
@@ -51,6 +54,14 @@ public class WorkflowProcessor {
 	 */
 	@Async
 	public void processAsync(String taskId) {
+		process(taskId);
+	}
+
+	/**
+	 * 同步执行工作流。RocketMQ consumer 使用这个入口，让 MQ 的消费线程天然形成背压；
+	 * 避免消息到达后再塞进本地 @Async 线程池，导致 MQ 削峰后又被本地队列打爆。
+	 */
+	public void process(String taskId) {
 		log.info("Processing video task {}", taskId);
 		VideoTask task = videoTaskService.requireTask(taskId);
 		if (task.getStatus() == VideoTask.TaskStatus.COMPLETED) {
@@ -113,7 +124,10 @@ public class WorkflowProcessor {
 
 			mediaAssetService.markProcessing(md5, task.getStoragePath());
 
-			String transcript = transcriptService.extract(task.getStoragePath(), task.getFileName());
+			String transcript;
+			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
+				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
+			}
 			String summary = summaryService.summarize(transcript);
 
 			mediaAssetService.markReady(md5, transcript, summary);
@@ -135,7 +149,10 @@ public class WorkflowProcessor {
 	private void processStandalone(String taskId, VideoTask task) {
 		Timer.Sample sample = metrics.startProcessing();
 		try {
-			String transcript = transcriptService.extract(task.getStoragePath(), task.getFileName());
+			String transcript;
+			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
+				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
+			}
 			videoTaskService.completeTranscript(taskId, transcript);
 
 			String summary = summaryService.summarize(transcript);

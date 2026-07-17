@@ -31,3 +31,22 @@
 Micrometer Timer 直方图默认封顶 30s → 两轮 e2e P99 都被钳在 30s。
 已在 application.yml 加 `management.metrics.distribution.maximum-expected-value.video.task.e2e=600s`，
 后续跑法可在 Grafana 直接看真实 e2e 分位，无需回退到 DB 计算。
+
+## 短压测复验（2026-07-03）
+
+目的：在修复 RocketMQ consumer 背压路径后，用更短参数复验 MQ 开/关差异仍成立。
+
+配置：真实 Docker Redis + MySQL + RocketMQ，mock 延迟 2s，8 VU，8s 爬坡 + 25s 稳态，THINK 0.2s，单文件 16KB。
+
+| 指标 | MQ 关 | MQ 开 |
+|---|---|---|
+| k6 checks | 1365 | 1399 |
+| 成功率 | 10.25% (140) | 100% (1399) |
+| HTTP 失败率 | 89.61% | 0% |
+| 上传接口 p95 | 22.04ms | 14.44ms |
+| 数据库任务状态 | COMPLETED 120 / QUEUED 1241 / TRANSCRIBING 4 | COMPLETED 624 / QUEUED 755 / TRANSCRIBING 20 |
+| 已完成任务 e2e | avg 21.0s / max 28s | avg 22.0s / max 45s |
+
+复验结论：MQ 开启后上传接口可以快速返回“平台已接收”，但后台任务仍按消费者能力慢慢处理。MQ 没有提升单个任务处理速度；它把高峰期的 HTTP 500 拒单转成了内部队列积压。
+
+原始输出：`k6-short-mqoff.txt` / `k6-short-mqon.txt`。

@@ -38,15 +38,17 @@ public class ChunkUploadService {
 	private final VideoTaskService videoTaskService;
 	private final WorkflowPublisher workflowPublisher;
 	private final DistributedLockService lockService;
+	private final MediaStorageService mediaStorageService;
 
 	public ChunkUploadService(StringRedisTemplate redisTemplate, AppProperties appProperties,
 			VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
-			DistributedLockService lockService) {
+			DistributedLockService lockService, MediaStorageService mediaStorageService) {
 		this.redisTemplate = redisTemplate;
 		this.appProperties = appProperties;
 		this.videoTaskService = videoTaskService;
 		this.workflowPublisher = workflowPublisher;
 		this.lockService = lockService;
+		this.mediaStorageService = mediaStorageService;
 	}
 
 	public MediaDtos.InitUploadResponse initUpload(String owner, MediaDtos.InitUploadRequest request) {
@@ -199,12 +201,10 @@ public class ChunkUploadService {
 		}
 
 		try {
-			Path baseDir = Path.of(appProperties.getStorage().getBasePath()).resolve("uploads");
-			Files.createDirectories(baseDir);
 			String safeName = MediaFileValidator.safeVideoFileName(fileName);
-			Path stored = baseDir.resolve(UUID.randomUUID() + "-" + safeName);
+			Path mergeTemp = Files.createTempFile("video-platform-merge-", "-" + safeName);
 
-			try (OutputStream outputStream = Files.newOutputStream(stored, StandardOpenOption.CREATE,
+			try (OutputStream outputStream = Files.newOutputStream(mergeTemp, StandardOpenOption.CREATE,
 					StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
 				for (int i = 0; i < totalChunks; i++) {
 					Path chunkPath = Path.of(appProperties.getStorage().getBasePath())
@@ -218,19 +218,22 @@ public class ChunkUploadService {
 				}
 			} catch (IOException | RuntimeException e) {
 				// 合并中途失败（分片缺失、磁盘异常等）时清理半成品文件，避免残留不完整视频占用磁盘。
-				deleteQuietly(stored);
+				deleteQuietly(mergeTemp);
 				throw e;
 			}
 
 			// 完整性校验：合并后按整文件 MD5 比对，防止分片丢失/损坏/乱序导致的静默损坏。
 			if (fileMd5 != null && !fileMd5.isBlank()) {
-				String actualMd5 = computeMd5(stored);
+				String actualMd5 = computeMd5(mergeTemp);
 				if (!fileMd5.equalsIgnoreCase(actualMd5)) {
-					deleteQuietly(stored);
+					deleteQuietly(mergeTemp);
 					throw new IllegalArgumentException(
 							"文件完整性校验失败：期望 MD5=" + fileMd5 + "，实际=" + actualMd5 + "，请重新上传");
 				}
 			}
+
+			String stored = mediaStorageService.saveFile(safeName, mergeTemp);
+			deleteQuietly(mergeTemp);
 
 			// 清理分片文件
 			Path chunkDir = Path.of(appProperties.getStorage().getBasePath())
@@ -244,12 +247,11 @@ public class ChunkUploadService {
 
 			// 记录 MD5 映射（如有）
 			if (fileMd5 != null && !fileMd5.isBlank()) {
-				redisTemplate.opsForValue().set(String.format(FILE_MD5_KEY, fileMd5), stored.toString(),
-						Duration.ofDays(7));
+				redisTemplate.opsForValue().set(String.format(FILE_MD5_KEY, fileMd5), stored, Duration.ofDays(7));
 				redisTemplate.delete(String.format(INPROGRESS_MD5_KEY, fileMd5));
 			}
 
-			VideoTask task = videoTaskService.createTask(owner, safeName, stored.toString(), fileMd5);
+			VideoTask task = videoTaskService.createTask(owner, safeName, stored, fileMd5);
 			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.MergeResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());

@@ -8,11 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.example.videoplatform.media.MediaStorageService;
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -26,10 +28,13 @@ class WorkflowProcessorTests {
 	private final DistributedLockService lockService = org.mockito.Mockito.mock(DistributedLockService.class);
 	private final TranscriptService transcriptService = org.mockito.Mockito.mock(TranscriptService.class);
 	private final SummaryService summaryService = org.mockito.Mockito.mock(SummaryService.class);
+	private final MediaStorageService mediaStorageService = org.mockito.Mockito.mock(MediaStorageService.class);
 	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 	private final WorkflowMetrics workflowMetrics = new WorkflowMetrics(meterRegistry);
 	private final WorkflowProcessor processor = new WorkflowProcessor(
-			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics);
+			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics,
+			mediaStorageService);
+	private static final String RESOLVED_STORAGE_PATH = Path.of("storage", "demo.mp4").toString();
 
 	private static VideoTask task(String contentMd5) {
 		return new VideoTask("task-1", "video-1", "user-1", "demo.mp4", "storage/demo.mp4", contentMd5);
@@ -39,14 +44,15 @@ class WorkflowProcessorTests {
 	void standaloneTaskWithoutContentMd5RunsThroughShortTransactionStages() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-		when(transcriptService.extract("storage/demo.mp4", "demo.mp4")).thenReturn("transcript");
+		stubResolvedMedia();
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");
 
 		InOrder inOrder = inOrder(videoTaskService, transcriptService, summaryService);
 		inOrder.verify(videoTaskService).claimForProcessing("task-1");
-		inOrder.verify(transcriptService).extract("storage/demo.mp4", "demo.mp4");
+		inOrder.verify(transcriptService).extract(RESOLVED_STORAGE_PATH, "demo.mp4");
 		inOrder.verify(videoTaskService).completeTranscript("task-1", "transcript");
 		inOrder.verify(summaryService).summarize("transcript");
 		inOrder.verify(videoTaskService).completeSummary("task-1", "summary");
@@ -74,7 +80,8 @@ class WorkflowProcessorTests {
 		when(mediaAssetService.find("md5-1")).thenReturn(Optional.empty());
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 		when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(true);
-		when(transcriptService.extract("storage/demo.mp4", "demo.mp4")).thenReturn("transcript");
+		stubResolvedMedia();
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");
@@ -133,7 +140,8 @@ class WorkflowProcessorTests {
 			when(mediaAssetService.find("md5-1")).thenReturn(Optional.empty());
 			when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 			when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(true);
-			when(transcriptService.extract("storage/demo.mp4", "demo.mp4"))
+			stubResolvedMedia();
+			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4"))
 					.thenThrow(new IllegalStateException(longMessage));
 
 			processor.processAsync("task-1");
@@ -151,7 +159,8 @@ class WorkflowProcessorTests {
 		runWithWorkflowProcessorLogLevel(Level.OFF, () -> {
 			when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 			when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-			when(transcriptService.extract("storage/demo.mp4", "demo.mp4")).thenReturn("transcript");
+			stubResolvedMedia();
+			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
 			when(summaryService.summarize("transcript")).thenThrow(new IllegalStateException("summary failed"));
 
 			processor.processAsync("task-1");
@@ -165,7 +174,8 @@ class WorkflowProcessorTests {
 	void recordsProcessingAndEndToEndMetricsOnStandaloneCompletion() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-		when(transcriptService.extract("storage/demo.mp4", "demo.mp4")).thenReturn("transcript");
+		stubResolvedMedia();
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");
@@ -198,6 +208,15 @@ class WorkflowProcessorTests {
 			runnable.run();
 		} finally {
 			logger.setLevel(originalLevel);
+		}
+	}
+
+	private void stubResolvedMedia() {
+		try {
+			when(mediaStorageService.resolveForProcessing("storage/demo.mp4"))
+					.thenReturn(new MediaStorageService.ResolvedMedia(Path.of("storage", "demo.mp4"), false));
+		} catch (java.io.IOException e) {
+			throw new IllegalStateException(e);
 		}
 	}
 }

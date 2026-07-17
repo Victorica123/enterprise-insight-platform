@@ -343,3 +343,12 @@
 - Done: added Docker Compose MySQL profile and changed Redis host port to `7379` because Windows reserved `6379-6478` in this environment.
 - Interview point: Redis chunk upload is a reliability/resume foundation first; speed comes from concurrent chunks, chunk-size tuning, retry, resume, and instant upload. RocketMQ is for post-upload task queueing and decoupling, not direct upload acceleration.
 - Verified: `node --check src/main/resources/static/app.js`, `WorkflowControllerTests`, `mvn test` with 33 tests, service health `UP`, and `smoke-test.ps1`.
+
+## 2026-07-02 P3/P4 进展
+
+- Done: completed P3 reliability verification docs in `docs/P3_RELIABILITY_VERIFICATION.md`, explaining how to verify stale-task requeue and how to discuss high-concurrency failure modes.
+- Done: added `StaleWorkflowTaskReaper` to requeue long-stale `QUEUED` / `TRANSCRIBING` / `SUMMARIZING` tasks through the existing `WorkflowPublisher`.
+- Done: started P4 object-storage productionization by extracting `MediaStorageService`, keeping local storage as default, and adding an S3/MinIO-compatible implementation with presigned playback redirect support.
+- Done: added Docker Compose `object-storage` profile for MinIO and `docs/P4_OBJECT_STORAGE.md` with a step-by-step validation flow.
+- Interview point: high concurrency is not just QPS; it brings queue backlog, duplicate messages, worker crashes, lock expiry, local disk bottlenecks, and observability needs. The project now has concrete answers: MQ buffers spikes, `claimForProcessing` handles idempotency, reaper handles stuck tasks, watchdog locks handle single-flight processing, and object storage moves big-file traffic off the app server.
+- Verified: `node --check src/main/resources/static/app.js`; focused upload/playback/workflow tests passed with 31 tests; full `mvn test` passed with 56 tests.

@@ -12,6 +12,19 @@ public final class MediaDtos {
 	public record SingleUploadResponse(String taskId, String videoId, String storagePath, String status) {
 	}
 
+	public record DirectUploadInitRequest(@NotBlank String fileName, @NotNull @Min(1) Long fileSize) {
+	}
+
+	public record DirectUploadInitResponse(String uploadUrl, String storagePath, String uploadToken,
+			Long expiresAt, String method) {
+	}
+
+	public record DirectUploadCompleteRequest(@NotBlank String uploadToken) {
+	}
+
+	public record DirectUploadCompleteResponse(String taskId, String videoId, String storagePath, String status) {
+	}
+
 	public record InitUploadRequest(
 			@NotBlank String fileName,
 			@NotNull @Min(1) Long fileSize,

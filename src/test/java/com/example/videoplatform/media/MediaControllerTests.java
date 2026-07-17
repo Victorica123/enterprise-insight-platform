@@ -32,6 +32,9 @@ class MediaControllerTests {
 	private ChunkUploadService chunkUploadService;
 
 	@MockBean
+	private DirectUploadService directUploadService;
+
+	@MockBean
 	private JwtService jwtService;
 
 	@Test
@@ -41,7 +44,7 @@ class MediaControllerTests {
 		mockMvc.perform(multipart("/api/media/upload/file").file(file))
 				.andExpect(status().isForbidden());
 
-		verifyNoInteractions(singleUploadService, chunkUploadService);
+		verifyNoInteractions(singleUploadService, chunkUploadService, directUploadService);
 	}
 
 	@Test
@@ -77,5 +80,45 @@ class MediaControllerTests {
 				.andExpect(jsonPath("$.data.uploadId").value("upload-1"));
 
 		verify(chunkUploadService).initUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any());
+	}
+
+	@Test
+	void initializesDirectUploadForAuthenticatedOwner() throws Exception {
+		when(directUploadService.initDirectUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any()))
+				.thenReturn(new MediaDtos.DirectUploadInitResponse("http://localhost:19000/video-platform/demo.mp4",
+						"s3://video-platform/uploads/direct/demo.mp4", "token-1", 123456789L, "PUT"));
+
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.post("/api/media/upload/direct/init")
+						.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+						.content("""
+								{"fileName":"demo.mp4","fileSize":1024}
+								""")
+						.with(user("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.method").value("PUT"))
+				.andExpect(jsonPath("$.data.uploadToken").value("token-1"));
+
+		verify(directUploadService).initDirectUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any());
+	}
+
+	@Test
+	void completesDirectUploadForAuthenticatedOwner() throws Exception {
+		when(directUploadService.completeDirectUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any()))
+				.thenReturn(new MediaDtos.DirectUploadCompleteResponse("task-1", "video-1",
+						"s3://video-platform/uploads/direct/demo.mp4", "QUEUED"));
+
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.post("/api/media/upload/direct/complete")
+						.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+						.content("""
+								{"uploadToken":"token-1"}
+								""")
+						.with(user("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.taskId").value("task-1"))
+				.andExpect(jsonPath("$.data.status").value("QUEUED"));
+
+		verify(directUploadService).completeDirectUpload(org.mockito.Mockito.eq("alice"), org.mockito.Mockito.any());
 	}
 }

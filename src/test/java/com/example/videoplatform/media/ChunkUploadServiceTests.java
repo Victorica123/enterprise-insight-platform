@@ -50,7 +50,8 @@ class ChunkUploadServiceTests {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 		when(redisTemplate.opsForHash()).thenReturn(hashOperations);
 		when(redisTemplate.opsForSet()).thenReturn(setOperations);
-		service = new ChunkUploadService(redisTemplate, appProperties, videoTaskService, workflowPublisher, lockService);
+		service = new ChunkUploadService(redisTemplate, appProperties, videoTaskService, workflowPublisher, lockService,
+				new LocalMediaStorageService(appProperties));
 	}
 
 	@Test
@@ -213,8 +214,13 @@ class ChunkUploadServiceTests {
 				.hasMessageContaining("完整性校验失败");
 
 		// 校验失败的半成品文件必须清理，且不创建任务
-		try (var stream = Files.list(storageRoot.resolve("uploads"))) {
-			assertThat(stream.findAny()).isEmpty();
+		Path uploads = storageRoot.resolve("uploads");
+		if (Files.exists(uploads)) {
+			try (var stream = Files.list(uploads)) {
+				assertThat(stream.findAny()).isEmpty();
+			}
+		} else {
+			assertThat(uploads).doesNotExist();
 		}
 		verify(videoTaskService, never()).createTask(any(), any(), any(), any());
 		verify(lockService).unlock("lock:merge:upload-1");

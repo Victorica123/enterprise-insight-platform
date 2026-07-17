@@ -27,6 +27,7 @@ public class WorkflowMetrics {
 	static final String PROCESSING_TIMER = "video.task.processing";
 	static final String E2E_TIMER = "video.task.e2e";
 	static final String SKIP_COUNTER = "video.task.skipped";
+	static final String REQUEUE_COUNTER = "video.task.requeued";
 
 	private final MeterRegistry registry;
 
@@ -63,5 +64,10 @@ public class WorkflowMetrics {
 	/** 记录一次被跳过的处理（去重/幂等/单飞抢锁失败），用于量化这些机制省下的重复处理量。 */
 	public void incrementSkip(String reason) {
 		registry.counter(SKIP_COUNTER, "reason", reason).increment();
+	}
+
+	/** 记录任务被重新放回队列的次数：source=reaper 表示自动补偿，source=manual 表示用户手动重试。 */
+	public void incrementRequeue(String source) {
+		registry.counter(REQUEUE_COUNTER, "source", source).increment();
 	}
 }
