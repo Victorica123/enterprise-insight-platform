@@ -46,7 +46,7 @@ flowchart LR
 | AI 处理 | FFmpeg 抽音频、Whisper 转写、LLM 摘要、Mock 回退 | 单元测试不依赖外部 API |
 | 用户体验 | 任务状态、错误原因、历史记录、播放、删除、重试 | 首页工作台 |
 | 可观测性 | Actuator、Micrometer、Prometheus、Grafana | MQ A/B 仪表盘 |
-| 部署 | Docker、MySQL、Redis、RocketMQ、MinIO、Caddy HTTPS | 生产 Compose、preflight/smoke 脚本 |
+| 可选部署 | Docker、MySQL、Redis、RocketMQ、MinIO、Caddy HTTPS | 生产 Compose、preflight/smoke 脚本 |
 
 ## 三种运行模式
 
@@ -145,7 +145,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps
 4. MySQL 任务持久化；
 5. Redis 上传会话清理。
 
-### 生产配置检查
+### 可选：生产配置检查
+
+本地完整验证不需要购买服务器。只有计划做公网试用时才执行：
 
 ```powershell
 Copy-Item .env.example .env
@@ -153,7 +155,7 @@ Copy-Item .env.example .env
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preflight-deploy.ps1
 ```
 
-部署细节见 [小范围部署说明](docs/P5_SMALL_SCALE_DEPLOYMENT.md)。
+部署细节见 [小范围部署说明](docs/P5_SMALL_SCALE_DEPLOYMENT.md)。这部分是保留能力，不是当前主路线。
 
 ## 自动化验证
 

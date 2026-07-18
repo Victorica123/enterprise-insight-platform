@@ -1,103 +1,78 @@
-﻿# AI Handoff
+# AI Handoff
 
-This is the shared handoff entrypoint for Codex, Claude, and future AI agents working on this repository.
-Read this after AGENTS.md or CLAUDE.md, then open only the referenced docs needed for the current task.
+Codex、Claude 和其他模型的跨会话交接入口。启动时先读 `../AGENTS.md` 或 `../CLAUDE.md`，再读 `AI_STARTUP_HARNESS.md`；只有继续开发或确认最新证据时才读本文件。
 
-Token-saving startup rule: AGENTS.md and CLAUDE.md are now short harness pointers. First read `docs/AI_STARTUP_HARNESS.md`; read this file only when recent cross-model state is needed; open topic docs lazily.
+## 当前方向
 
-## Current Product Goal
+项目定位为：
 
-Help real users upload videos, wait for processing, receive transcript/summary results, play back videos when needed, and manage their history. Performance, MQ, Redis, observability, and deployment work should serve that user workflow.
+> 可在本地完整复现的视频内容平台和后端工程实验室。
 
-## Canonical Context
+主目标是让用户完成登录、上传、异步处理、查看转写/摘要、播放、重试和删除。Redis、RocketMQ、MySQL、MinIO、高并发实验与可观测性用于证明真实工程能力，不要求购买服务器，也不虚构线上流量、用户数、SLA 或营收。
 
-- docs/PROJECT_KNOWLEDGE.md - navigation map and current product priorities.
-- docs/AI_STARTUP_HARNESS.md - compact startup cache/harness for future agents.
-- docs/P5_SMALL_SCALE_DEPLOYMENT.md - small-scale single-server deployment, smoke verification, and debug playbook.
-- docs/P5_BEGINNER_LAUNCH_GUIDE.md - step-by-step Chinese guide for the first public trial.
-- CLAUDE.md - short Claude startup harness and load-order rules.
-- AGENTS.md - Codex working rules. Keep it aligned with CLAUDE.md when architecture changes.
-- docs/TROUBLESHOOTING.md - real engineering problem cards. Add new issues with Symptom, Cause, Fix, Verify yourself, and Interview point.
-- docs/LOADTEST.md - MQ on/off A/B load-test method and measured results.
-- docs/ASYNC_LAB.md - local page-driven async/MQ A/B without public hosting.
-- docs/VERIFICATION_MATRIX.md - feature-to-evidence map and claim boundaries.
-- docs/DEMO_SCRIPT.md - current 5-10 minute presentation flow.
-- INTERVIEW_GUIDE.md - interview-facing feature and architecture summary.
+公网部署能力已经实现并保留，但不是当前路线的前置条件。
 
-## Shared Rules
+## 当前架构
 
-- Treat existing uncommitted changes as user-owned unless you made them.
-- Preserve owner isolation on upload, playback, crawl, and workflow records.
-- Keep tests independent from Redis, RocketMQ, Docker, FFmpeg, Whisper, and LLM APIs.
-- Prefer small, verifiable progress over broad rewrites.
-- When a task changes architecture, update both the code and this handoff entrypoint.
-- For user-facing failure modes, prefer precise 4xx errors for client-correctable problems and generic 5xx for internal faults.
+- Java 17、Spring Boot 3.3.5、Spring Security、JWT、JPA。
+- 普通 multipart、Redis 分片续传、MinIO/S3 预签名直传三条上传路径。
+- H2 轻量模式，以及 Redis + MySQL + RocketMQ + MinIO 完整本地模式。
+- 本地 `@Async` 或 RocketMQ 分发，`WorkflowProcessor` 执行 FFmpeg、Whisper 兼容转写和 OpenAI 兼容摘要。
+- `VideoTaskService` 用短事务推进状态；MQ 重投通过幂等占位避免重复处理。
+- 前端可观察任务状态、上传方式、异步模式、结果、播放、重试、删除和 Markdown 导出。
+- 每用户活动任务配额使用用户行悲观锁保证并发下限额准确；满额返回 429。
+- 失败任务支持手动重试；卡住任务由 reaper 补偿并记录指标。
 
-## Quick State
+## 最新可信证据
 
-- Generated at: 2026-07-18 +08:00
-- Last agent: Codex
-- Branch: main
-- Last commit before current work: `70f9b11 feat: complete interview presentation package`
-- Repository state: local async-lab and task-admission work is being finalized. Local `.claude/settings.json` changes remain user-owned and must stay out of commits.
+- 当前提交基线：`a9f1ecd feat: add local async verification lab`，已推送到 `origin/main`。
+- 自动化测试基线：79 个测试通过。
+- H2 并发集成测试：同一用户并发创建 10 个任务、上限 3，只创建 3 个。
+- 完整栈脚本已真实跑通 Redis 分片上传、RocketMQ 消费、MySQL 持久化和 Redis 会话清理。
+- MinIO 直传已验证 `init -> browser PUT -> complete`、完成回调幂等和预签名播放。
+- Range 播放、内容 MD5 校验、秒传、断点续传、令牌与 owner 隔离均有测试或运行证据。
+- 等 worker A/B：80 请求、16 KB、Mock 500 ms、4 worker。
+  - 本地 `@Async`：HTTP 接收 54/80，拒绝 26/80；reaper 最终完成 80/80，18.55 秒。
+  - RocketMQ：HTTP 接收 80/80，拒绝 0；完成 80/80，11.32 秒。
+  - 正确结论：MQ 改变积压和拒绝方式，不降低单任务计算成本；worker 数增加才会提高处理吞吐。
 
-## Latest Session Summary
+详细证据见 `VERIFICATION_MATRIX.md`、`LOADTEST.md`、`ASYNC_LAB.md` 和 `loadtest/results/RESULTS.md`。
 
-2026-07-18 local async-lab update (Codex): added a page experiment that submits real small uploads and tracks HTTP accepted/rejected, backend tasks, active and completed states across app restarts. Added `scripts/start-async-lab.ps1 -Mode local|mq`, per-user active-task quota with locked owner row and HTTP 429, explicit MQ consumer concurrency, and a precise 503 overload handler without repeated stack traces. Real equal-worker run (80 tasks, 16 KB, 500 ms Mock, 4 workers): local accepted 54/rejected 26 and recovered all 80 in 18.55s; MQ accepted 80/rejected 0 and completed all in 11.32s.
+## 不可破坏的约束
 
-2026-07-18 presentation update (Codex): rebuilt the GitHub README around the business flow, architecture, evidence and honest limitations; added `docs/VERIFICATION_MATRIX.md`; added frontend copy and Markdown result export; rewrote `docs/DEMO_SCRIPT.md` into a 5-10 minute current demo; and replaced the stale interview guide with current Redis/MQ/MinIO/reliability/deployment knowledge and measured MQ conclusions.
+- 所有上传、播放令牌、任务、重试和删除操作必须按 owner 隔离。
+- 单元/集成测试不得依赖 Docker、Redis、RocketMQ、FFmpeg、Whisper 或外部 LLM。
+- 不删除 Redis、MQ、对象存储、Whisper、LLM 路径；用配置开关保持轻量模式可运行。
+- FFmpeg、网络和 AI I/O 不得放进长数据库事务；异常路径不得遗留临时文件。
+- 用户可修正的问题返回明确 4xx；资源饱和返回明确 429/503；内部错误才返回通用 5xx。
+- 工作区已有未提交变更默认属于用户；当前 `.claude/settings*.json` 不得提交或回退。
+- 文档不得把历史压测数据描述成当前生产能力。
 
-Expanded P3 verification and continued P4. P3 now has docs/P3_RELIABILITY_VERIFICATION.md with user-verifiable stale-task requeue steps and high-concurrency failure-mode explanations. P4 added MediaStorageService abstraction, LocalMediaStorageService as default, S3MediaStorageService for MinIO/S3-compatible storage without extra Maven dependencies, object-storage MinIO compose profile, playback 307 redirect to presigned object URL, and docs/P4_OBJECT_STORAGE.md.
+## 已知边界
 
-2026-07-03 update: added owner-scoped manual retry for failed workflow tasks via `POST /api/workflow/tasks/{taskId}/retry`, requeue metrics (`video.task.requeued`, `source=reaper|manual`), frontend failed-task retry button, and a right-side engineering verification panel explaining MQ/P3/P4/retry in plain language.
+- 真实 AI 效果、费用与限流取决于用户配置的 Whisper/LLM 服务；默认 Mock 只验证工作流。
+- S3 实现是基于 JDK HttpClient 的轻量 SigV4 客户端，主要验证 MinIO/S3 协议链路。
+- 直传还没有独立 upload-session 表，审计、过期和孤儿对象清理仍不完整。
+- 视频删除、任务删除、失败处理和对象存储之间还需要统一的媒体生命周期策略。
+- Redis 关闭时需同时关闭 Spring Redis health indicator，否则健康检查可能误报 DOWN。
+- 没有真实公网用户、生产 SLA、备份恢复演练或长期容量数据。
 
-2026-07-03 full-stack update: verified real Docker Redis + MySQL + RocketMQ with `scripts/verify-full-stack.ps1`. The script registers a user, performs Redis chunk init/status/chunk/merge, waits for RocketMQ workflow completion, checks MySQL persistence, and confirms Redis upload keys are cleaned. Also fixed RocketMQ consumer backpressure by calling `WorkflowProcessor.process(...)` synchronously instead of `processAsync(...)`; MQ mode should not enqueue again into the local `videoTaskExecutor`.
+## 推荐下一步
 
-2026-07-03 MQ A/B recheck: after the consumer backpressure fix, ran a short k6 comparison with real Redis/MySQL/RocketMQ and mock transcript delay 2s. MQ off accepted only 140/1365 checks (10.25%, HTTP failures 89.61%) because local async saturated; MQ on accepted 1399/1399 checks (100%, HTTP failures 0%). DB showed MQ on moved the surplus into QUEUED/TRANSCRIBING tasks instead of speeding processing. Raw files: `loadtest/results/k6-short-mqoff.txt`, `loadtest/results/k6-short-mqon.txt`; summary appended to `loadtest/results/RESULTS.md`.
+1. **媒体生命周期清理**：明确任务删除、处理失败、用户取消时，本地文件、MinIO 对象和临时文件的删除规则；补 owner 隔离与幂等测试。
+2. **上传会话治理**：增加可审计的上传会话、过期状态和孤儿分片/对象清理，保留 Redis 作为热状态。
+3. **验证入口收敛**：把轻量演示、完整栈检查、异步 A/B 和 MinIO 验证整理成统一的新手入口和明确输出。
+4. **可选真实 AI 验证**：只在有可控 API 配额时增加一次短视频 smoke，记录耗时与失败原因，不纳入默认测试。
 
-2026-07-03 direct upload update: added backend S3/MinIO direct-upload flow. New endpoints: `POST /api/media/upload/direct/init` returns a presigned PUT URL, storagePath, and short uploadToken; `POST /api/media/upload/direct/complete` validates token owner/purpose, checks object existence, creates a `VideoTask`, and publishes workflow. Token is bound to owner/fileName/storagePath. Local storage explicitly rejects direct upload. Docs updated in `docs/P4_OBJECT_STORAGE.md`.
+## 验证命令
 
-2026-07-03 startup harness update: compressed root `AGENTS.md` and `CLAUDE.md` into short load-order files and added `docs/AI_STARTUP_HARNESS.md` as the always-read compact context cache. Goal is lower token use and faster context hits for Codex/Claude.
+```powershell
+node --check src/main/resources/static/app.js
+mvn test
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode local
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode mq
+docker compose -f docker-compose.prod.yml --env-file .env.example config --quiet
+```
 
-2026-07-04 direct upload UI/state update: frontend now has an "对象存储直传" upload strategy wired to `init / browser PUT / complete`, using XHR for upload progress. Added MinIO local CORS env (`MINIO_API_CORS_ALLOW_ORIGIN=http://localhost:8081,http://127.0.0.1:8081`), direct-init now returns 503 when storage does not support direct upload, and repeated `complete` for the same owner/storagePath returns the existing task without publishing workflow again.
-
-2026-07-04 P5 small-scale deployment update: added `Dockerfile`, `.dockerignore`, `.env.example`, `docker-compose.prod.yml`, `observability/prometheus.prod.yml`, `scripts/verify-deploy.ps1`, and `docs/P5_SMALL_SCALE_DEPLOYMENT.md`. Deployment design is a controlled single-server stack: app public through reverse proxy, MySQL/Redis/RocketMQ private, MinIO API localhost-bound for reverse proxy, Grafana/Prometheus localhost-bound. S3 direct upload now supports `APP_STORAGE_S3_PUBLIC_ENDPOINT` so browser presigned URLs can use the public object-storage domain while the app container keeps using internal `APP_STORAGE_S3_ENDPOINT`.
-
-2026-07-05 P0 deploy hardening (Claude): verified the production Docker image actually builds and boots, and closed the MinIO/S3 credential-drift trap. (1) Docker Hub base-image pulls time out on this network; pulled `eclipse-temurin:17-jre` and `maven:3.9.9-eclipse-temurin-17` via CN mirrors (DaoCloud / 1ms.run) and `docker tag`-ed them back to the original names so the Dockerfile stays registry-neutral. (2) Added `.mvn/settings-docker.xml` (Aliyun Central mirror) plus one COPY line in the Dockerfile build stage — `mvn dependency:go-offline` dropped from >10min (never finished) to 132s, `package` 25s, image built (1.31GB). (3) Isolated boot check with the `h2` profile reached `Started VideoPlatformApplication` + Tomcat 8081; `/actuator/health` returns UP once the Redis health probe is disabled. (4) Removed `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from `.env.example`; `docker-compose.prod.yml` now feeds `APP_STORAGE_S3_ACCESS_KEY`/`APP_STORAGE_S3_SECRET_KEY` straight into MinIO, so the app and MinIO credentials can never mismatch (was: two independent CHANGE_ME pairs a user could set differently, causing 403 SignatureDoesNotMatch on every upload).
-
-2026-07-16 P5 beginner launch update (Codex): added Compose-managed Caddy with automatic HTTPS for separate app/files domains, blocked public Actuator metrics and Swagger while preserving `/actuator/health`, added Docker JSON log rotation and app/Redis health checks, added `scripts/preflight-deploy.ps1`, and added `docs/P5_BEGINNER_LAUNCH_GUIDE.md`. Current non-code blocker: no Git remote is configured and roughly 57 working-tree entries remain uncommitted; prepare/review a real commit and push to a private GitHub/Gitee repository before server deployment.
-
-## Verification
-
-2026-07-18 async-lab verification: full-suite baseline is 79 tests; `node --check`, PowerShell parse, production Compose config and `git diff --check` passed. H2 integration proved 10 concurrent creates with an owner limit of 3 create exactly 3 tasks. Browser desktop/mobile smoke had no horizontal overflow. Real equal-worker run (80 tasks, 16 KB, Mock 500 ms, 4 workers): local accepted 54/rejected 26 and reaper recovered all 80 in 18.55s; RocketMQ accepted 80/rejected 0 and completed all in 11.32s. MQ consumer logs showed exactly four concurrent consumer threads after explicit configuration.
-
-node --check src/main/resources/static/app.js passed. Focused tests for upload/playback/workflow previously passed: 31 tests. Full mvn test previously passed: 56 tests.
-
-2026-07-03 verification: node --check src/main/resources/static/app.js passed; focused workflow tests (`WorkflowControllerTests,VideoTaskServiceTests,StaleWorkflowTaskReaperTests`) passed with 13 tests; full `mvn test` passed with 60 tests.
-
-2026-07-03 full-stack verification: `scripts/verify-full-stack.ps1` passed with `ok=true`, task `COMPLETED`, transcript/summary present, MySQL row matched, Redis upload keys after merge `0`; full `mvn test` passed with 61 tests.
-
-2026-07-03 latest verification after direct upload + harness: `mvn test` passed with 66 tests, 0 failures, 0 errors.
-
-2026-07-04 focused verification after direct-upload UI/idempotency/CORS: `node --check src/main/resources/static/app.js` passed; `mvn test "-Dtest=MediaControllerTests,DirectUploadServiceTests,VideoPlaybackControllerTests"` passed with 16 tests.
-
-2026-07-04 P5 verification: `mvn test "-Dtest=S3MediaStorageServiceTests,DirectUploadServiceTests"` passed with 7 tests; full `mvn test` passed with 70 tests; `docker compose -f docker-compose.prod.yml --env-file .env.example config --quiet` passed; `scripts/verify-deploy.ps1` parsed successfully; `mvn package -DskipTests` passed. Docker image build was not fully verified because Docker Hub base-image pulls timed out locally (`maven:3.9.9-eclipse-temurin-17`, `eclipse-temurin:17-jre`); treat as registry/network setup, not app compile failure.
-
-2026-07-16 P5 verification: full `mvn test` passed with 70 tests; production Compose config passed with `.env.example`; `scripts/preflight-deploy.ps1` and `scripts/verify-deploy.ps1` parsed successfully; `git diff --check` passed. Preflight was exercised against `.env.example` and correctly rejected template values plus the stopped Docker daemon. Caddy's in-container `caddy validate` could not run because Docker Desktop was not running; rerun preflight/container validation once Docker is available or on the target server.
-
-2026-07-05 P0 build verification (Claude): full `mvn test` still 70/70. Production image built end-to-end via CN mirrors: `go-offline` 132s + `package` 25s -> `video-platform:local` (1.31GB). Isolated `h2` container booted in ~6s to `/actuator/health` = UP (with `MANAGEMENT_HEALTH_REDIS_ENABLED=false`) and `GET /` = 200. `docker compose -f docker-compose.prod.yml --env-file .env.example config` still valid; resolved MinIO root creds now equal the S3 access/secret keys.
-
-## Known Risks / Watch Items
-
-S3MediaStorageService is a lightweight JDK HttpClient + Signature V4 implementation for MinIO/S3 compatibility; production can later swap in official SDK if dependency policy allows. Direct-upload UI/API exists and repeated complete is guarded by owner/storagePath. Direct upload has separate internal/public endpoints; keep them aligned with reverse proxy domains. There is still no dedicated upload-session table; add one later for audit, expiry, and cleanup.
-
-When `APP_REDIS_ENABLED=false` (lightweight mode) the Spring Boot Redis health indicator still activates and drives `/actuator/health` to DOWN, which would make Nginx/compose health probes and `verify-deploy.ps1` treat the app as down even though it started fine. The prod compose defaults to Redis on, so the default deployment path is unaffected; if you ever deploy with Redis off, also set `MANAGEMENT_HEALTH_REDIS_ENABLED=false`. Consider coupling the two flags in config so they cannot drift.
-
-## Recommended Next Step
-
-Use the current package as a repeatable local engineering lab and interview demo. Public hosting is optional. Next product-hardening candidates are upload-session lifecycle/audit and safe media cleanup; database migrations and backup/CI matter only if deployment becomes a goal again.
-
-## Handoff Log
-
-- 2026-07-18 Codex: added local async lab, per-user active-task admission, explicit MQ consumer concurrency, 503 overload semantics, 78-test baseline, real local/MQ A/B, and docs. Public deployment is optional; local reproducibility is the default demonstration path.
-- 2026-07-18 Codex: refreshed README/demo/interview/evidence docs and added user-visible result export. `node --check`, full `mvn test` (70/70), `git diff --check`, and desktop/mobile browser smoke passed; mobile had no horizontal overflow and result actions kept stable disabled states before a result exists.
+只改文档不需要重复跑 Maven；至少执行 `git diff --check` 和链接/陈旧表述扫描。

@@ -1,5 +1,7 @@
 # Agent Handoff Notes
 
+> **Historical crawler-module notes.** This is not the current project handoff. Read `AI_STARTUP_HARNESS.md` and `AI_HANDOFF.md` for repository-wide work; use this file only when changing the legacy crawl module.
+
 ## Crawl Task Summary
 
 This project now has a backend API for storing and querying crawled video metadata from video websites such as Bilibili. The crawler itself should run outside the controller; the Spring Boot API only receives normalized crawl results and persists them.

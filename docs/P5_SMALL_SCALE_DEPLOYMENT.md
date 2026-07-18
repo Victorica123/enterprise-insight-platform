@@ -1,5 +1,7 @@
 # P5 Small-Scale Deployment
 
+> **Status: optional capability.** The current roadmap is a locally reproducible engineering lab; no server or domain is required. Use this document only when public trial deployment becomes a concrete goal.
+
 Goal: make the platform safe enough for a small public trial, with clear controls and a debug path when something fails.
 
 This is not a large production architecture. It is a controlled single-server deployment that lets real users test the product while you keep risk visible.

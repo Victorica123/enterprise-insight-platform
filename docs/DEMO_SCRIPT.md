@@ -83,7 +83,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 加分点：指出大压测里 MQ 模式端到端等待曾达到 22 分钟，说明“100% 接收”还必须配合队列深度告警、限流、扩容和用户等待预期。
 
-### 7:00-9:00 可靠性与可上线性
+### 7:00-9:00 可靠性与工程证据
 
 按一次处理链路讲四个保护：
 
@@ -92,13 +92,13 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 3. 异常统一落为 `FAILED`，用户可以手动重试。
 4. stale-task reaper 扫描长时间卡住的任务并重新发布，处理 worker 宕机等场景。
 
-然后展示健康检查或部署文件：
+然后展示 `VERIFICATION_MATRIX.md`，说明每项主张由测试、脚本、页面还是历史实测支撑。
 
-> 小规模部署使用 Docker Compose 和 Caddy。应用与文件域名走 HTTPS，MySQL、Redis、RocketMQ、Prometheus 和 Grafana 不直接暴露公网。preflight 负责上线前配置检查，smoke 脚本按认证、上传、存储、MQ、数据库边界定位故障。
+面试官追问上线方案时再补充：项目保留 Docker Compose + Caddy 自动 HTTPS，应用与文件域名分离，中间件不直接暴露公网，并有 preflight/smoke 脚本。这是可选架构能力，不是已发生的生产运营。
 
 ### 9:00-10:00 诚实边界与收尾
 
-> 当前已经完成代码测试、本地真实中间件链路和 MQ A/B 实测，但没有虚构公网用户量、SLA 或收入。更大规模上线前还需要 Flyway 数据库迁移、正式 S3 SDK、上传会话审计与清理、限流配额、备份恢复演练和 CI/CD。这些是明确的工程边界，不会把规划说成已经上线。
+> 当前已经完成代码测试、本地真实中间件链路和 MQ A/B 实测，但没有虚构公网用户量、SLA 或收入。下一步优先完善媒体生命周期、上传会话审计和孤儿文件清理；如果未来真实上线，还要补 Flyway、备份恢复演练和 CI/CD。
 
 一句话收尾：
 

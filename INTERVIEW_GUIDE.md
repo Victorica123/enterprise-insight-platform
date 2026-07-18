@@ -152,9 +152,21 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 5. MySQL 任务状态判断是否持久化；
 6. Redis keys 判断上传会话是否合并后清理。
 
-`scripts/verify-full-stack.ps1` 验证本地真实中间件链路；`scripts/preflight-deploy.ps1` 检查上线配置；`scripts/verify-deploy.ps1` 验证部署后的认证、上传、对象存储、任务和中间件。
+`scripts/verify-full-stack.ps1` 验证本地真实中间件链路；页面“异步实验室”提供可观察 A/B。可选部署脚本只在讨论公网架构时使用。
 
-## 9. 小规模部署
+## 9. 本地可复现的工程证据
+
+面试现场不依赖公网服务器，也能展示：
+
+- 79 个不依赖外部中间件的自动化测试；
+- `verify-full-stack.ps1` 的 Redis、MySQL、RocketMQ 真实链路；
+- MinIO 预签名直传、完成回调和播放；
+- 页面异步实验室的本地/MQ 同参数 A/B；
+- owner 越权、MD5 错误、重复消息、任务饱和和补偿等故障情景。
+
+证据必须同时说明环境和边界。Mock AI 证明状态机和队列行为，不代表真实模型质量或吞吐。
+
+### 可选部署扩展
 
 项目选择单服务器 Docker Compose + Caddy，而不是直接上 Kubernetes：
 
@@ -164,7 +176,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 - secrets 和 endpoint 通过 `.env` 外部化；
 - 容器日志轮转、健康检查、preflight 和 smoke 流程已提供。
 
-这个方案适合低成本试用和面试验证，不应宣称具备大规模生产 SLA。
+这个方案适合以后低成本试用或回答架构追问，不是当前演示的前置条件，也不应宣称具备大规模生产 SLA。
 
 ## 10. 用户可见功能如何体现工程价值
 

@@ -12,8 +12,8 @@ Claude startup harness for this repository. Keep this file short to reduce token
    - Local async lab: `docs/ASYNC_LAB.md`
    - Reliability/retry: `docs/P3_RELIABILITY_VERIFICATION.md`
    - Object storage/direct upload: `docs/P4_OBJECT_STORAGE.md`
-   - Small-scale deployment: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
-   - Beginner launch guide: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
+   - Optional small-scale deployment: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
+   - Optional public launch guide: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
    - Troubleshooting history: `docs/TROUBLESHOOTING.md`
    - Feature evidence: `docs/VERIFICATION_MATRIX.md`
    - Interview framing: `INTERVIEW_GUIDE.md`

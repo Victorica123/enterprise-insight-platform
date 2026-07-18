@@ -1,127 +1,113 @@
 # Project Knowledge Base
 
-This file is the navigation entry for future Codex sessions. Read it first, then open only the referenced document needed for the task.
+本文件是项目当前方向、能力边界和文档导航的唯一总入口。模型启动时先读 `AI_STARTUP_HARNESS.md`；需要理解产品方向或选择下一项工作时再读本文件。
 
-## Product Priority
+## 当前定位
 
-Primary goal:
+> 一个可在本地完整复现的视频内容平台和后端工程实验室。
 
-> Help real users upload videos, wait for processing, receive usable transcript/summary results, and manage their history.
+用户可完成注册登录、视频上传、异步处理、转写与摘要查看、播放、重试、删除和历史管理。项目通过真实本地 Redis、RocketMQ、MySQL、MinIO 与页面实验，解释大文件上传、慢任务、高并发削峰、幂等和故障恢复。
 
-Engineering work serves that goal. Large-file transfer, high concurrency, deployment, testing, and observability are important only when they improve the real user workflow.
+公网部署是已保留的可选能力，不是完成项目、学习或面试演示的前置条件。
 
-## Current System
+## 价值排序
 
-- Backend: Java 17, Spring Boot 3.3.5, Spring Security, JPA.
-- Auth: JWT login/register with persisted users.
-- Upload: normal multipart, Redis chunk/resume, and MinIO/S3 presigned direct upload.
-- Workflow: local `@Async` publisher or optional RocketMQ.
-- Processing: FFmpeg audio extraction, Whisper-compatible transcription, OpenAI-compatible summary, mock fallback.
-- Frontend: static HTML/CSS/JS under `src/main/resources/static/`.
+1. 用户能看见并验证完整业务流程。
+2. 工程能力有测试、脚本、指标或页面证据。
+3. 新手能复现、理解并在面试中准确表达。
+4. 架构保持可切换、可调试，不为堆技术而扩张。
 
-## Source Of Truth
+## 当前业务链路
 
-> 归类说明(2026-07-02):参考类文档已移入 `docs/`;根目录仅保留 `README.md`、`CLAUDE.md`、`AGENTS.md`、`INTERVIEW_GUIDE.md`。下列相对路径以本文件(`docs/`)为基准。
-
-- `../AGENTS.md`: project rules and coding constraints (Codex). `../CLAUDE.md` is the Claude-Code equivalent.
-- `AI_HANDOFF.md`: shared cross-model handoff entrypoint for Codex, Claude, and future AI agents.
-- `../README.md`: user-facing overview and run instructions.
-- `../INTERVIEW_GUIDE.md`: 权威的功能清单 + 面试要点总结(截至当前代码).
-- `CAREER_ROADMAP.md`: product direction, implementation roadmap, interview framing.
-- `TROUBLESHOOTING.md`: real engineering problem cards and historical debugging notes.
-- `P3_RELIABILITY_VERIFICATION.md`: task reaper/retry verification flow and high-concurrency engineering notes.
-- `P4_OBJECT_STORAGE.md`: MinIO/S3-compatible storage verification and interview framing.
-- `P5_SMALL_SCALE_DEPLOYMENT.md`: single-server deployment, smoke verification, debug playbook, and interview framing.
-- `LOADTEST.md`: MQ on/off A/B load-test method and measured results.
-- `ASYNC_LAB.md`: beginner-friendly page A/B for local `@Async`, RocketMQ, overload, and reaper recovery.
-- `VERIFICATION_MATRIX.md`: feature-to-evidence map across unit, Web, runtime, and manual verification.
-- `DEMO_SCRIPT.md`: 5-10 minute interview or stakeholder walkthrough.
-- `INTERVIEW_PREP.html`: deeper architecture explanation (静态,可能滞后于代码).
-
-## Working Rules
-
-- Preserve owner isolation for uploads and workflow tasks.
-- Keep workflow state mutation transactional.
-- Do not make tests depend on Redis, RocketMQ, Docker, FFmpeg, Whisper, or LLM services.
-- Prefer visible user value first, then optimize the engineering bottleneck that blocks it.
-- For real engineering issues, record `Symptom`, `Cause`, `Fix`, `Verify yourself`, and `Interview point`.
-
-## Near-Term Direction
-
-1. Keep the core workflow demonstrable: login, three upload paths, task status, transcript/summary, playback, export, retry, and history.
-2. Use the page async lab, `VERIFICATION_MATRIX.md`, and saved MQ A/B data to separate tested facts from future plans.
-3. Improve production gaps only when useful: schema migrations, upload-session audit/cleanup, quotas/rate limits, backup restore, and CI/CD.
-4. Preserve the original platform vision without requiring paid public hosting or inventing production usage data.
-
-## Session Notes 2026-07-03
-
-- P3 reliability now has both automatic and manual recovery: `StaleWorkflowTaskReaper` requeues stale non-terminal tasks, and `POST /api/workflow/tasks/{taskId}/retry` lets the owner retry a `FAILED` task.
-- `video.task.requeued` records recovery counts with `source=reaper|manual`, useful for later Prometheus/Grafana explanation.
-- Frontend history shows a retry button for failed tasks and a right-side “工程验证” panel explaining MQ, P3, P4, and retry in user-facing terms.
-- Verification passed: `node --check src/main/resources/static/app.js`, focused workflow tests (`13 tests`), and full `mvn test` (`60 tests`).
-- Full-stack verification passed with real Docker Redis + MySQL + RocketMQ using `scripts/verify-full-stack.ps1`: register user, Redis chunk init/status/chunk/merge, RocketMQ workflow completion, MySQL `video_task` row check, Redis upload key cleanup.
-- Fixed MQ consumer backpressure bug: RocketMQ now calls `WorkflowProcessor.process(...)` synchronously instead of `processAsync(...)`, so MQ controls consumption/backpressure instead of flooding the local `videoTaskExecutor`.
-- Latest full `mvn test`: `61 tests, 0 failures, 0 errors`.
-
-## Verification
-
-- Frontend JS syntax: `node --check src/main/resources/static/app.js`
-- Full test suite: `mvn test`
-- Full-stack middleware check after starting Redis/MySQL/RocketMQ and the app in MQ mode: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1`
-- Lightweight local run:
-
-```powershell
-$env:APP_REDIS_ENABLED="false"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:MANAGEMENT_HEALTH_REDIS_ENABLED="false"
-mvn spring-boot:run
+```text
+JWT 登录
+  -> 普通上传 / Redis 分片续传 / MinIO 预签名直传
+  -> 创建 VideoTask(QUEUED)
+  -> 本地 @Async / RocketMQ
+  -> FFmpeg -> Whisper 兼容转写 -> LLM 兼容摘要
+  -> COMPLETED / FAILED
+  -> 查询、播放、导出、重试、删除
 ```
 
-- Health check: `http://localhost:8081/actuator/health`
-- Frontend: `http://localhost:8081`
-- Swagger: `http://localhost:8081/swagger-ui.html`
+## 已实现能力
 
-## Session Notes 2026-07-01
+| 领域 | 当前能力 | 主要证据 |
+| --- | --- | --- |
+| 身份与隔离 | JWT；上传、任务、播放、重试、删除按 owner 隔离 | 自动化测试、`VERIFICATION_MATRIX.md` |
+| 大文件上传 | Redis 分片、状态查询、断点续传、合并锁、MD5 校验、秒传 | 页面、测试、完整栈脚本 |
+| 对象存储 | MinIO/S3 预签名 PUT 直传、完成回调幂等、预签名播放 | `P4_OBJECT_STORAGE.md` |
+| 异步处理 | 本地 `@Async` 与 RocketMQ 两种分发模式 | `ASYNC_LAB.md`、`LOADTEST.md` |
+| 可靠性 | 幂等 claim、短事务状态机、失败重试、卡住任务 reaper | `P3_RELIABILITY_VERIFICATION.md` |
+| 过载保护 | 每用户活动任务配额、429；本地线程池饱和、503 | 页面实验、并发测试 |
+| 结果交付 | 转写、摘要、复制、Markdown 下载、Range/预签名播放 | 前端与 API 测试 |
+| 可观测性 | Actuator、Prometheus/Grafana 配置、任务指标、验证输出 | `VERIFICATION_MATRIX.md` |
+| 可选部署 | Docker Compose、Caddy HTTPS、体检与部署验证脚本 | P5 两份文档 |
 
-- Frontend now has an upload experiment panel for comparing normal upload and Redis chunk upload.
-- Redis chunk upload is implemented as browser-side concurrent chunk upload with concurrency `4`.
-- Upload metrics keep the latest real upload result and separate recent records for normal upload and Redis chunk upload. Switching modes must not rewrite historical metric results.
-- Task history supports owner-scoped deletion through `DELETE /api/workflow/tasks/{taskId}`.
-- Redis maps host port `7379` to container `6379` because this Windows environment reserves `6379-6478`.
-- MySQL is available in Docker Compose behind the `mysql` profile for persistence validation.
-- Important explanation: Redis chunk upload gives upload session state, chunk tracking, merge locking, and a basis for retry/resume. Upload speed improvement comes from concurrent chunks, chunk-size tuning, retries, resume, and instant-upload logic. RocketMQ improves post-upload task queueing and decoupling, not browser-to-server upload speed.
-- Engineering-optimization pass: applied 5 backend/doc fixes over the code added since 2026-06-13 — see `TROUBLESHOOTING.md` → "代码优化与质量改进记录（2026-07-01）". Notable: unified `DistributedLockService.tryLock` semantics (the Redisson path used to wait and then re-run a concurrent merge, duplicating the task), stopped the HTTP 500 handler from leaking internal exception messages, cleaned up half-written files on merge failure, and corrected the stale `@Transactional` guidance in `CLAUDE.md` (the workflow now uses per-stage short transactions).
+当前自动化测试基线为 79 个。完整栈和 A/B 的真实数据见 `AI_HANDOFF.md`，不要把实验结果外推为生产容量。
 
-Redis validation:
+## 模式选择
 
-```powershell
-docker compose up -d redis
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:SPRING_DATA_REDIS_PORT="7379"
-mvn spring-boot:run
-```
+- **轻量业务演示**：H2、本地文件、本地异步、Mock AI；不依赖 Docker。
+- **完整本地工程验证**：MySQL、Redis、RocketMQ、MinIO；验证中间件链路和可观察状态。
+- **异步 A/B 实验**：保持请求量、文件、Mock 延时和 worker 数一致，只切换本地异步/MQ。
+- **真实 AI smoke**：可选，只用于验证 API 接入，不进入默认测试。
+- **公网部署**：可选架构扩展，不是当前必做路线。
 
-MySQL + Redis validation:
+## 下一阶段
 
-```powershell
-docker compose --profile mysql up -d redis mysql
-$env:MYSQL_HOST="localhost"
-$env:MYSQL_PORT="3306"
-$env:MYSQL_DATABASE="videoplatform"
-$env:MYSQL_USERNAME="root"
-$env:MYSQL_PASSWORD="123456"
-$env:APP_REDIS_ENABLED="true"
-$env:APP_MQ_ENABLED="false"
-$env:APP_TRANSCRIPT_ENABLED="false"
-$env:APP_SUMMARY_ENABLED="false"
-$env:SPRING_DOCKER_COMPOSE_ENABLED="false"
-$env:SPRING_DATA_REDIS_PORT="7379"
-mvn spring-boot:run "-Dspring-boot.run.profiles=mysql"
-```
+### 1. 媒体生命周期
+
+统一任务删除、上传失败、处理失败、用户取消时的本地文件、MinIO 对象、音频临时文件处理规则。要求删除幂等、owner 安全、失败可重试且有指标。
+
+用户可验证情景：上传一个视频后删除任务，页面记录消失，原视频不能再播放，对象/文件数量按预期减少；重复删除不产生脏数据。
+
+### 2. 上传会话治理
+
+为分片和直传增加可审计会话状态、过期时间与清理任务。Redis 继续保存高频临时状态，数据库保存生命周期事实；清理未完成分片和未绑定任务的对象。
+
+用户可验证情景：发起上传后中断，等待或手动触发清理，页面/管理接口显示会话已过期，残留存储被移除。
+
+### 3. 统一验证入口
+
+把轻量启动、完整栈 smoke、MinIO 直传和异步 A/B 收敛为少量脚本及清晰结果，降低新机器和新模型接手成本。
+
+### 4. 可选真实 AI
+
+在用户有受控 API 配额时，用短视频验证一次真实转写与摘要，记录耗时、费用边界和错误诊断；默认继续使用 Mock 保证测试稳定。
+
+## 当前非目标
+
+- 购买云服务器、域名或维持公网实例。
+- 声称已有生产用户、SLA、营收或真实线上峰值。
+- 为面试堆叠 Kubernetes、微服务、服务网格等无验证价值的技术。
+- 在没有业务问题时继续拆服务或增加中间件。
+- 用 Mock 压测结果声称真实 AI 吞吐。
+
+## 文档状态
+
+| 文档 | 状态 | 用途 |
+| --- | --- | --- |
+| `../README.md` | 当前 | 项目总览、运行方式、事实边界 |
+| `AI_STARTUP_HARNESS.md` | 当前 | 模型每次启动必读的紧凑缓存 |
+| `AI_HANDOFF.md` | 当前 | 最新代码状态、证据、风险和下一步 |
+| `CAREER_ROADMAP.md` | 当前 | 求职表达、演示顺序、学习路线 |
+| `VERIFICATION_MATRIX.md` | 当前 | 功能到证据的映射 |
+| `ASYNC_LAB.md` | 当前 | 页面驱动的本地异步/MQ 实验 |
+| `LOADTEST.md` | 当前 | MQ A/B 方法与数据边界 |
+| `P3_RELIABILITY_VERIFICATION.md` | 当前 | 可靠性验证与面试解释 |
+| `P4_OBJECT_STORAGE.md` | 当前 | MinIO/S3 直传和播放 |
+| `P5_SMALL_SCALE_DEPLOYMENT.md` | 可选 | 单机公网部署能力，不属当前主路线 |
+| `P5_BEGINNER_LAUNCH_GUIDE.md` | 可选 | 新手公网部署步骤 |
+| `TROUBLESHOOTING.md` | 历史证据 | 已遇到问题及修复记录 |
+| `AGENT.md` | 历史模块说明 | 旧爬虫模块交接，不是全项目入口 |
+
+## 按问题读取
+
+- 最新跨模型进度：`AI_HANDOFF.md`
+- 页面演示：`DEMO_SCRIPT.md`
+- 求职与面试：`CAREER_ROADMAP.md`、`../INTERVIEW_GUIDE.md`
+- MQ 是否“加速”：`ASYNC_LAB.md`、`LOADTEST.md`
+- 失败恢复：`P3_RELIABILITY_VERIFICATION.md`
+- MinIO/直传：`P4_OBJECT_STORAGE.md`
+- 可选上线：`P5_SMALL_SCALE_DEPLOYMENT.md`、`P5_BEGINNER_LAUNCH_GUIDE.md`
+- 故障排查：`TROUBLESHOOTING.md`

@@ -20,9 +20,11 @@ Core user flow:
 
 ## Current Priority
 
-Primary goal: help real users upload videos, wait for processing, receive transcript/summary, play videos, and manage history.
+Primary goal: maintain a locally reproducible, full-featured video platform and backend engineering lab. Users should be able to upload videos, observe processing, receive transcript/summary, play media, and manage history without requiring a paid server.
 
 Engineering topics such as Redis, RocketMQ, object storage, load tests, and observability exist to support that user flow.
+
+Current next work: media lifecycle cleanup, upload-session expiry/audit, and simpler local verification entrypoints. Public deployment is optional.
 
 ## Current Architecture Flags
 
@@ -38,8 +40,7 @@ Engineering topics such as Redis, RocketMQ, object storage, load tests, and obse
 - P3 reliability exists: stale-task reaper, manual failed-task retry, `video.task.requeued` metrics.
 - P4 storage exists: `MediaStorageService`, local/S3 implementations, MinIO compose profile, playback 307 redirect, direct-upload UI/API.
 - Direct upload uses `init / browser PUT / complete`; MinIO CORS is configured for local frontend, and repeated `complete` returns the existing task for the same owner/storagePath.
-- P5 small-scale deployment now exists: `Dockerfile`, `.env.example`, `docker-compose.prod.yml`, `observability/prometheus.prod.yml`, `scripts/verify-deploy.ps1`, and `docs/P5_SMALL_SCALE_DEPLOYMENT.md`.
-- P5 public-entry hardening now includes Compose-managed Caddy automatic HTTPS, public blocking for metrics/Swagger, container log rotation, app/Redis health checks, `scripts/preflight-deploy.ps1`, and the Chinese beginner guide `docs/P5_BEGINNER_LAUNCH_GUIDE.md`.
+- Optional deployment capability exists: production Compose, Caddy HTTPS, protected management endpoints, log rotation, health checks, preflight/smoke scripts, and a beginner guide. It is not the current roadmap priority.
 - S3 direct upload has separate internal and browser-visible endpoints: `APP_STORAGE_S3_ENDPOINT` for the app container and `APP_STORAGE_S3_PUBLIC_ENDPOINT` for presigned browser URLs.
 - Full-stack verification script exists: `scripts/verify-full-stack.ps1`.
 - Feature-to-evidence map exists: `docs/VERIFICATION_MATRIX.md`.
@@ -70,8 +71,8 @@ Open only what the current task needs:
 - Need page-driven local async verification: `docs/ASYNC_LAB.md`
 - Need reliability/retry: `docs/P3_RELIABILITY_VERIFICATION.md`
 - Need object storage/direct upload: `docs/P4_OBJECT_STORAGE.md`
-- Need small-scale deployment/debug: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
-- Need step-by-step first launch: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
+- Need optional small-scale deployment/debug: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`
+- Need optional step-by-step public launch: `docs/P5_BEGINNER_LAUNCH_GUIDE.md`
 - Need real bug history: `docs/TROUBLESHOOTING.md`
 - Need proof for a capability: `docs/VERIFICATION_MATRIX.md`
 - Need interview phrasing: `INTERVIEW_GUIDE.md`
