@@ -67,6 +67,7 @@ public class AppProperties {
 		private String basePath;
 		private String type = "local";
 		private final S3 s3 = new S3();
+		private final Cleanup cleanup = new Cleanup();
 
 		public String getBasePath() {
 			return basePath;
@@ -86,6 +87,22 @@ public class AppProperties {
 
 		public S3 getS3() {
 			return s3;
+		}
+
+		public Cleanup getCleanup() {
+			return cleanup;
+		}
+
+		public static class Cleanup {
+			private Duration chunkRetention = Duration.ofHours(24);
+
+			public Duration getChunkRetention() {
+				return chunkRetention;
+			}
+
+			public void setChunkRetention(Duration chunkRetention) {
+				this.chunkRetention = chunkRetention;
+			}
 		}
 
 		public static class S3 {

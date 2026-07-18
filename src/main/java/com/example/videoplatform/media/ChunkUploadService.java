@@ -58,10 +58,18 @@ public class ChunkUploadService {
 		if (fileMd5 != null && !fileMd5.isBlank()) {
 			String existingPath = redisTemplate.opsForValue().get(String.format(FILE_MD5_KEY, fileMd5));
 			if (existingPath != null) {
-				VideoTask task = videoTaskService.createTask(owner, safeName, existingPath, fileMd5);
-				workflowPublisher.publish(task.getTaskId());
-				return new MediaDtos.InitUploadResponse(
-						task.getTaskId(), null, request.totalChunks(), null, fileMd5, true, java.util.List.of());
+				try {
+					if (mediaStorageService.objectExists(existingPath)) {
+						VideoTask task = videoTaskService.createTask(owner, safeName, existingPath, fileMd5);
+						workflowPublisher.publish(task.getTaskId());
+						return new MediaDtos.InitUploadResponse(
+								task.getTaskId(), null, request.totalChunks(), null, fileMd5, true, java.util.List.of());
+					}
+					// Media may have been removed after its last task was deleted; do not trust a stale cache hit.
+					redisTemplate.delete(String.format(FILE_MD5_KEY, fileMd5));
+				} catch (IOException exception) {
+					throw new IllegalStateException("检查秒传文件失败，请稍后重试", exception);
+				}
 			}
 
 			// 断点续传：同一文件（相同 MD5）存在未完成的会话时，复用它并回传已上传分片，
@@ -170,6 +178,11 @@ public class ChunkUploadService {
 		String chunksKey = String.format(UPLOAD_CHUNKS_KEY, uploadId);
 		redisTemplate.opsForSet().add(chunksKey, String.valueOf(chunkIndex));
 		redisTemplate.expire(chunksKey, Duration.ofHours(24));
+		redisTemplate.expire(metaKey, Duration.ofHours(24));
+		Object fileMd5 = meta.get("fileMd5");
+		if (fileMd5 instanceof String md5 && !md5.isBlank()) {
+			redisTemplate.expire(String.format(INPROGRESS_MD5_KEY, md5), Duration.ofHours(24));
+		}
 		Long uploaded = redisTemplate.opsForSet().size(chunksKey);
 		return new MediaDtos.ChunkUploadResponse(chunkIndex, uploaded != null ? uploaded.intValue() : 0,
 				totalChunks);

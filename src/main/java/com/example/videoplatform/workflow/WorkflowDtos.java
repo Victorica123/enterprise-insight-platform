@@ -40,4 +40,7 @@ public final class WorkflowDtos {
 	public record RuntimeView(String dispatchMode, boolean mqEnabled, long mockDelayMs,
 			int maxActiveTasksPerUser, int mqConsumerThreads, String storageType) {
 	}
+
+	public record TaskDeletionView(String taskId, String mediaCleanupStatus) {
+	}
 }

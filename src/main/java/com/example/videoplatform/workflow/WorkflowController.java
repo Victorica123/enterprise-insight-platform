@@ -20,15 +20,18 @@ import java.util.List;
 public class WorkflowController {
 
 	private final VideoTaskService videoTaskService;
+	private final MediaLifecycleService mediaLifecycleService;
 	private final WorkflowPublisher workflowPublisher;
 	private final WorkflowMetrics workflowMetrics;
 	private final AppProperties appProperties;
 	private final boolean mqEnabled;
 
-	public WorkflowController(VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
+	public WorkflowController(VideoTaskService videoTaskService, MediaLifecycleService mediaLifecycleService,
+			WorkflowPublisher workflowPublisher,
 			WorkflowMetrics workflowMetrics, AppProperties appProperties,
 			@Value("${app.mq.enabled:false}") boolean mqEnabled) {
 		this.videoTaskService = videoTaskService;
+		this.mediaLifecycleService = mediaLifecycleService;
 		this.workflowPublisher = workflowPublisher;
 		this.workflowMetrics = workflowMetrics;
 		this.appProperties = appProperties;
@@ -72,10 +75,11 @@ public class WorkflowController {
 	}
 
 	@DeleteMapping("/tasks/{taskId}")
-	public ApiResponse<Void> deleteTask(Authentication authentication, @PathVariable String taskId) {
+	public ApiResponse<WorkflowDtos.TaskDeletionView> deleteTask(Authentication authentication,
+			@PathVariable String taskId) {
 		String currentUser = currentUsername(authentication);
-		videoTaskService.deleteTask(taskId, currentUser);
-		return ApiResponse.ok(null);
+		MediaLifecycleService.DeletionPlan plan = mediaLifecycleService.scheduleTaskDeletion(taskId, currentUser);
+		return ApiResponse.ok(mediaLifecycleService.attemptCleanup(plan));
 	}
 
 	@PostMapping("/tasks/{taskId}/retry")

@@ -43,6 +43,7 @@ flowchart LR
 | 对象存储 | MinIO/S3、预签名直传、预签名播放、Range 播放 | `verify-deploy.ps1`、媒体测试 |
 | 异步工作流 | 本地 `@Async` 与 RocketMQ 两种发布路径、页面异步实验室 | 本地 A/B、k6 压测 |
 | 可靠性 | 幂等 claim、分布式锁、失败状态、手动重试、stale task reaper | P3 验证流程 |
+| 生命周期 | 终态删除、共享文件保护、持久化清理重试、过期分片回收 | 生命周期测试、页面删除反馈、清理指标 |
 | AI 处理 | FFmpeg 抽音频、Whisper 转写、LLM 摘要、Mock 回退 | 单元测试不依赖外部 API |
 | 用户体验 | 任务状态、错误原因、历史记录、播放、删除、重试 | 首页工作台 |
 | 可观测性 | Actuator、Micrometer、Prometheus、Grafana | MQ A/B 仪表盘 |
@@ -173,7 +174,7 @@ mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskService
 node --check src/main/resources/static/app.js
 ```
 
-当前基线：79 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
+当前基线：85 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
 
 ## 关键设计取舍
 

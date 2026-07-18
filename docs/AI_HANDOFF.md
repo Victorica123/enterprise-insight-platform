@@ -25,12 +25,13 @@ Codex、Claude 和其他模型的跨会话交接入口。启动时先读 `../AGE
 
 ## 最新可信证据
 
-- 当前提交基线：`a9f1ecd feat: add local async verification lab`，已推送到 `origin/main`。
-- 自动化测试基线：79 个测试通过。
+- 自动化测试基线：85 个测试通过。
 - H2 并发集成测试：同一用户并发创建 10 个任务、上限 3，只创建 3 个。
 - 完整栈脚本已真实跑通 Redis 分片上传、RocketMQ 消费、MySQL 持久化和 Redis 会话清理。
 - MinIO 直传已验证 `init -> browser PUT -> complete`、完成回调幂等和预签名播放。
 - Range 播放、内容 MD5 校验、秒传、断点续传、令牌与 owner 隔离均有测试或运行证据。
+- 终态任务删除会在同一短事务登记媒体清理任务；共享路径保留，MinIO/磁盘删除失败持久重试，页面显示清理结果。
+- 活动分片上传刷新 Redis TTL；过期磁盘分片目录由安全扫描器清理并记录指标。
 - 等 worker A/B：80 请求、16 KB、Mock 500 ms、4 worker。
   - 本地 `@Async`：HTTP 接收 54/80，拒绝 26/80；reaper 最终完成 80/80，18.55 秒。
   - RocketMQ：HTTP 接收 80/80，拒绝 0；完成 80/80，11.32 秒。
@@ -52,17 +53,15 @@ Codex、Claude 和其他模型的跨会话交接入口。启动时先读 `../AGE
 
 - 真实 AI 效果、费用与限流取决于用户配置的 Whisper/LLM 服务；默认 Mock 只验证工作流。
 - S3 实现是基于 JDK HttpClient 的轻量 SigV4 客户端，主要验证 MinIO/S3 协议链路。
-- 直传还没有独立 upload-session 表，审计、过期和孤儿对象清理仍不完整。
-- 视频删除、任务删除、失败处理和对象存储之间还需要统一的媒体生命周期策略。
+- 直传还没有独立 upload-session 表；当前 token、TTL、完成幂等和分片清理足够支撑本地平台，但不提供长期运营审计。
 - Redis 关闭时需同时关闭 Spring Redis health indicator，否则健康检查可能误报 DOWN。
 - 没有真实公网用户、生产 SLA、备份恢复演练或长期容量数据。
 
 ## 推荐下一步
 
-1. **媒体生命周期清理**：明确任务删除、处理失败、用户取消时，本地文件、MinIO 对象和临时文件的删除规则；补 owner 隔离与幂等测试。
-2. **上传会话治理**：增加可审计的上传会话、过期状态和孤儿分片/对象清理，保留 Redis 作为热状态。
-3. **验证入口收敛**：把轻量演示、完整栈检查、异步 A/B 和 MinIO 验证整理成统一的新手入口和明确输出。
-4. **可选真实 AI 验证**：只在有可控 API 配额时增加一次短视频 smoke，记录耗时与失败原因，不纳入默认测试。
+1. **验证入口收敛**：把轻量演示、完整栈检查、异步 A/B 和 MinIO 验证整理成统一的新手入口和明确输出。
+2. **可选真实 AI 验证**：只在有可控 API 配额时增加一次短视频 smoke，记录耗时与失败原因，不纳入默认测试。
+3. **可选运营增强**：只有需要长期用户审计时再增加独立 upload-session 表、Flyway 和备份恢复演练。
 
 ## 验证命令
 
@@ -72,6 +71,7 @@ mvn test
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode local
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode mq
+$env:ENV_FILE=".env.example"
 docker compose -f docker-compose.prod.yml --env-file .env.example config --quiet
 ```
 

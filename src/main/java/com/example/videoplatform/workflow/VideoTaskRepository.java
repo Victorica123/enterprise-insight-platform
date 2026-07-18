@@ -22,6 +22,8 @@ public interface VideoTaskRepository extends JpaRepository<VideoTask, String> {
 
 	Optional<VideoTask> findFirstByOwnerAndStoragePathOrderByCreatedAtDesc(String owner, String storagePath);
 
+	boolean existsByStoragePath(String storagePath);
+
 	long countByOwnerAndStatusIn(String owner, List<VideoTask.TaskStatus> statuses);
 
 	/**

@@ -92,12 +92,6 @@ public class VideoTaskService {
 	}
 
 	@Transactional
-	public void deleteTask(String taskId, String owner) {
-		VideoTask task = requireTask(taskId, owner);
-		taskRepository.delete(task);
-	}
-
-	@Transactional
 	public VideoTask retryFailedTask(String taskId, String owner) {
 		VideoTask task = taskRepository.findByTaskIdAndOwner(taskId, owner)
 				.orElseThrow(() -> new IllegalArgumentException("任务不存在或无权限: " + taskId));

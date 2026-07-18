@@ -1274,4 +1274,39 @@ mvn test
 
 ---
 
-*最后更新：2026-07-02*
+## 2026-07-18：定时清理配置导致完整应用上下文启动失败
+
+### Symptom
+
+新增过期分片清理后，聚焦单元测试通过，但 `mvn test` 中需要加载完整 Spring 上下文的测试失败：
+
+```text
+Invalid initialDelayString value "1m"
+NumberFormatException: For input string: "1m"
+```
+
+### Cause
+
+当前 Spring 版本的 `@Scheduled.initialDelayString` 在该配置路径下按毫秒数字解析，不能直接接受 `1m`。只构造服务类的单元测试不会初始化调度注解，因此无法发现这个启动兼容性问题。
+
+### Fix
+
+调度间隔统一使用显式毫秒配置：`60000`、`600000`；`chunk-retention=24h` 仍由 Spring Boot `Duration` 配置绑定器处理。
+
+### Verify yourself
+
+```powershell
+mvn test
+```
+
+验证结果：85 tests，0 failures，0 errors，完整应用上下文成功启动。
+
+### Interview point
+
+- 聚焦测试用于快速定位逻辑，全量上下文测试用于发现配置绑定、条件装配、JPA schema 和调度注解等集成问题，两者不能互相替代。
+- 定时清理不能只追求“能删”，还要考虑共享引用、并发删除、失败重试、路径安全和可观测指标。
+- 本项目把任务删除与清理 outbox 同事务写入，实际存储 I/O 放在事务外；失败保留任务重试，避免长事务和永久孤儿文件。
+
+---
+
+*最后更新：2026-07-18*

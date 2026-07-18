@@ -9,6 +9,17 @@
 - **R（Runtime）**：真实 Docker 中间件或端到端脚本。
 - **M（Manual）**：用户可以在页面直接观察和参与验证。
 
+## 当前范围完成度
+
+| 完成门槛 | 状态 | 结论 |
+| --- | --- | --- |
+| 用户业务闭环 | 已完成 | 登录、三种上传、状态、转写、摘要、播放、导出、重试、删除均有页面入口 |
+| 核心技术落地 | 已完成 | MySQL、Redis、RocketMQ、MinIO、FFmpeg/AI 适配均进入实际链路且可切换 |
+| 可靠性闭环 | 已完成 | owner、幂等、限额、背压、补偿、媒体清理和过期分片回收均有代码与测试 |
+| 面试证据 | 已完成 | 每项主要主张至少有 U/W/R/M 中一种证据，关键链路同时有多层证据 |
+
+“已完成”限定于本地工程实验平台范围，不代表已有公网生产 SLA 或真实 AI 质量基线。
+
 ## 核心业务
 
 | 能力 | 层级 | 自动验证 | 页面/人工验证 | 通过标准 |
@@ -19,7 +30,7 @@
 | 任务查询与历史 | W/M | `WorkflowControllerTests` | “我的视频”选择历史任务 | owner 过滤、详情可加载 |
 | 结果查看 | U/M | `WorkflowProcessorTests` | 转写/摘要页签 | 完成任务展示 transcript/summary |
 | 结果交付 | M | 前端 JS 语法检查 | “复制结果”“Markdown” | 复制完整内容并下载合法文件名 |
-| 任务删除 | W/M | `WorkflowControllerTests` | 历史记录删除 | owner 校验，删除后列表消失 |
+| 任务删除与媒体清理 | U/W/M | `MediaLifecycleServiceTests`、`WorkflowControllerTests` | 终态任务删除 | 活动任务拒绝删除；最后媒体删除；共享媒体保留；失败进入持久重试 |
 | 失败重试 | U/W/M | `VideoTaskServiceTests`、`WorkflowControllerTests` | FAILED 任务点击重试 | 仅 owner 可重试，状态回到 QUEUED |
 | 单用户任务配额 | U/W/M | `VideoTaskServiceTests`、`VideoTaskQuotaIntegrationTests`、`MediaControllerTests` | 页面“处理中 x/y” | 10 并发、上限 3 时恰好只创建 3 个；满额返回 429 |
 
@@ -34,6 +45,7 @@
 | MD5 完整性 | U/R | `ChunkUploadServiceTests` | 声明错误 MD5 | 返回 400，半成品清理，不建任务 |
 | 秒传 | U/M | `ChunkUploadServiceTests` | 重复上传相同内容 | init 返回 exists，跳过重复传输 |
 | 上传观测 | M | 前端 JS 语法检查 | 三种模式依次上传 | 历史结果不随模式切换被改写 |
+| 会话与分片过期 | U/R | `ChunkUploadCleanupServiceTests`、`ChunkUploadServiceTests` | 中断上传后等待清理 | 活动上传刷新 TTL；超过保留期的磁盘分片目录自动删除 |
 
 ## 对象存储与播放
 
@@ -60,15 +72,15 @@
 | 看门狗锁 | U/设计 | 锁接口与工作流测试 | 长处理场景 | 长任务锁自动续期，避免重复处理 |
 | 失败落库 | U | `WorkflowProcessorTests` | Mock 服务抛错 | 状态为 FAILED，错误信息截断 |
 | stale task 补偿 | U | `StaleWorkflowTaskReaperTests` | 调短 timeout | 超时非终态重置并重新发布 |
-| 临时文件清理 | U | 工作流/上传测试 | 人工制造失败 | FFmpeg/merge 异常不残留半成品 |
+| 临时文件清理 | U | 工作流/上传/生命周期测试 | 人工制造失败 | FFmpeg/merge 异常不留半成品；媒体删除失败可重试 |
 
 ## 部署与可观测性
 
 | 能力 | 层级 | 验证命令 | 通过标准 |
 | --- | --- | --- | --- |
-| 单元测试自洽 | U/W | `mvn test` | 79 tests，0 failures |
+| 单元测试自洽 | U/W | `mvn test` | 85 tests，0 failures |
 | 前端语法 | U | `node --check src/main/resources/static/app.js` | 退出码 0 |
-| Compose 解析 | R | `docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet` | 退出码 0 |
+| Compose 解析 | R | 先设 `$env:ENV_FILE=".env.example"`，再运行 `docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet` | 退出码 0 |
 | 上线前体检 | R | `scripts/preflight-deploy.ps1` | 没有 FAIL |
 | 完整中间件链路 | R | `scripts/verify-full-stack.ps1` | ok=true，MySQL/Redis/MQ 全部匹配 |
 | 部署后业务链路 | R | `scripts/verify-deploy.ps1` | 普通上传、直传、任务、DB、Redis、MinIO 全通过 |
@@ -110,6 +122,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps
 - 真实 Redis/MySQL/RocketMQ 链路；
 - MinIO 直传与播放链路；
 - MQ 开关在过载场景下的失败率差异；
+- 终态任务、共享文件、清理失败重试和过期分片的生命周期行为；
 - 生产 Compose、HTTPS 入口和部署前检查流程。
 
 没有声称：

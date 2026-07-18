@@ -856,7 +856,7 @@ async function deleteTask(taskId, triggerButton) {
     if (!window.confirm(`确认删除任务 ${taskId}？删除后不可恢复。`)) return;
     if (triggerButton) triggerButton.disabled = true;
     try {
-        await apiRequest(`/api/workflow/tasks/${taskId}`, { method: "DELETE" });
+        const result = await apiRequest(`/api/workflow/tasks/${taskId}`, { method: "DELETE" });
         if (taskIdInput.value === taskId) {
             taskIdInput.value = "";
             taskField.style.display = "none";
@@ -869,7 +869,13 @@ async function deleteTask(taskId, triggerButton) {
             stopPolling();
             hideVideoPlayer();
         }
-        writeMessage(`已删除任务：${taskId}`);
+        const cleanupMessages = {
+            DELETED: "原视频已同步清理",
+            RETAINED_SHARED: "原视频仍被其他任务引用，已安全保留",
+            NO_MEDIA: "任务没有关联媒体文件",
+            RETRY_PENDING: "任务已删除，原视频清理失败并将在后台自动重试"
+        };
+        writeMessage(`已删除任务：${taskId}；${cleanupMessages[result?.mediaCleanupStatus] || "媒体状态已更新"}`);
         loadMyVideos();
     } catch (error) {
         reportError(error);
@@ -1147,14 +1153,22 @@ async function cleanupAsyncLab() {
     cleanupAsyncLabButton.disabled = true;
     const tasks = await apiRequest("/api/workflow/tasks", { soft: true });
     const matching = (tasks || []).filter((task) => task.fileName?.startsWith(labRun.prefix));
-    for (let index = 0; index < matching.length; index += 10) {
-        await Promise.all(matching.slice(index, index + 10).map((task) =>
+    const terminal = matching.filter((task) => ["COMPLETED", "FAILED"].includes(task.status));
+    const stillActive = matching.length - terminal.length;
+    for (let index = 0; index < terminal.length; index += 10) {
+        await Promise.all(terminal.slice(index, index + 10).map((task) =>
             apiRequest(`/api/workflow/tasks/${task.taskId}`, { method: "DELETE", soft: true })));
     }
-    writeMessage(`已清理本轮 ${matching.length} 条实验任务`);
-    labRun = null;
-    renderLabRun();
-    runAsyncLabButton.disabled = !runtimeInfo;
+    writeMessage(stillActive > 0
+        ? `已清理 ${terminal.length} 条终态实验任务；${stillActive} 条仍在处理，完成后可再次清理`
+        : `已清理本轮 ${terminal.length} 条实验任务`);
+    if (stillActive === 0) {
+        labRun = null;
+        renderLabRun();
+        runAsyncLabButton.disabled = !runtimeInfo;
+    } else {
+        cleanupAsyncLabButton.disabled = false;
+    }
     loadMyVideos();
 }
 
@@ -1177,6 +1191,9 @@ function renderVideoList(tasks) {
         const retryButton = task.status === "FAILED"
             ? `<button class="retry-task" type="button" data-action="retry" aria-label="重试任务 ${escapeHtml(task.fileName)}">重试</button>`
             : "";
+        const deleteButton = ["COMPLETED", "FAILED"].includes(task.status)
+            ? `<button class="delete-task" type="button" data-action="delete" aria-label="删除任务 ${escapeHtml(task.fileName)}">删除</button>`
+            : "";
         return `
             <div class="video-item" data-task-id="${escapeHtml(task.taskId)}">
                 <button class="video-main" type="button" data-action="select">
@@ -1188,7 +1205,7 @@ function renderVideoList(tasks) {
                 </button>
                 <span class="video-actions">
                     ${retryButton}
-                    <button class="delete-task" type="button" data-action="delete" aria-label="删除任务 ${escapeHtml(task.fileName)}">删除</button>
+                    ${deleteButton}
                 </span>
             </div>
         `;

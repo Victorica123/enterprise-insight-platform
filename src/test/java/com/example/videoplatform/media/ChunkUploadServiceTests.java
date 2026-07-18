@@ -69,6 +69,21 @@ class ChunkUploadServiceTests {
 	}
 
 	@Test
+	void initUploadDropsStaleDedupMappingWhenMediaWasDeleted() {
+		MediaDtos.InitUploadRequest request = new MediaDtos.InitUploadRequest(
+				"demo.mp4", 1024L, 2, 512, "md5-stale");
+		when(valueOperations.get("file:md5:md5-stale"))
+				.thenReturn(storageRoot.resolve("uploads/missing.mp4").toString());
+
+		MediaDtos.InitUploadResponse response = service.initUpload("alice", request);
+
+		assertThat(response.exists()).isFalse();
+		assertThat(response.uploadId()).isNotBlank();
+		verify(redisTemplate).delete("file:md5:md5-stale");
+		verify(videoTaskService, never()).createTask(any(), any(), any(), any());
+	}
+
+	@Test
 	void uploadChunkRejectsDifferentOwnerBeforeWritingFile() {
 		when(hashOperations.entries("upload:upload-1:meta")).thenReturn(uploadMeta("bob", "2"));
 		MockMultipartFile file = new MockMultipartFile("file", "chunk", "application/octet-stream", new byte[] {1});
@@ -107,6 +122,7 @@ class ChunkUploadServiceTests {
 				.containsExactly(7);
 		verify(setOperations).add("upload:upload-1:chunks", "0");
 		verify(redisTemplate).expire("upload:upload-1:chunks", Duration.ofHours(24));
+		verify(redisTemplate).expire("upload:upload-1:meta", Duration.ofHours(24));
 	}
 
 	@Test

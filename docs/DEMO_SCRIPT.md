@@ -85,12 +85,13 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 ### 7:00-9:00 可靠性与工程证据
 
-按一次处理链路讲四个保护：
+按一次处理链路讲五个保护：
 
 1. `claimForProcessing` 只允许 `QUEUED` 首次占位，抵御 MQ 重复投递。
 2. 内容 MD5 + single-flight 锁保证同一内容只执行一次昂贵处理，结果 fan-out 给其他任务。
 3. 异常统一落为 `FAILED`，用户可以手动重试。
 4. stale-task reaper 扫描长时间卡住的任务并重新发布，处理 worker 宕机等场景。
+5. 终态任务删除会同步登记媒体清理 job；共享路径保留，存储故障自动重试，过期上传分片定时回收。
 
 然后展示 `VERIFICATION_MATRIX.md`，说明每项主张由测试、脚本、页面还是历史实测支撑。
 
@@ -98,7 +99,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 ### 9:00-10:00 诚实边界与收尾
 
-> 当前已经完成代码测试、本地真实中间件链路和 MQ A/B 实测，但没有虚构公网用户量、SLA 或收入。下一步优先完善媒体生命周期、上传会话审计和孤儿文件清理；如果未来真实上线，还要补 Flyway、备份恢复演练和 CI/CD。
+> 当前已经完成代码测试、本地真实中间件链路、MQ A/B、媒体删除重试和过期分片清理，但没有虚构公网用户量、SLA 或收入。如果未来真实上线，还要补独立上传会话审计、Flyway、备份恢复演练和 CI/CD。
 
 一句话收尾：
 

@@ -78,6 +78,11 @@ app:
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
     type: ${APP_STORAGE_TYPE:local}
+    cleanup:
+      retry-interval-ms: ${APP_MEDIA_CLEANUP_RETRY_INTERVAL_MS:60000}
+      chunk-scan-interval-ms: ${APP_CHUNK_CLEANUP_SCAN_INTERVAL_MS:600000}
+      chunk-scan-initial-delay-ms: ${APP_CHUNK_CLEANUP_INITIAL_DELAY_MS:60000}
+      chunk-retention: ${APP_CHUNK_RETENTION:24h}
     s3:
       endpoint: ${APP_STORAGE_S3_ENDPOINT:http://localhost:19000}
       public-endpoint: ${APP_STORAGE_S3_PUBLIC_ENDPOINT:}

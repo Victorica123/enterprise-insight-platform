@@ -32,6 +32,9 @@ class WorkflowControllerTests {
 	private VideoTaskService videoTaskService;
 
 	@MockBean
+	private MediaLifecycleService mediaLifecycleService;
+
+	@MockBean
 	private WorkflowPublisher workflowPublisher;
 
 	@MockBean
@@ -109,11 +112,19 @@ class WorkflowControllerTests {
 
 	@Test
 	void deletesTaskByIdAndAuthenticatedOwner() throws Exception {
+		MediaLifecycleService.DeletionPlan plan =
+				new MediaLifecycleService.DeletionPlan("task-1", "cleanup-1", "PENDING");
+		when(mediaLifecycleService.scheduleTaskDeletion("task-1", "alice")).thenReturn(plan);
+		when(mediaLifecycleService.attemptCleanup(plan))
+				.thenReturn(new WorkflowDtos.TaskDeletionView("task-1", "DELETED"));
+
 		mockMvc.perform(delete("/api/workflow/tasks/task-1").with(user("alice")))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.success").value(true));
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.mediaCleanupStatus").value("DELETED"));
 
-		verify(videoTaskService).deleteTask("task-1", "alice");
+		verify(mediaLifecycleService).scheduleTaskDeletion("task-1", "alice");
+		verify(mediaLifecycleService).attemptCleanup(plan);
 	}
 
 	@Test
@@ -122,6 +133,7 @@ class WorkflowControllerTests {
 				.andExpect(status().isForbidden());
 
 		verifyNoInteractions(videoTaskService);
+		verifyNoInteractions(mediaLifecycleService);
 	}
 
 	@Test

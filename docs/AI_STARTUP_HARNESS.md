@@ -24,7 +24,7 @@ Primary goal: maintain a locally reproducible, full-featured video platform and 
 
 Engineering topics such as Redis, RocketMQ, object storage, load tests, and observability exist to support that user flow.
 
-Current next work: media lifecycle cleanup, upload-session expiry/audit, and simpler local verification entrypoints. Public deployment is optional.
+Current next work: simpler local verification entrypoints and optional real-AI smoke. Public deployment and a dedicated upload-session audit table are optional extensions.
 
 ## Current Architecture Flags
 
@@ -48,7 +48,9 @@ Current next work: media lifecycle cleanup, upload-session expiry/audit, and sim
 - Local async lab exists: `scripts/start-async-lab.ps1` + page A/B panel compare real local `@Async` and RocketMQ without public hosting.
 - Per-user active-task admission control uses a locked user row; full capacity returns 429 and is visible as `处理中 x/y`.
 - MQ consumer concurrency is explicit (`APP_MQ_CONSUMER_THREADS`, default 4) so fair A/B does not confuse more workers with MQ acceleration.
-- Latest verification: full suite baseline is 79 tests; JS syntax, async-lab PowerShell parse, production Compose config, desktop/mobile browser smoke, real local overload and real RocketMQ runs passed. H2 integration proves 10 concurrent creates cannot exceed a per-owner limit of 3.
+- Media lifecycle is closed: active tasks cannot be deleted; terminal deletion protects shared paths, records a durable cleanup job, retries storage failures, and reports the result to the page.
+- Active chunk uploads refresh Redis TTL; expired on-disk chunk directories are safely scanned and removed with metrics.
+- Latest verification: full suite baseline is 85 tests; JS syntax, async-lab PowerShell parse, production Compose config, desktop/mobile browser smoke, real local overload and real RocketMQ runs passed. H2 integration proves 10 concurrent creates cannot exceed a per-owner limit of 3.
 
 ## High-Value Rules
 
