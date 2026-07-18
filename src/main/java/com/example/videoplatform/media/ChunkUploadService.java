@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @ConditionalOnProperty(prefix = "app.redis", name = "enabled", havingValue = "true")
 public class ChunkUploadService {
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChunkUploadService.class);
 
 	private static final String UPLOAD_META_KEY = "upload:%s:meta";
 	private static final String UPLOAD_CHUNKS_KEY = "upload:%s:chunks";
@@ -201,6 +202,7 @@ public class ChunkUploadService {
 		}
 
 		try {
+			videoTaskService.assertCanCreateTask(owner);
 			String safeName = MediaFileValidator.safeVideoFileName(fileName);
 			Path mergeTemp = Files.createTempFile("video-platform-merge-", "-" + safeName);
 
@@ -235,7 +237,15 @@ public class ChunkUploadService {
 			String stored = mediaStorageService.saveFile(safeName, mergeTemp);
 			deleteQuietly(mergeTemp);
 
-			// 清理分片文件
+			VideoTask task;
+			try {
+				task = videoTaskService.createTask(owner, safeName, stored, fileMd5);
+			} catch (RuntimeException exception) {
+				deleteStoredUploadQuietly(stored);
+				throw exception;
+			}
+
+			// 建任务成功后再清理会话；如果配额或数据库拒绝，用户仍可稍后重试 merge。
 			Path chunkDir = Path.of(appProperties.getStorage().getBasePath())
 					.resolve("chunks")
 					.resolve(uploadId);
@@ -251,7 +261,6 @@ public class ChunkUploadService {
 				redisTemplate.delete(String.format(INPROGRESS_MD5_KEY, fileMd5));
 			}
 
-			VideoTask task = videoTaskService.createTask(owner, safeName, stored, fileMd5);
 			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.MergeResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());
@@ -259,6 +268,14 @@ public class ChunkUploadService {
 			throw new IllegalStateException("合并文件失败", e);
 		} finally {
 			lockService.unlock(lockKey);
+		}
+	}
+
+	private void deleteStoredUploadQuietly(String storagePath) {
+		try {
+			mediaStorageService.delete(storagePath);
+		} catch (IOException cleanupError) {
+			log.warn("Failed to clean rejected merged upload {}", storagePath, cleanupError);
 		}
 	}
 

@@ -119,6 +119,17 @@ public class S3MediaStorageService implements MediaStorageService {
 	}
 
 	@Override
+	public void delete(String storagePath) throws IOException {
+		S3Location location = parse(storagePath);
+		HttpRequest request = HttpRequest.newBuilder(
+				URI.create(createPresignedUrl("DELETE", location, Duration.ofMinutes(5))))
+				.timeout(Duration.ofSeconds(30))
+				.DELETE()
+				.build();
+		sendExpectSuccess(request, "删除对象存储文件失败");
+	}
+
+	@Override
 	public ResolvedMedia resolveForProcessing(String storagePath) throws IOException {
 		S3Location location = parse(storagePath);
 		Path temp = Files.createTempFile("video-platform-media-", "-" + Path.of(location.key()).getFileName());

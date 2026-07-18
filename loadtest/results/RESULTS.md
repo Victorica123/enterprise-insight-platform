@@ -1,5 +1,9 @@
 # P2 压测实测结果快照（2026-07-02）
 
+> 2026-07-18 说明：以下是历史原始结果，不回写当时数据。短复验的 MQ consumer 当时使用框架默认 20 线程，
+> 所以请求接收率差异有效，但完成数量不能直接归因给 MQ。当前代码显式配置 4 个 MQ consumer 线程，
+> 与本地 executor max=4 对齐；新页面同参数结果见 `docs/ASYNC_LAB.md`。
+
 配置：mock 延迟 3s、10 VU、10s 爬坡 + 100s 稳态、THINK 0.5s、单文件 64KB。
 两轮同参数，唯一变量 `app.mq.enabled`。线程池 core2/max4/queue50。
 

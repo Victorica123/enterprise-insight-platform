@@ -6,6 +6,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.videoplatform.auth.UserAccount;
+import com.example.videoplatform.auth.UserAccountRepository;
+import com.example.videoplatform.config.AppProperties;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -16,7 +19,54 @@ import org.mockito.ArgumentCaptor;
 class VideoTaskServiceTests {
 
 	private final VideoTaskRepository taskRepository = org.mockito.Mockito.mock(VideoTaskRepository.class);
-	private final VideoTaskService service = new VideoTaskService(taskRepository);
+	private final UserAccountRepository userAccountRepository = org.mockito.Mockito.mock(UserAccountRepository.class);
+	private final AppProperties appProperties = new AppProperties();
+	private final VideoTaskService service = new VideoTaskService(taskRepository, userAccountRepository, appProperties);
+
+	@Test
+	void createTaskRejectsWhenActiveTaskLimitIsReached() {
+		appProperties.getQuota().setMaxActiveTasksPerUser(2);
+		when(userAccountRepository.findByUserId("user-1"))
+				.thenReturn(Optional.of(new UserAccount("user-1", "alice", "hash")));
+		when(taskRepository.countByOwnerAndStatusIn(eq("user-1"), org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(2L);
+
+		assertThatThrownBy(() -> service.createTask("user-1", "demo.mp4", "storage/demo.mp4"))
+				.isInstanceOf(ActiveTaskLimitExceededException.class)
+				.hasMessageContaining("单用户最多 2 个");
+
+		verify(taskRepository, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+	}
+
+	@Test
+	void createTaskLocksOwnerAndAllowsAvailableSlot() {
+		appProperties.getQuota().setMaxActiveTasksPerUser(2);
+		when(userAccountRepository.findByUserId("user-1"))
+				.thenReturn(Optional.of(new UserAccount("user-1", "alice", "hash")));
+		when(taskRepository.countByOwnerAndStatusIn(eq("user-1"), org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(1L);
+		when(taskRepository.save(org.mockito.ArgumentMatchers.any(VideoTask.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+
+		VideoTask created = service.createTask("user-1", "demo.mp4", "storage/demo.mp4");
+
+		assertThat(created.getOwner()).isEqualTo("user-1");
+		assertThat(created.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
+		verify(userAccountRepository).findByUserId("user-1");
+	}
+
+	@Test
+	void quotaViewCountsOnlyActiveStatuses() {
+		appProperties.getQuota().setMaxActiveTasksPerUser(5);
+		when(taskRepository.countByOwnerAndStatusIn(eq("user-1"), org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(3L);
+
+		WorkflowDtos.TaskQuotaView quota = service.getTaskQuota("user-1");
+
+		assertThat(quota.activeTasks()).isEqualTo(3);
+		assertThat(quota.remainingSlots()).isEqualTo(2);
+		assertThat(quota.limited()).isTrue();
+	}
 
 	@Test
 	void retryFailedTaskResetsStatusAndClearsError() {

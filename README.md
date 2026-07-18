@@ -41,7 +41,7 @@ flowchart LR
 | 大文件上传 | 普通上传、并发分片、断点状态、MD5 完整性校验 | 前端上传观测、`ChunkUploadServiceTests` |
 | 秒传与去重 | 文件 MD5 命中、内容级 single-flight、结果复用 | 工作流测试、P3/P4 文档 |
 | 对象存储 | MinIO/S3、预签名直传、预签名播放、Range 播放 | `verify-deploy.ps1`、媒体测试 |
-| 异步工作流 | 本地 `@Async` 与 RocketMQ 两种发布路径 | MQ A/B 压测 |
+| 异步工作流 | 本地 `@Async` 与 RocketMQ 两种发布路径、页面异步实验室 | 本地 A/B、k6 压测 |
 | 可靠性 | 幂等 claim、分布式锁、失败状态、手动重试、stale task reaper | P3 验证流程 |
 | AI 处理 | FFmpeg 抽音频、Whisper 转写、LLM 摘要、Mock 回退 | 单元测试不依赖外部 API |
 | 用户体验 | 任务状态、错误原因、历史记录、播放、删除、重试 | 首页工作台 |
@@ -71,14 +71,35 @@ flowchart LR
 
 结论：
 
-> RocketMQ 没有加快单个视频，也没有提升处理吞吐。它把线程池饱和时用户可见的 HTTP 失败，转换成 broker 中可恢复的排队延迟。
+> RocketMQ 没有改变单个视频的处理成本。它把线程池饱和时用户可见的 HTTP 失败，转换成 broker 中可恢复的排队延迟；增加消费者并发可以提高吞吐，但那来自更多 worker，不是队列本身加速。
 
-这是项目对“MQ 削峰”的核心工程结论，而不是简单地宣称用了消息队列就更快。
+历史短复验使用过 RocketMQ 默认 20 个消费线程，因此接收率差异有效，但完成数量不能作为“MQ 自带加速”的证据。当前默认把 MQ consumer 设为 4，与本地线程池 max=4 对齐。
 
 完整方法和原始结果见：
 
 - [MQ A/B 测试方法](docs/LOADTEST.md)
 - [实测结果快照](loadtest/results/RESULTS.md)
+
+### 不上服务器也能验证异步
+
+项目内置页面“异步实验室”，会并发上传小型模拟视频并实时显示 HTTP 接收/拒绝、后台任务、排队和完成数。两次结果保存在浏览器，可在重启切换模式后并排比较。
+
+```powershell
+# 不需要 Docker：本地 @Async 有界线程池
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode local
+
+# 需要 Docker Desktop：真实 RocketMQ
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 -Mode mq
+```
+
+同参数本地实测（80 个 16 KB 任务、500 ms Mock、4 worker）：
+
+| 模式 | HTTP 接收 | HTTP 拒绝 | 后台最终完成 | 总耗时 |
+| --- | ---: | ---: | ---: | ---: |
+| 本地 `@Async` | 54/80 | 26/80 | 80/80 | 18.55 s |
+| RocketMQ | 80/80 | 0/80 | 80/80 | 11.32 s |
+
+本地拒绝的任务已先落库，10 秒 stale-task reaper 将它们重新投递，因此最终仍能完成。详细步骤见 [本地异步实验室](docs/ASYNC_LAB.md)。
 
 ## 快速启动
 
@@ -150,7 +171,7 @@ mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskService
 node --check src/main/resources/static/app.js
 ```
 
-当前基线：70 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
+当前基线：79 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
 
 ## 关键设计取舍
 
@@ -201,6 +222,7 @@ docs/                        P3/P4/P5、演示和排障文档
 - [故障排查记录](docs/TROUBLESHOOTING.md)
 - [可靠性验证](docs/P3_RELIABILITY_VERIFICATION.md)
 - [对象存储验证](docs/P4_OBJECT_STORAGE.md)
+- [本地异步实验室](docs/ASYNC_LAB.md)
 - [跨模型项目交接](docs/AI_HANDOFF.md)
 
 ## 已知边界

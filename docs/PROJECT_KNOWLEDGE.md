@@ -33,6 +33,7 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 - `P4_OBJECT_STORAGE.md`: MinIO/S3-compatible storage verification and interview framing.
 - `P5_SMALL_SCALE_DEPLOYMENT.md`: single-server deployment, smoke verification, debug playbook, and interview framing.
 - `LOADTEST.md`: MQ on/off A/B load-test method and measured results.
+- `ASYNC_LAB.md`: beginner-friendly page A/B for local `@Async`, RocketMQ, overload, and reaper recovery.
 - `VERIFICATION_MATRIX.md`: feature-to-evidence map across unit, Web, runtime, and manual verification.
 - `DEMO_SCRIPT.md`: 5-10 minute interview or stakeholder walkthrough.
 - `INTERVIEW_PREP.html`: deeper architecture explanation (静态,可能滞后于代码).
@@ -48,7 +49,7 @@ Engineering work serves that goal. Large-file transfer, high concurrency, deploy
 ## Near-Term Direction
 
 1. Keep the core workflow demonstrable: login, three upload paths, task status, transcript/summary, playback, export, retry, and history.
-2. Use `VERIFICATION_MATRIX.md` and saved MQ A/B data to separate tested facts from future plans.
+2. Use the page async lab, `VERIFICATION_MATRIX.md`, and saved MQ A/B data to separate tested facts from future plans.
 3. Improve production gaps only when useful: schema migrations, upload-session audit/cleanup, quotas/rate limits, backup restore, and CI/CD.
 4. Preserve the original platform vision without requiring paid public hosting or inventing production usage data.
 

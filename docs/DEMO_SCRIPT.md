@@ -66,7 +66,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 ### 5:00-7:00 MQ 削峰实测
 
-打开 `README.md` 的 MQ A/B 表格或 `loadtest/results/RESULTS.md`。
+打开页面“异步实验室”的本地/RocketMQ 对比；也可以展示 `README.md` 的 MQ A/B 表格或 `loadtest/results/RESULTS.md`。
 
 短压测数据：
 
@@ -79,7 +79,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 讲解：
 
-> 两轮使用同样的真实 Redis、MySQL、RocketMQ 和 2 秒 Mock 处理延迟。MQ 关闭时，本地线程池饱和后大量请求被拒绝；MQ 开启后，请求全部被接收，但积压进入 broker，消费者仍按原速度处理。因此 MQ 的价值是削峰、解耦和可恢复，不是让单个视频更快，也没有凭空增加处理吞吐。
+> MQ 关闭时，本地线程池饱和后请求会收到 503，但任务已落库并由 reaper 补偿；MQ 开启后，请求先进入 broker，消费者按能力处理。消费者并发增加可以提高吞吐，但那是更多 worker 的效果。公平 A/B 默认让两边都是 4 个 worker，避免把并发差异误说成 MQ 加速。
 
 加分点：指出大压测里 MQ 模式端到端等待曾达到 22 分钟，说明“100% 接收”还必须配合队列深度告警、限流、扩容和用户等待预期。
 

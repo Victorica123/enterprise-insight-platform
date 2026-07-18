@@ -19,6 +19,7 @@ Help real users upload videos, wait for processing, receive transcript/summary r
 - AGENTS.md - Codex working rules. Keep it aligned with CLAUDE.md when architecture changes.
 - docs/TROUBLESHOOTING.md - real engineering problem cards. Add new issues with Symptom, Cause, Fix, Verify yourself, and Interview point.
 - docs/LOADTEST.md - MQ on/off A/B load-test method and measured results.
+- docs/ASYNC_LAB.md - local page-driven async/MQ A/B without public hosting.
 - docs/VERIFICATION_MATRIX.md - feature-to-evidence map and claim boundaries.
 - docs/DEMO_SCRIPT.md - current 5-10 minute presentation flow.
 - INTERVIEW_GUIDE.md - interview-facing feature and architecture summary.
@@ -37,10 +38,12 @@ Help real users upload videos, wait for processing, receive transcript/summary r
 - Generated at: 2026-07-18 +08:00
 - Last agent: Codex
 - Branch: main
-- Last commit before current work: `2ee33b3 docs: refresh deployment handoff`
-- Repository state: presentation/export changes are being finalized. Local `.claude/settings.json` changes remain user-owned and must stay out of commits.
+- Last commit before current work: `70f9b11 feat: complete interview presentation package`
+- Repository state: local async-lab and task-admission work is being finalized. Local `.claude/settings.json` changes remain user-owned and must stay out of commits.
 
 ## Latest Session Summary
+
+2026-07-18 local async-lab update (Codex): added a page experiment that submits real small uploads and tracks HTTP accepted/rejected, backend tasks, active and completed states across app restarts. Added `scripts/start-async-lab.ps1 -Mode local|mq`, per-user active-task quota with locked owner row and HTTP 429, explicit MQ consumer concurrency, and a precise 503 overload handler without repeated stack traces. Real equal-worker run (80 tasks, 16 KB, 500 ms Mock, 4 workers): local accepted 54/rejected 26 and recovered all 80 in 18.55s; MQ accepted 80/rejected 0 and completed all in 11.32s.
 
 2026-07-18 presentation update (Codex): rebuilt the GitHub README around the business flow, architecture, evidence and honest limitations; added `docs/VERIFICATION_MATRIX.md`; added frontend copy and Markdown result export; rewrote `docs/DEMO_SCRIPT.md` into a 5-10 minute current demo; and replaced the stale interview guide with current Redis/MQ/MinIO/reliability/deployment knowledge and measured MQ conclusions.
 
@@ -66,6 +69,8 @@ Expanded P3 verification and continued P4. P3 now has docs/P3_RELIABILITY_VERIFI
 
 ## Verification
 
+2026-07-18 async-lab verification: full-suite baseline is 79 tests; `node --check`, PowerShell parse, production Compose config and `git diff --check` passed. H2 integration proved 10 concurrent creates with an owner limit of 3 create exactly 3 tasks. Browser desktop/mobile smoke had no horizontal overflow. Real equal-worker run (80 tasks, 16 KB, Mock 500 ms, 4 workers): local accepted 54/rejected 26 and reaper recovered all 80 in 18.55s; RocketMQ accepted 80/rejected 0 and completed all in 11.32s. MQ consumer logs showed exactly four concurrent consumer threads after explicit configuration.
+
 node --check src/main/resources/static/app.js passed. Focused tests for upload/playback/workflow previously passed: 31 tests. Full mvn test previously passed: 56 tests.
 
 2026-07-03 verification: node --check src/main/resources/static/app.js passed; focused workflow tests (`WorkflowControllerTests,VideoTaskServiceTests,StaleWorkflowTaskReaperTests`) passed with 13 tests; full `mvn test` passed with 60 tests.
@@ -90,8 +95,9 @@ When `APP_REDIS_ENABLED=false` (lightweight mode) the Spring Boot Redis health i
 
 ## Recommended Next Step
 
-Use the current package for repeatable local demos and interview practice. Prioritize schema migrations, upload-session lifecycle, quotas/rate limits, backup restore, and CI only when continuing production hardening; public hosting is optional rather than the current blocker.
+Use the current package as a repeatable local engineering lab and interview demo. Public hosting is optional. Next product-hardening candidates are upload-session lifecycle/audit and safe media cleanup; database migrations and backup/CI matter only if deployment becomes a goal again.
 
 ## Handoff Log
 
+- 2026-07-18 Codex: added local async lab, per-user active-task admission, explicit MQ consumer concurrency, 503 overload semantics, 78-test baseline, real local/MQ A/B, and docs. Public deployment is optional; local reproducibility is the default demonstration path.
 - 2026-07-18 Codex: refreshed README/demo/interview/evidence docs and added user-visible result export. `node --check`, full `mvn test` (70/70), `git diff --check`, and desktop/mobile browser smoke passed; mobile had no horizontal overflow and result actions kept stable disabled states before a result exists.

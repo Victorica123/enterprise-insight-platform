@@ -9,6 +9,8 @@ public class AppProperties {
 	private final Jwt jwt = new Jwt();
 	private final Storage storage = new Storage();
 	private final Workflow workflow = new Workflow();
+	private final Quota quota = new Quota();
+	private final Mq mq = new Mq();
 	private final Transcript transcript = new Transcript();
 	private final Summary summary = new Summary();
 
@@ -22,6 +24,14 @@ public class AppProperties {
 
 	public Workflow getWorkflow() {
 		return workflow;
+	}
+
+	public Quota getQuota() {
+		return quota;
+	}
+
+	public Mq getMq() {
+		return mq;
 	}
 
 	public Transcript getTranscript() {
@@ -154,6 +164,31 @@ public class AppProperties {
 
 		public void setStaleTaskTimeout(Duration staleTaskTimeout) {
 			this.staleTaskTimeout = staleTaskTimeout;
+		}
+	}
+
+	public static class Quota {
+		/** 0 表示不限制；生产小范围试用建议配置为 5-10。 */
+		private int maxActiveTasksPerUser;
+
+		public int getMaxActiveTasksPerUser() {
+			return maxActiveTasksPerUser;
+		}
+
+		public void setMaxActiveTasksPerUser(int maxActiveTasksPerUser) {
+			this.maxActiveTasksPerUser = maxActiveTasksPerUser;
+		}
+	}
+
+	public static class Mq extends Feature {
+		private int consumerThreads = 4;
+
+		public int getConsumerThreads() {
+			return consumerThreads;
+		}
+
+		public void setConsumerThreads(int consumerThreads) {
+			this.consumerThreads = consumerThreads;
 		}
 	}
 

@@ -23,6 +23,8 @@ public interface MediaStorageService {
 
 	boolean objectExists(String storagePath) throws IOException;
 
+	void delete(String storagePath) throws IOException;
+
 	ResolvedMedia resolveForProcessing(String storagePath) throws IOException;
 
 	Optional<String> createPlaybackRedirectUrl(String storagePath, Duration expiresIn);

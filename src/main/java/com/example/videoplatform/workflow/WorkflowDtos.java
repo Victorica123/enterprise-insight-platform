@@ -33,4 +33,11 @@ public final class WorkflowDtos {
 					task.getUpdatedAt());
 		}
 	}
+
+	public record TaskQuotaView(long activeTasks, int maxActiveTasksPerUser, long remainingSlots, boolean limited) {
+	}
+
+	public record RuntimeView(String dispatchMode, boolean mqEnabled, long mockDelayMs,
+			int maxActiveTasksPerUser, int mqConsumerThreads, String storageType) {
+	}
 }

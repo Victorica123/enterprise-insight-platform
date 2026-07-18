@@ -63,6 +63,27 @@ class WorkflowControllerTests {
 	}
 
 	@Test
+	void returnsOwnerTaskQuota() throws Exception {
+		when(videoTaskService.getTaskQuota("alice"))
+				.thenReturn(new WorkflowDtos.TaskQuotaView(3, 5, 2, true));
+
+		mockMvc.perform(get("/api/workflow/quota").with(user("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.activeTasks").value(3))
+				.andExpect(jsonPath("$.data.remainingSlots").value(2));
+
+		verify(videoTaskService).getTaskQuota("alice");
+	}
+
+	@Test
+	void exposesCurrentAsyncRuntimeForVisualLab() throws Exception {
+		mockMvc.perform(get("/api/workflow/runtime").with(user("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.dispatchMode").value("local-async"))
+				.andExpect(jsonPath("$.data.mqEnabled").value(false));
+	}
+
+	@Test
 	void loadsTaskByIdAndAuthenticatedOwner() throws Exception {
 		VideoTask task = new VideoTask("task-1", "video-1", "alice", "demo.mp4", "storage/demo.mp4");
 		when(videoTaskService.requireTask("task-1", "alice")).thenReturn(task);

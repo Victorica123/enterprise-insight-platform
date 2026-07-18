@@ -1,6 +1,8 @@
 package com.example.videoplatform.workflow;
 
 import com.example.videoplatform.common.ApiResponse;
+import com.example.videoplatform.config.AppProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,12 +22,17 @@ public class WorkflowController {
 	private final VideoTaskService videoTaskService;
 	private final WorkflowPublisher workflowPublisher;
 	private final WorkflowMetrics workflowMetrics;
+	private final AppProperties appProperties;
+	private final boolean mqEnabled;
 
 	public WorkflowController(VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
-			WorkflowMetrics workflowMetrics) {
+			WorkflowMetrics workflowMetrics, AppProperties appProperties,
+			@Value("${app.mq.enabled:false}") boolean mqEnabled) {
 		this.videoTaskService = videoTaskService;
 		this.workflowPublisher = workflowPublisher;
 		this.workflowMetrics = workflowMetrics;
+		this.appProperties = appProperties;
+		this.mqEnabled = mqEnabled;
 	}
 
 	/**
@@ -45,6 +52,23 @@ public class WorkflowController {
 		String currentUser = currentUsername(authentication);
 		List<VideoTask> tasks = videoTaskService.listTasksByOwner(currentUser);
 		return ApiResponse.ok(tasks.stream().map(WorkflowDtos.TaskView::from).toList());
+	}
+
+	@GetMapping("/quota")
+	public ApiResponse<WorkflowDtos.TaskQuotaView> getTaskQuota(Authentication authentication) {
+		return ApiResponse.ok(videoTaskService.getTaskQuota(currentUsername(authentication)));
+	}
+
+	@GetMapping("/runtime")
+	public ApiResponse<WorkflowDtos.RuntimeView> getRuntime(Authentication authentication) {
+		currentUsername(authentication);
+		return ApiResponse.ok(new WorkflowDtos.RuntimeView(
+				mqEnabled ? "rocketmq" : "local-async",
+				mqEnabled,
+				appProperties.getTranscript().getMockDelayMs(),
+				appProperties.getQuota().getMaxActiveTasksPerUser(),
+				appProperties.getMq().getConsumerThreads(),
+				appProperties.getStorage().getType()));
 	}
 
 	@DeleteMapping("/tasks/{taskId}")

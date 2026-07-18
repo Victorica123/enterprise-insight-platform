@@ -22,3 +22,5 @@ app:
     enabled: false
   mq:
     enabled: false
+  quota:
+    max-active-tasks-per-user: 0

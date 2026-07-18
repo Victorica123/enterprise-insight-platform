@@ -227,6 +227,138 @@ textarea {
     gap: 8px;
 }
 
+.quota-pill {
+    justify-self: end;
+    padding: 5px 8px;
+    border: 1px solid #a7d8c8;
+    border-radius: 8px;
+    background: var(--success-soft);
+    color: #12634f;
+    font-size: 12px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.quota-pill.full {
+    border-color: #efb3ad;
+    background: #fff0ee;
+    color: #a6322a;
+}
+
+.runtime-pill {
+    justify-self: end;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-subtle);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.runtime-pill.mq {
+    border-color: #a7d8c8;
+    background: var(--success-soft);
+    color: #12634f;
+}
+
+.lab-controls {
+    display: grid;
+    grid-template-columns: auto 70px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.lab-controls label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.lab-controls input {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+}
+
+.lab-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.lab-stats div {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel-subtle);
+}
+
+.lab-stats span,
+.lab-compare span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.lab-stats strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.lab-progress {
+    height: 6px;
+    margin-top: 10px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: var(--border);
+}
+
+.lab-progress span {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--primary);
+    transition: width 180ms ease;
+}
+
+.lab-compare {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.lab-compare div {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.lab-compare strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lab-cleanup {
+    width: 100%;
+    margin-top: 10px;
+}
+
 .result-action {
     display: inline-flex;
     align-items: center;
@@ -1097,7 +1229,9 @@ textarea {
 
     .panel-heading .status-pill,
     .panel-heading .icon-button,
-    .panel-heading .result-actions {
+    .panel-heading .result-actions,
+    .panel-heading .quota-pill,
+    .panel-heading .runtime-pill {
         grid-column: 2;
         justify-self: start;
         margin-top: 6px;
@@ -1105,6 +1239,10 @@ textarea {
 
     .result-actions {
         flex-wrap: wrap;
+    }
+
+    .lab-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .tabs {

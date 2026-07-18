@@ -90,6 +90,8 @@ app:
     enabled: ${APP_REDIS_ENABLED:true}
   mq:
     enabled: ${APP_MQ_ENABLED:false}
+    # 默认与本地 @Async maxPoolSize=4 对齐，使 MQ 开/关 A/B 只比较排队位置与接收率。
+    consumer-threads: ${APP_MQ_CONSUMER_THREADS:4}
   workflow:
     # 定时补偿：超过该时间仍停留在 QUEUED/TRANSCRIBING/SUMMARIZING 的任务会被重新投递。
     # 解决进程崩溃、MQ 异常、单飞赢家中断后任务永久卡住的问题；默认保守设为 1 小时，避免误伤长视频。
@@ -97,6 +99,9 @@ app:
     reaper-enabled: ${APP_WORKFLOW_REAPER_ENABLED:true}
     reaper-interval-ms: ${APP_WORKFLOW_REAPER_INTERVAL_MS:60000}
     reaper-initial-delay-ms: ${APP_WORKFLOW_REAPER_INITIAL_DELAY_MS:60000}
+  quota:
+    # 0 表示关闭限制；生产小范围试用建议配置 5-10，防止单个用户压满队列与外部 AI 配额。
+    max-active-tasks-per-user: ${APP_MAX_ACTIVE_TASKS_PER_USER:5}
   transcript:
     enabled: ${APP_TRANSCRIPT_ENABLED:false}
     # 压测用：Mock 转写模拟处理耗时（毫秒）。默认 0 即刻返回；P2 压测时设为秒级还原慢消费者（见 docs/LOADTEST.md）

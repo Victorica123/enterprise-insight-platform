@@ -19,6 +19,23 @@ const copyResultButton = document.getElementById("copyResult");
 const downloadResultButton = document.getElementById("downloadResult");
 const messagesArea = document.getElementById("messages");
 const statusPill = document.getElementById("statusPill");
+const quotaPill = document.getElementById("quotaPill");
+const labRuntimeMode = document.getElementById("labRuntimeMode");
+const labRuntimeMeta = document.getElementById("labRuntimeMeta");
+const labTaskCount = document.getElementById("labTaskCount");
+const runAsyncLabButton = document.getElementById("runAsyncLab");
+const cleanupAsyncLabButton = document.getElementById("cleanupAsyncLab");
+const labEls = {
+    accepted: document.getElementById("labAccepted"),
+    rejected: document.getElementById("labRejected"),
+    backend: document.getElementById("labBackend"),
+    active: document.getElementById("labActive"),
+    completed: document.getElementById("labCompleted"),
+    elapsed: document.getElementById("labElapsed"),
+    progress: document.getElementById("labProgress"),
+    localResult: document.getElementById("labLocalResult"),
+    mqResult: document.getElementById("labMqResult")
+};
 const loginButton = document.getElementById("loginButton");
 const registerButton = document.getElementById("registerButton");
 const uploadButton = document.getElementById("uploadButton");
@@ -60,6 +77,10 @@ let currentFile = null;
 let uploadMode = localStorage.getItem("vp_upload_mode") || "single";
 let activeMetrics = null;
 let currentTask = null;
+let taskQuota = { limited: false, remainingSlots: -1 };
+let runtimeInfo = null;
+let labRun = null;
+let labPollingTimer = null;
 let lastMetrics = {
     single: null,
     chunk: null,
@@ -84,6 +105,7 @@ strategyOptions.forEach((option) => {
 
 setUploadMode(uploadMode);
 resetActiveMetrics();
+renderSavedLabResults();
 
 if (token) {
     showLoggedIn("已恢复登录状态");
@@ -104,7 +126,7 @@ videoFileInput.addEventListener("change", () => {
     dropzoneFile.style.display = "block";
     dropzone.classList.add("has-file");
     dropzone.classList.remove("is-dragover");
-    uploadButton.disabled = !token;
+    updateUploadButtonState();
     resetActiveMetrics();
 });
 
@@ -151,6 +173,8 @@ refreshButton.addEventListener("click", async () => {
 loadMyVideosButton.addEventListener("click", loadMyVideos);
 copyResultButton.addEventListener("click", copyTaskResult);
 downloadResultButton.addEventListener("click", downloadTaskResult);
+runAsyncLabButton.addEventListener("click", runAsyncLab);
+cleanupAsyncLabButton.addEventListener("click", cleanupAsyncLab);
 
 // 历史列表用事件委托：无论重渲染多少次都只在容器上绑定一次，避免逐项重复绑定与监听泄漏。
 videoList.addEventListener("click", (event) => {
@@ -300,7 +324,9 @@ function showLoggedIn(message) {
     tokenBar.style.display = "flex";
     tokenText.textContent = message;
     myVideosCard.style.display = "block";
-    uploadButton.disabled = !currentFile;
+    quotaPill.hidden = false;
+    updateUploadButtonState();
+    loadRuntimeInfo();
 }
 
 function clearAuthState(message = "登录已过期，请重新登录") {
@@ -308,6 +334,8 @@ function clearAuthState(message = "登录已过期，请重新登录") {
     localStorage.removeItem("vp_token");
     tokenBar.style.display = "none";
     tokenText.textContent = "";
+    quotaPill.hidden = true;
+    taskQuota = { limited: false, remainingSlots: -1 };
     myVideosCard.style.display = "none";
     uploadButton.disabled = true;
     refreshButton.disabled = true;
@@ -316,6 +344,8 @@ function clearAuthState(message = "登录已过期，请重新登录") {
     summaryArea.value = "";
     updateResultActions();
     stopPolling();
+    stopLabPolling();
+    runAsyncLabButton.disabled = true;
     writeMessage(message, true);
 }
 
@@ -446,7 +476,7 @@ async function uploadSingleFile() {
         setProgress(0, "上传失败");
         setStatus("上传失败", "error");
         reportError(error);
-        uploadButton.disabled = !token || !currentFile;
+        updateUploadButtonState();
     }
 }
 
@@ -545,7 +575,7 @@ async function uploadFileChunked() {
         setProgress(0, "上传失败");
         setStatus("上传失败", "error");
         reportError(error);
-        uploadButton.disabled = !token || !currentFile;
+        updateUploadButtonState();
     }
 }
 
@@ -627,7 +657,7 @@ async function uploadFileDirect() {
         setProgress(0, "上传失败");
         setStatus("上传失败", "error");
         reportError(error);
-        uploadButton.disabled = !token || !currentFile;
+        updateUploadButtonState();
     }
 }
 
@@ -740,7 +770,7 @@ function handleUploadSuccess(taskId, status) {
     hideVideoPlayer();
     setStatus(status || "处理中", "running");
     refreshButton.disabled = false;
-    uploadButton.disabled = !currentFile;
+    updateUploadButtonState();
     loadMyVideos();
     startPolling();
 }
@@ -940,9 +970,192 @@ async function loadMyVideos() {
     try {
         const data = await apiRequest("/api/workflow/tasks");
         renderVideoList(data || []);
+        await loadTaskQuota();
     } catch (error) {
         reportError(error);
     }
+}
+
+async function loadTaskQuota() {
+    const quota = await apiRequest("/api/workflow/quota", { soft: true });
+    if (!quota) return;
+    taskQuota = quota;
+    if (quota.limited) {
+        quotaPill.textContent = `处理中 ${quota.activeTasks}/${quota.maxActiveTasksPerUser}`;
+        quotaPill.classList.toggle("full", quota.remainingSlots <= 0);
+        quotaPill.title = quota.remainingSlots > 0
+            ? `还可提交 ${quota.remainingSlots} 个任务`
+            : "任务容量已满，请等待已有任务完成";
+    } else {
+        quotaPill.textContent = `处理中 ${quota.activeTasks}`;
+        quotaPill.classList.remove("full");
+        quotaPill.title = "当前未启用单用户任务上限";
+    }
+    quotaPill.hidden = false;
+    updateUploadButtonState();
+}
+
+function updateUploadButtonState() {
+    const quotaFull = taskQuota.limited && taskQuota.remainingSlots <= 0;
+    uploadButton.disabled = !token || !currentFile || quotaFull;
+}
+
+async function loadRuntimeInfo() {
+    const info = await apiRequest("/api/workflow/runtime", { soft: true });
+    if (!info) return;
+    runtimeInfo = info;
+    labRuntimeMode.textContent = info.mqEnabled ? "RocketMQ" : "本地 @Async";
+    labRuntimeMode.classList.toggle("mq", info.mqEnabled);
+    const quotaText = info.maxActiveTasksPerUser > 0
+        ? `配额 ${info.maxActiveTasksPerUser}`
+        : "配额关闭";
+    const workerText = info.mqEnabled ? `消费者 ${info.mqConsumerThreads}` : "线程池 2-4";
+    labRuntimeMeta.textContent = `Mock ${info.mockDelayMs}ms · ${workerText} · ${quotaText} · ${info.storageType}`;
+    runAsyncLabButton.disabled = false;
+}
+
+async function runAsyncLab() {
+    if (!token || !runtimeInfo || labRun) return;
+    const count = Math.max(1, Math.min(100, Number.parseInt(labTaskCount.value, 10) || 1));
+    labTaskCount.value = String(count);
+    const prefix = `async-lab-${Date.now()}-`;
+    labRun = {
+        prefix,
+        mode: runtimeInfo.mqEnabled ? "mq" : "local",
+        requested: count,
+        accepted: 0,
+        rejected: 0,
+        backend: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        startedAt: Date.now(),
+        submissionMs: 0,
+        submissionsDone: false
+    };
+    runAsyncLabButton.disabled = true;
+    cleanupAsyncLabButton.disabled = true;
+    renderLabRun();
+    writeMessage(`异步实验开始：${labRuntimeMode.textContent}，并发提交 ${count} 个任务`);
+
+    const submissionStarted = performance.now();
+    await Promise.all(Array.from({ length: count }, async (_, index) => {
+        const formData = new FormData();
+        const payload = new File([new Uint8Array(16 * 1024)], `${prefix}${index}.mp4`, { type: "video/mp4" });
+        formData.append("file", payload, payload.name);
+        try {
+            await apiRequest("/api/media/upload/file", { method: "POST", body: formData });
+            labRun.accepted += 1;
+        } catch (error) {
+            labRun.rejected += 1;
+        }
+        renderLabRun();
+    }));
+    labRun.submissionMs = performance.now() - submissionStarted;
+    labRun.submissionsDone = true;
+    writeMessage(`提交完成：HTTP 接收 ${labRun.accepted}，拒绝 ${labRun.rejected}，耗时 ${formatDuration(labRun.submissionMs)}`);
+    await refreshLabRun();
+    startLabPolling();
+}
+
+function startLabPolling() {
+    stopLabPolling();
+    labPollingTimer = window.setInterval(refreshLabRun, 1000);
+}
+
+function stopLabPolling() {
+    if (labPollingTimer) {
+        window.clearInterval(labPollingTimer);
+        labPollingTimer = null;
+    }
+}
+
+async function refreshLabRun() {
+    if (!labRun || !token) return;
+    const tasks = await apiRequest("/api/workflow/tasks", { soft: true });
+    if (!tasks) return;
+    const matching = tasks.filter((task) => task.fileName?.startsWith(labRun.prefix));
+    labRun.backend = matching.length;
+    labRun.completed = matching.filter((task) => task.status === "COMPLETED").length;
+    labRun.failed = matching.filter((task) => task.status === "FAILED").length;
+    labRun.active = matching.length - labRun.completed - labRun.failed;
+    renderLabRun();
+    saveLabResult();
+    if (labRun.submissionsDone && labRun.active === 0
+            && (labRun.backend > 0 || labRun.accepted === 0)) {
+        stopLabPolling();
+        cleanupAsyncLabButton.disabled = false;
+        writeMessage(`异步实验完成：后台任务 ${labRun.backend}，完成 ${labRun.completed}，失败 ${labRun.failed}`);
+        loadMyVideos();
+    }
+}
+
+function renderLabRun() {
+    if (!labRun) {
+        labEls.accepted.textContent = "0";
+        labEls.rejected.textContent = "0";
+        labEls.backend.textContent = "0";
+        labEls.active.textContent = "0";
+        labEls.completed.textContent = "0";
+        labEls.elapsed.textContent = "-";
+        labEls.progress.style.width = "0";
+        return;
+    }
+    labEls.accepted.textContent = String(labRun.accepted);
+    labEls.rejected.textContent = String(labRun.rejected);
+    labEls.backend.textContent = String(labRun.backend);
+    labEls.active.textContent = String(labRun.active);
+    labEls.completed.textContent = String(labRun.completed);
+    labEls.elapsed.textContent = formatDuration(Date.now() - labRun.startedAt);
+    const terminal = labRun.completed + labRun.failed;
+    const progress = labRun.backend > 0 ? (terminal / labRun.backend) * 100 : 0;
+    labEls.progress.style.width = `${Math.min(100, progress)}%`;
+}
+
+function saveLabResult() {
+    if (!labRun) return;
+    const result = {
+        requested: labRun.requested,
+        accepted: labRun.accepted,
+        rejected: labRun.rejected,
+        backend: labRun.backend,
+        completed: labRun.completed,
+        elapsedMs: Date.now() - labRun.startedAt,
+        mockDelayMs: runtimeInfo?.mockDelayMs || 0
+    };
+    localStorage.setItem(`vp_async_lab_${labRun.mode}`, JSON.stringify(result));
+    renderSavedLabResults();
+}
+
+function renderSavedLabResults() {
+    labEls.localResult.textContent = formatSavedLabResult(localStorage.getItem("vp_async_lab_local"));
+    labEls.mqResult.textContent = formatSavedLabResult(localStorage.getItem("vp_async_lab_mq"));
+}
+
+function formatSavedLabResult(raw) {
+    if (!raw) return "暂无";
+    try {
+        const result = JSON.parse(raw);
+        return `接收 ${result.accepted}/${result.requested} · 完成 ${result.completed}/${result.backend} · ${formatDuration(result.elapsedMs)}`;
+    } catch (error) {
+        return "记录无效";
+    }
+}
+
+async function cleanupAsyncLab() {
+    if (!labRun || labRun.active > 0 || !token) return;
+    cleanupAsyncLabButton.disabled = true;
+    const tasks = await apiRequest("/api/workflow/tasks", { soft: true });
+    const matching = (tasks || []).filter((task) => task.fileName?.startsWith(labRun.prefix));
+    for (let index = 0; index < matching.length; index += 10) {
+        await Promise.all(matching.slice(index, index + 10).map((task) =>
+            apiRequest(`/api/workflow/tasks/${task.taskId}`, { method: "DELETE", soft: true })));
+    }
+    writeMessage(`已清理本轮 ${matching.length} 条实验任务`);
+    labRun = null;
+    renderLabRun();
+    runAsyncLabButton.disabled = !runtimeInfo;
+    loadMyVideos();
 }
 
 function renderVideoList(tasks) {

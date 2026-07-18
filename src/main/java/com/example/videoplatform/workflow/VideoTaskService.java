@@ -1,5 +1,7 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.auth.UserAccountRepository;
+import com.example.videoplatform.config.AppProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,9 +15,14 @@ import java.util.UUID;
 public class VideoTaskService {
 
 	private final VideoTaskRepository taskRepository;
+	private final UserAccountRepository userAccountRepository;
+	private final AppProperties appProperties;
 
-	public VideoTaskService(VideoTaskRepository taskRepository) {
+	public VideoTaskService(VideoTaskRepository taskRepository, UserAccountRepository userAccountRepository,
+			AppProperties appProperties) {
 		this.taskRepository = taskRepository;
+		this.userAccountRepository = userAccountRepository;
+		this.appProperties = appProperties;
 	}
 
 	@Transactional
@@ -25,10 +32,35 @@ public class VideoTaskService {
 
 	@Transactional
 	public VideoTask createTask(String owner, String fileName, String storagePath, String contentMd5) {
+		assertCanCreateTask(owner);
 		String taskId = UUID.randomUUID().toString();
 		String videoId = UUID.randomUUID().toString();
 		VideoTask task = new VideoTask(taskId, videoId, owner, fileName, storagePath, contentMd5);
 		return taskRepository.save(task);
+	}
+
+	/**
+	 * 在写入文件前给用户一个快速反馈；createTask 内部还会再次检查，覆盖并发竞争窗口。
+	 */
+	@Transactional
+	public void assertCanCreateTask(String owner) {
+		int limit = appProperties.getQuota().getMaxActiveTasksPerUser();
+		if (limit <= 0) {
+			return;
+		}
+		lockOwner(owner);
+		long activeCount = countActiveTasks(owner);
+		if (activeCount >= limit) {
+			throw new ActiveTaskLimitExceededException(limit, activeCount);
+		}
+	}
+
+	@Transactional(readOnly = true)
+	public WorkflowDtos.TaskQuotaView getTaskQuota(String owner) {
+		int limit = appProperties.getQuota().getMaxActiveTasksPerUser();
+		long activeCount = countActiveTasks(owner);
+		long remaining = limit > 0 ? Math.max(0, limit - activeCount) : -1;
+		return new WorkflowDtos.TaskQuotaView(activeCount, limit, remaining, limit > 0);
 	}
 
 	@Transactional(readOnly = true)
@@ -72,6 +104,7 @@ public class VideoTaskService {
 		if (task.getStatus() != VideoTask.TaskStatus.FAILED) {
 			throw new IllegalArgumentException("只有失败任务可以重试: " + taskId);
 		}
+		assertCanCreateTask(owner);
 		task.setErrorMessage(null);
 		task.setStatus(VideoTask.TaskStatus.QUEUED);
 		return task;
@@ -119,6 +152,18 @@ public class VideoTaskService {
 	private VideoTask requireManagedTask(String taskId) {
 		return taskRepository.findById(taskId)
 				.orElseThrow(() -> new IllegalArgumentException("任务不存在: " + taskId));
+	}
+
+	private long countActiveTasks(String owner) {
+		return taskRepository.countByOwnerAndStatusIn(owner, List.of(
+				VideoTask.TaskStatus.QUEUED,
+				VideoTask.TaskStatus.TRANSCRIBING,
+				VideoTask.TaskStatus.SUMMARIZING));
+	}
+
+	private void lockOwner(String owner) {
+		userAccountRepository.findByUserId(owner)
+				.orElseThrow(() -> new IllegalArgumentException("用户不存在: " + owner));
 	}
 
 	/**

@@ -52,6 +52,11 @@ public class LocalMediaStorageService implements MediaStorageService {
 	}
 
 	@Override
+	public void delete(String storagePath) throws IOException {
+		Files.deleteIfExists(Path.of(storagePath));
+	}
+
+	@Override
 	public ResolvedMedia resolveForProcessing(String storagePath) {
 		return new ResolvedMedia(Path.of(storagePath), false);
 	}

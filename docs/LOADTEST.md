@@ -5,19 +5,23 @@
 
 ## 原理：对比的到底是什么
 
-两种模式的**处理能力完全相同**（同一个 `videoTaskExecutor`：core2/max4/queue50，同样的转写耗时），
-差别只在**提交请求后、开始处理前**这一段：
+公平 A/B 时两种模式必须使用相同 worker 并发和相同转写耗时。当前配置默认让 RocketMQ
+`consumer-threads=4` 对齐本地 `videoTaskExecutor maxPoolSize=4`，差别集中在**提交请求后、开始处理前**这一段：
 
 | | MQ 关（本地 @Async） | MQ 开（RocketMQ） |
 |---|---|---|
 | 上传接口做什么 | `publish()` 直接把任务投进线程池 | `syncSend` 毫秒级投给 broker |
 | 积压放在哪 | JVM 内队列（上限 50） | broker（磁盘，几乎无上限） |
-| 超限会怎样 | `TaskRejectedException` → 用户收到 **500** | 消费端拒收 → broker **重投递**，用户无感 |
+| 超限会怎样 | `TaskRejectedException` → 用户收到 **503**，任务等待补偿 | 消费端拒收 → broker **重投递**，用户无感 |
 | 代价 | 高峰期直接拒单 | 端到端延迟拉长（排队转移到 broker） |
 
 > 关键前提：Mock 转写默认**瞬间返回**，线程池永不饱和，两种模式测不出差异。
 > 压测必须设 `APP_TRANSCRIPT_MOCK_DELAY_MS`（如 5000 = 5s/任务）还原真实转写的
 > 慢消费者特征，**两轮用同一值**保证公平。
+
+> 2026-07-18 起，本地线程池饱和由通用 500 改为明确的 503；任务已经落库，stale-task reaper
+> 会补偿重新投递。历史结果文件仍保留当时实际观察到的 500，不回写历史数据。短复验曾使用
+> RocketMQ 默认 20 个消费线程，因此其“完成数量”不能与本地 4 线程直接归因给 MQ；接收率差异仍然有效。
 
 ## 前置条件
 
@@ -41,7 +45,7 @@ docker compose --profile observability up -d
 
 ```powershell
 # PowerShell（默认 MySQL+Redis 模式，Spring Boot 自动拉起容器）
-$env:APP_TRANSCRIPT_MOCK_DELAY_MS="5000"; mvn spring-boot:run
+$env:APP_TRANSCRIPT_MOCK_DELAY_MS="5000"; $env:APP_MAX_ACTIVE_TASKS_PER_USER="0"; mvn spring-boot:run
 ```
 
 ```bash
@@ -55,7 +59,7 @@ k6 run loadtest/upload-load.js
 
 ```powershell
 docker compose --profile mq up -d        # RocketMQ namesrv + broker
-$env:APP_TRANSCRIPT_MOCK_DELAY_MS="5000"; $env:APP_MQ_ENABLED="true"; mvn spring-boot:run
+$env:APP_TRANSCRIPT_MOCK_DELAY_MS="5000"; $env:APP_MAX_ACTIVE_TASKS_PER_USER="0"; $env:APP_MQ_ENABLED="true"; $env:APP_MQ_CONSUMER_THREADS="4"; mvn spring-boot:run
 ```
 
 ```bash
@@ -74,7 +78,7 @@ k6 可调参数（环境变量）：`VUS`（默认 10）、`RAMP`/`HOLD`（默�
 
 1. **上传接口响应时间分位数** — 两轮成功请求都应是毫秒级（`@Async`/`syncSend` 都不阻塞 HTTP 线程）。
    接口耗时本身差异不大——差异在下面的错误率。
-2. **上传接口吞吐·按状态码** — 核心图。MQ 关：约 `50+4` 个任务在途后 500 飙升（拒单）；
+2. **上传接口吞吐·按状态码** — 核心图。MQ 关：约 `50+4` 个任务在途后 503 飙升（拒单）；
    MQ 开：全程 200。这就是「MQ 把削峰失败从用户错误变成内部积压」的直接证据。
 3. **任务端到端耗时分位数** — MQ 开的代价在这里：不拒单意味着积压全部排队，
    P99 e2e 会远高于 MQ 关（后者"甩掉"了排不进队的请求）。削峰不是免费的，这张图量化代价。
@@ -86,7 +90,7 @@ k6 可调参数（环境变量）：`VUS`（默认 10）、`RAMP`/`HOLD`（默�
 
 k6 侧输出同样保留：`checks` 失败率 = 拒单率；`http_req_duration` P95/P99 与面板 1 互相印证。
 
-## 实测结果（2026-07-02）
+## 历史实测结果（2026-07-02，旧版错误码）
 
 **配置**：mock 延迟 3s/任务、10 VU、10s 爬坡 + 100s 稳态、THINK 0.5s、单文件 64KB。
 两轮同参数,唯一变量 `app.mq.enabled`。线程池 core2/max4/queue50 → 处理能力上限 ≈ 4/3s ≈ **1.33 任务/s**;而到达率 ≈ 17/s,是 ~13× 过载,刻意压满以暴露差异。

@@ -49,6 +49,7 @@ class DirectUploadServiceTests {
 		assertThat(response.storagePath()).isEqualTo("s3://video-platform/uploads/direct/demo.mp4");
 		assertThat(response.uploadToken()).isNotBlank();
 		verify(mediaStorageService).createDirectUploadTarget("demo.mp4", Duration.ofSeconds(900));
+		verify(videoTaskService).assertCanCreateTask("alice");
 	}
 
 	@Test

@@ -29,6 +29,7 @@ public class DirectUploadService {
 
 	public MediaDtos.DirectUploadInitResponse initDirectUpload(String owner,
 			MediaDtos.DirectUploadInitRequest request) {
+		videoTaskService.assertCanCreateTask(owner);
 		String safeName = MediaFileValidator.safeVideoFileName(request.fileName());
 		Duration expiresIn = Duration.ofSeconds(jwtService.getDirectUploadTokenSeconds());
 		MediaStorageService.DirectUploadTarget target;

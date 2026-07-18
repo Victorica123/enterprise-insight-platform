@@ -9,6 +9,7 @@ Claude startup harness for this repository. Keep this file short to reduce token
 3. Open topic docs only when needed:
    - Product map: `docs/PROJECT_KNOWLEDGE.md`
    - MQ/load tests: `docs/LOADTEST.md`
+   - Local async lab: `docs/ASYNC_LAB.md`
    - Reliability/retry: `docs/P3_RELIABILITY_VERIFICATION.md`
    - Object storage/direct upload: `docs/P4_OBJECT_STORAGE.md`
    - Small-scale deployment: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`

@@ -73,7 +73,7 @@ export default function (data) {
         tags: { endpoint: 'upload' },
     });
 
-    // MQ 关：线程池(队列50+max4)打满后 publish 抛 TaskRejectedException → 500，此 check 失败率即「被拒单率」
+    // MQ 关：线程池(队列50+max4)打满后 publish 抛 TaskRejectedException → 503，此 check 失败率即「被拒单率」
     // MQ 开：syncSend 毫秒级返回，预期全程 200
     check(res, {
         'upload accepted (200)': (r) => r.status === 200,

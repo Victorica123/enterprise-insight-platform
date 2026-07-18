@@ -22,6 +22,8 @@ public interface VideoTaskRepository extends JpaRepository<VideoTask, String> {
 
 	Optional<VideoTask> findFirstByOwnerAndStoragePathOrderByCreatedAtDesc(String owner, String storagePath);
 
+	long countByOwnerAndStatusIn(String owner, List<VideoTask.TaskStatus> statuses);
+
 	/**
 	 * 按内容指纹查询所有任务（用于处理完成后向同内容的所有任务 fan-out 结果）
 	 */

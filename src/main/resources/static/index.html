@@ -94,6 +94,7 @@
                             <h2>上传入口</h2>
                             <p>选择一种路径，上传后统一进入任务队列</p>
                         </div>
+                        <span class="quota-pill" id="quotaPill" hidden>处理中 0/5</span>
                     </div>
 
                     <div class="strategy-switch" role="radiogroup" aria-label="上传策略">
@@ -372,6 +373,38 @@
                     </div>
                 </section>
 
+                <section class="panel async-lab-panel" id="asyncLabPanel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">mq</span>
+                        <div>
+                            <h2>异步实验室</h2>
+                            <p id="labRuntimeMeta">登录后读取当前运行模式</p>
+                        </div>
+                        <span class="runtime-pill" id="labRuntimeMode">未连接</span>
+                    </div>
+                    <div class="lab-controls">
+                        <label for="labTaskCount">任务数</label>
+                        <input id="labTaskCount" type="number" min="1" max="100" step="1" value="80">
+                        <button id="runAsyncLab" class="btn btn-primary" type="button" disabled>发送任务</button>
+                    </div>
+                    <div class="lab-stats" aria-label="异步实验统计">
+                        <div><span>HTTP 接收</span><strong id="labAccepted">0</strong></div>
+                        <div><span>HTTP 拒绝</span><strong id="labRejected">0</strong></div>
+                        <div><span>后台任务</span><strong id="labBackend">0</strong></div>
+                        <div><span>排队 / 处理</span><strong id="labActive">0</strong></div>
+                        <div><span>已完成</span><strong id="labCompleted">0</strong></div>
+                        <div><span>总耗时</span><strong id="labElapsed">-</strong></div>
+                    </div>
+                    <div class="lab-progress" aria-hidden="true">
+                        <span id="labProgress"></span>
+                    </div>
+                    <div class="lab-compare">
+                        <div><span>上次本地异步</span><strong id="labLocalResult">暂无</strong></div>
+                        <div><span>上次 RocketMQ</span><strong id="labMqResult">暂无</strong></div>
+                    </div>
+                    <button id="cleanupAsyncLab" class="btn btn-secondary lab-cleanup" type="button" disabled>清理本轮任务</button>
+                </section>
+
                 <section class="panel history-panel" id="myVideosCard" style="display:none">
                     <div class="panel-heading">
                         <span class="step-badge">5</span>
@@ -395,6 +428,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
-    <script src="/app.js?v=7"></script>
+    <script src="/app.js?v=8"></script>
 </body>
 </html>

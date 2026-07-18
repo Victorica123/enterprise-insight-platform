@@ -67,6 +67,7 @@ Edit `.env`:
 - Set `PUBLIC_APP_URL=https://video.example.com`.
 - Set `APP_STORAGE_S3_PUBLIC_ENDPOINT=https://files.example.com`.
 - Set `MINIO_API_CORS_ALLOW_ORIGIN=https://video.example.com`.
+- Set `APP_MAX_ACTIVE_TASKS_PER_USER=5` (or another small value) to protect queue and AI capacity.
 - Keep `APP_TRANSCRIPT_ENABLED=false` and `APP_SUMMARY_ENABLED=false` for the first smoke test.
 
 Run the preflight before startup:

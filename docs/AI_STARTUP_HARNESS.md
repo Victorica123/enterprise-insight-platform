@@ -44,13 +44,17 @@ Engineering topics such as Redis, RocketMQ, object storage, load tests, and obse
 - Full-stack verification script exists: `scripts/verify-full-stack.ps1`.
 - Feature-to-evidence map exists: `docs/VERIFICATION_MATRIX.md`.
 - Frontend result delivery supports copying transcript/summary and downloading Markdown notes.
-- Latest focused media verification after direct-upload UI/idempotency/CORS work: JS syntax passed; media tests passed, 16 tests.
+- Local async lab exists: `scripts/start-async-lab.ps1` + page A/B panel compare real local `@Async` and RocketMQ without public hosting.
+- Per-user active-task admission control uses a locked user row; full capacity returns 429 and is visible as `处理中 x/y`.
+- MQ consumer concurrency is explicit (`APP_MQ_CONSUMER_THREADS`, default 4) so fair A/B does not confuse more workers with MQ acceleration.
+- Latest verification: full suite baseline is 79 tests; JS syntax, async-lab PowerShell parse, production Compose config, desktop/mobile browser smoke, real local overload and real RocketMQ runs passed. H2 integration proves 10 concurrent creates cannot exceed a per-owner limit of 3.
 
 ## High-Value Rules
 
 - Owner isolation is mandatory on uploads, playback, workflow tasks, retries, and deletes.
 - Never make unit tests depend on Redis, RocketMQ, Docker, FFmpeg, Whisper, or LLM APIs.
 - MQ does not speed up a single task; it converts visible request failure into internal queueing delay.
+- Consumer concurrency can raise throughput, but that is additional worker capacity rather than the queue making work cheaper.
 - Redis chunk upload helps resume, merge locking, chunk tracking, and later upload optimization; it does not automatically make a single upload faster.
 - Object storage/direct upload reduces application-server bandwidth and disk pressure; it does not make transcription faster.
 - Keep workflow state changes in short transactions through `VideoTaskService`.
@@ -63,6 +67,7 @@ Open only what the current task needs:
 - Need latest cross-model state: `docs/AI_HANDOFF.md`
 - Need roadmap/user value: `docs/PROJECT_KNOWLEDGE.md`, `docs/CAREER_ROADMAP.md`
 - Need MQ/performance result: `docs/LOADTEST.md`, `loadtest/results/RESULTS.md`
+- Need page-driven local async verification: `docs/ASYNC_LAB.md`
 - Need reliability/retry: `docs/P3_RELIABILITY_VERIFICATION.md`
 - Need object storage/direct upload: `docs/P4_OBJECT_STORAGE.md`
 - Need small-scale deployment/debug: `docs/P5_SMALL_SCALE_DEPLOYMENT.md`

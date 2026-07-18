@@ -3,6 +3,7 @@ package com.example.videoplatform.media;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -61,6 +62,33 @@ class MediaControllerTests {
 				.andExpect(jsonPath("$.data.taskId").value("task-1"));
 
 		verify(singleUploadService).uploadSingleFile("alice", file);
+	}
+
+	@Test
+	void returnsTooManyRequestsWhenUserTaskQuotaIsFull() throws Exception {
+		MockMultipartFile file = new MockMultipartFile("file", "demo.mp4", "video/mp4", new byte[] {1});
+		doThrow(new com.example.videoplatform.workflow.ActiveTaskLimitExceededException(5, 5))
+				.when(singleUploadService).uploadSingleFile("alice", file);
+
+		mockMvc.perform(multipart("/api/media/upload/file")
+						.file(file)
+						.with(user("alice")))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("单用户最多 5 个")));
+	}
+
+	@Test
+	void returnsServiceUnavailableWhenLocalAsyncQueueIsFull() throws Exception {
+		MockMultipartFile file = new MockMultipartFile("file", "demo.mp4", "video/mp4", new byte[] {1});
+		doThrow(new org.springframework.core.task.TaskRejectedException("executor queue full"))
+				.when(singleUploadService).uploadSingleFile("alice", file);
+
+		mockMvc.perform(multipart("/api/media/upload/file")
+						.file(file)
+						.with(user("alice")))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("自动补偿")));
 	}
 
 	@Test

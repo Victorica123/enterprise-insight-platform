@@ -21,6 +21,7 @@
 | 结果交付 | M | 前端 JS 语法检查 | “复制结果”“Markdown” | 复制完整内容并下载合法文件名 |
 | 任务删除 | W/M | `WorkflowControllerTests` | 历史记录删除 | owner 校验，删除后列表消失 |
 | 失败重试 | U/W/M | `VideoTaskServiceTests`、`WorkflowControllerTests` | FAILED 任务点击重试 | 仅 owner 可重试，状态回到 QUEUED |
+| 单用户任务配额 | U/W/M | `VideoTaskServiceTests`、`VideoTaskQuotaIntegrationTests`、`MediaControllerTests` | 页面“处理中 x/y” | 10 并发、上限 3 时恰好只创建 3 个；满额返回 429 |
 
 ## 大文件上传
 
@@ -52,6 +53,8 @@
 | 本地异步发布 | U | `WorkflowProcessorTests` | H2 轻量模式 | HTTP 快速返回，后台推进状态 |
 | RocketMQ 发布/消费 | U/R | `RocketMqWorkflowConsumerTests`、full-stack | 真实 namesrv/broker | 消息最终完成任务 |
 | MQ 削峰 | R | k6 A/B + Prometheus/Grafana | 同参数开关 MQ | MQ 开：请求成功率 100%；MQ 关：线程池拒绝 |
+| 页面异步实验室 | R/M | `start-async-lab.ps1` | 80 个任务切换 local/mq | 真实任务状态与 HTTP 接收/拒绝并排显示 |
+| 本地过载语义 | W/R | `MediaControllerTests`、异步实验室 | 本地线程池压满 | 返回 503 单行警告，任务由 reaper 补偿 |
 | 幂等 claim | U | `WorkflowProcessorTests`、`VideoTaskServiceTests` | 重复消息 | 仅 QUEUED 的首次 claim 继续 |
 | 内容级 single-flight | U | `WorkflowProcessorTests` | 同 MD5 并发任务 | 赢家处理，其他任务 fan-out 复用 |
 | 看门狗锁 | U/设计 | 锁接口与工作流测试 | 长处理场景 | 长任务锁自动续期，避免重复处理 |
@@ -63,7 +66,7 @@
 
 | 能力 | 层级 | 验证命令 | 通过标准 |
 | --- | --- | --- | --- |
-| 单元测试自洽 | U/W | `mvn test` | 70 tests，0 failures |
+| 单元测试自洽 | U/W | `mvn test` | 79 tests，0 failures |
 | 前端语法 | U | `node --check src/main/resources/static/app.js` | 退出码 0 |
 | Compose 解析 | R | `docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet` | 退出码 0 |
 | 上线前体检 | R | `scripts/preflight-deploy.ps1` | 没有 FAIL |
