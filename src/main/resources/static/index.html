@@ -70,11 +70,11 @@
                     <div class="field-grid">
                         <label class="field">
                             <span>用户名</span>
-                            <input id="username" type="text" value="demo" autocomplete="username">
+                            <input id="username" type="text" placeholder="用户名" autocomplete="username" maxlength="50">
                         </label>
                         <label class="field">
                             <span>密码</span>
-                            <input id="password" type="password" value="demo123" autocomplete="current-password">
+                            <input id="password" type="password" placeholder="至少 8 位" autocomplete="current-password" minlength="8" maxlength="72">
                         </label>
                     </div>
                     <div class="actions">
@@ -84,6 +84,7 @@
                     <div class="session-state" id="tokenBar" style="display:none">
                         <span class="state-dot"></span>
                         <span id="tokenText">已登录</span>
+                        <button id="logoutButton" class="btn btn-secondary" type="button">退出登录</button>
                     </div>
                 </section>
 
@@ -427,7 +428,7 @@
         </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
-    <script src="/app.js?v=8"></script>
+    <script src="/vendor/spark-md5.min.js"></script>
+    <script src="/app.js?v=10"></script>
 </body>
 </html>

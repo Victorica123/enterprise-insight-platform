@@ -103,6 +103,26 @@ strategyOptions.forEach((option) => {
     });
 });
 
+// 退出登录：先服务端拉黑当前令牌（jti 黑名单），再清本地状态；
+// 拉黑请求失败也不阻塞本地登出，令牌到期后自然失效兜底。
+const logoutButton = document.getElementById("logoutButton");
+if (logoutButton) {
+    logoutButton.addEventListener("click", async () => {
+        const currentToken = token;
+        try {
+            if (currentToken) {
+                await fetch("/api/auth/logout", {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${currentToken}` }
+                });
+            }
+        } catch (error) {
+            // 忽略:本地登出仍然继续
+        }
+        clearAuthState("已退出登录");
+    });
+}
+
 setUploadMode(uploadMode);
 resetActiveMetrics();
 renderSavedLabResults();
@@ -741,22 +761,37 @@ async function computeFileMd5(file) {
     return spark.end();
 }
 
+// 单分片带重试：瞬时网络抖动不应让整个上传失败重来（后端 chunk 幂等，重传安全）。
+// 4xx 类错误（如会话过期）重试无意义，直接抛出。
+const CHUNK_MAX_ATTEMPTS = 3;
+const CHUNK_RETRY_BASE_DELAY_MS = 400;
+
 async function uploadOneChunk(uploadId, chunkIndex, metrics) {
     const start = chunkIndex * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, currentFile.size);
-    const chunk = currentFile.slice(start, end);
-    const formData = new FormData();
-    formData.append("file", chunk, currentFile.name);
-
     const chunkStartedAt = performance.now();
-    try {
-        await apiRequest(`/api/media/upload/chunk?uploadId=${uploadId}&chunkIndex=${chunkIndex}`, {
-            method: "POST",
-            body: formData
-        });
-    } finally {
-        metrics.chunkDurations.push(performance.now() - chunkStartedAt);
-        renderLiveMetrics(metrics);
+
+    for (let attempt = 1; attempt <= CHUNK_MAX_ATTEMPTS; attempt += 1) {
+        // FormData/Body 每次重建：部分浏览器不允许已消费的 Blob 重复挂载
+        const formData = new FormData();
+        formData.append("file", currentFile.slice(start, end), currentFile.name);
+        try {
+            await apiRequest(`/api/media/upload/chunk?uploadId=${uploadId}&chunkIndex=${chunkIndex}`, {
+                method: "POST",
+                body: formData
+            });
+            metrics.chunkDurations.push(performance.now() - chunkStartedAt);
+            renderLiveMetrics(metrics);
+            return;
+        } catch (error) {
+            const retryable = !(error instanceof ApiError) || !error.status || error.status >= 500 || error.status === 0;
+            if (attempt >= CHUNK_MAX_ATTEMPTS || !retryable) {
+                metrics.chunkDurations.push(performance.now() - chunkStartedAt);
+                renderLiveMetrics(metrics);
+                throw error;
+            }
+            await new Promise((resolve) => setTimeout(resolve, CHUNK_RETRY_BASE_DELAY_MS * attempt));
+        }
     }
 }
 
