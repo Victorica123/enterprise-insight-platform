@@ -5,11 +5,20 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
-@Table(name = "video_task")
+// 索引与真实查询路径一一对应（避免“建了但用不上”的装饰性索引）：
+// - (owner, createdAt)：我的视频列表 findByOwnerOrderByCreatedAtDesc
+// - (status, updatedAt)：stale-task reaper findByStatusInAndUpdatedAtBefore
+// - (contentMd5)：去重/单飞 fan-out findByContentMd5
+@Table(name = "video_task", indexes = {
+		@Index(name = "idx_video_task_owner_created", columnList = "owner, createdAt"),
+		@Index(name = "idx_video_task_status_updated", columnList = "status, updatedAt"),
+		@Index(name = "idx_video_task_content_md5", columnList = "contentMd5")
+})
 public class VideoTask {
 
 	@Id

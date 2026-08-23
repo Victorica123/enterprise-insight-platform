@@ -1,14 +1,28 @@
 package com.example.videoplatform.workflow;
 
 import java.time.Instant;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
 @Repository
 public interface VideoTaskRepository extends JpaRepository<VideoTask, String> {
+
+	/**
+	 * 原子状态推进：仅当任务仍处于 expected 状态时更新为 next，返回受影响行数。
+	 * 用于 MQ 至少一次投递下的幂等占位（QUEUED→TRANSCRIBING），并发消费者中只有一个能影响 1 行。
+	 */
+	@Modifying
+	@Query("update VideoTask t set t.status = :next, t.updatedAt = :now "
+			+ "where t.taskId = :taskId and t.status = :expected")
+	int updateStatusIfCurrent(@Param("taskId") String taskId,
+			@Param("expected") VideoTask.TaskStatus expected,
+			@Param("next") VideoTask.TaskStatus next,
+			@Param("now") Instant now);
 
 	/**
 	 * 查询某个用户的所有任务（用于"我的视频"列表）

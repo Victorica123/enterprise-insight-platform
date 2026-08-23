@@ -38,6 +38,9 @@ class MediaControllerTests {
 	@MockBean
 	private JwtService jwtService;
 
+	@MockBean
+	private com.example.videoplatform.auth.TokenBlacklist tokenBlacklist;
+
 	@Test
 	void rejectsAnonymousUploadRequest() throws Exception {
 		MockMultipartFile file = new MockMultipartFile("file", "demo.mp4", "video/mp4", new byte[] {1});

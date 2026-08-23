@@ -161,19 +161,15 @@ public class VideoTaskService {
 	}
 
 	/**
-	 * 幂等占位：仅当任务仍处于 QUEUED 时抢占为 TRANSCRIBING，返回是否抢占成功。
+	 * 幂等占位：仅当任务仍处于 QUEUED 时原子推进为 TRANSCRIBING，返回是否抢占成功。
 	 *
-	 * <p>MQ 至少一次投递会导致同一 taskId 被重复消费；只有把状态从 QUEUED 原子推进的那个
-	 * worker 返回 true 并继续处理，其余重复投递返回 false 直接跳过，避免重复执行昂贵处理。
+	 * <p>MQ 至少一次投递会导致同一 taskId 被重复消费；用条件 UPDATE（影响行数=1 才算抢占成功）
+	 * 保证并发消费者中只有一个继续处理，其余重复投递直接跳过，避免重复执行昂贵处理。
 	 */
 	@Transactional
 	public boolean claimForProcessing(String taskId) {
-		VideoTask task = requireManagedTask(taskId);
-		if (task.getStatus() != VideoTask.TaskStatus.QUEUED) {
-			return false;
-		}
-		task.setStatus(VideoTask.TaskStatus.TRANSCRIBING);
-		return true;
+		return taskRepository.updateStatusIfCurrent(
+				taskId, VideoTask.TaskStatus.QUEUED, VideoTask.TaskStatus.TRANSCRIBING, Instant.now()) > 0;
 	}
 
 	/** 从已就绪的资产直接复用结果，秒完成任务（内容级去重命中路径）。 */

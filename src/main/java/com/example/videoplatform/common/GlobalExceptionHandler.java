@@ -1,6 +1,7 @@
 package com.example.videoplatform.common;
 
 import io.jsonwebtoken.JwtException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,6 +23,34 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException exception) {
 		log.warn("业务参数异常: {}", exception.getMessage());
 		return ResponseEntity.badRequest().body(ApiResponse.fail(exception.getMessage()));
+	}
+
+	@ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+	public ResponseEntity<ApiResponse<Void>> handleValidation(
+			org.springframework.web.bind.MethodArgumentNotValidException exception) {
+		String message = exception.getBindingResult().getFieldErrors().stream()
+				.map(error -> error.getField() + " " + error.getDefaultMessage())
+				.findFirst()
+				.orElse("请求参数不合法");
+		log.warn("参数校验失败: {}", message);
+		return ResponseEntity.badRequest().body(ApiResponse.fail(message));
+	}
+
+	@ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+	public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(
+			org.springframework.dao.DataIntegrityViolationException exception) {
+		// 并发注册重名时由 username 唯一约束兜底，对外语义与 existsByUsername 一致
+		log.warn("数据约束冲突: {}", exception.getMostSpecificCause().getMessage());
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.fail("用户名已存在"));
+	}
+
+	@ExceptionHandler(com.example.videoplatform.auth.RateLimitExceededException.class)
+	public ResponseEntity<ApiResponse<Void>> handleRateLimit(
+			com.example.videoplatform.auth.RateLimitExceededException exception) {
+		log.warn("登录限流触发: {}", exception.getMessage());
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+				.header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getWindowSeconds()))
+				.body(ApiResponse.fail(exception.getMessage()));
 	}
 
 	@ExceptionHandler(JwtException.class)

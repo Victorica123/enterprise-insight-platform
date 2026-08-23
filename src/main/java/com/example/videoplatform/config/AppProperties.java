@@ -13,6 +13,7 @@ public class AppProperties {
 	private final Mq mq = new Mq();
 	private final Transcript transcript = new Transcript();
 	private final Summary summary = new Summary();
+	private final Security security = new Security();
 
 	public Jwt getJwt() {
 		return jwt;
@@ -40,6 +41,41 @@ public class AppProperties {
 
 	public Summary getSummary() {
 		return summary;
+	}
+
+	public Security getSecurity() {
+		return security;
+	}
+
+	/** 认证相关防护配置。 */
+	public static class Security {
+		private final LoginRateLimit loginRateLimit = new LoginRateLimit();
+
+		public LoginRateLimit getLoginRateLimit() {
+			return loginRateLimit;
+		}
+
+		/** 滑动窗口：窗口内失败次数达到上限后拒绝，窗口滑出后自动恢复。 */
+		public static class LoginRateLimit {
+			private int maxAttempts = 5;
+			private int windowSeconds = 300;
+
+			public int getMaxAttempts() {
+				return maxAttempts;
+			}
+
+			public void setMaxAttempts(int maxAttempts) {
+				this.maxAttempts = maxAttempts;
+			}
+
+			public int getWindowSeconds() {
+				return windowSeconds;
+			}
+
+			public void setWindowSeconds(int windowSeconds) {
+				this.windowSeconds = windowSeconds;
+			}
+		}
 	}
 
 	public static class Jwt {

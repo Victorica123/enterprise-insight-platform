@@ -1,7 +1,12 @@
 server:
   port: ${SERVER_PORT:8081}
+  # 优雅停机：SIGTERM 后先停止接收新请求，等待在途请求完成（上限 30s）。
+  # 与 stale-task reaper 联动：正在处理的任务若因停机中断，重启后由补偿机制重投递。
+  shutdown: graceful
 
 spring:
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_GRACE_PERIOD:30s}
   application:
     name: video-platform
   docker:
@@ -53,6 +58,11 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
+# 日志级别行附带 traceId（TraceIdFilter 写入 MDC），一条请求的日志可用同一 id 串联排查
+logging:
+  pattern:
+    level: "%5p [%X{traceId:--}]"
   metrics:
     distribution:
       # 开启直方图桶（Prometheus 端用 histogram_quantile 聚合 P50/P95/P99）；
@@ -75,6 +85,12 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET:01234567890123456789012345678901}
     expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
+  security:
+    # 登录防爆破：滑动窗口按用户名计数；Redis 可用时用 ZSET+Lua 保证多实例原子性，
+    # 不可用时降级为进程内窗口（单实例语义），见 LoginRateLimiter 两个实现。
+    login-rate-limit:
+      max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
+      window-seconds: ${APP_LOGIN_WINDOW_SECONDS:300}
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
     type: ${APP_STORAGE_TYPE:local}

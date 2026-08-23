@@ -17,16 +17,34 @@ public class JwtService {
 	private static final long PLAYBACK_TOKEN_SECONDS = 3600;
 	private static final long DIRECT_UPLOAD_TOKEN_SECONDS = 900;
 
+	/** application.yml 的演示默认密钥；非 H2 环境携带它启动直接失败，防止忘配密钥裸奔上线。 */
+	private static final String DEMO_SECRET = "01234567890123456789012345678901";
+
 	private final AppProperties appProperties;
+
+	/** 非上面 DEMO_SECRET 之外的注入字段：用于启动期校验当前是否运行在 H2 内存库上。 */
+	@org.springframework.beans.factory.annotation.Value("${spring.datasource.url:}")
+	private String datasourceUrl;
 
 	public JwtService(AppProperties appProperties) {
 		this.appProperties = appProperties;
+	}
+
+	/** 启动期守卫：非 H2 环境（生产/MySQL）携带默认演示密钥直接失败，防止忘配密钥裸奔上线。 */
+	@jakarta.annotation.PostConstruct
+	void rejectDemoSecretOutsideH2() {
+		if (DEMO_SECRET.equals(appProperties.getJwt().getSecret()) && !datasourceUrl.contains(":h2:")) {
+			throw new IllegalStateException(
+					"检测到默认演示 JWT 密钥且未使用 H2 内存库：请配置 APP_JWT_SECRET（至少 32 位随机字符）后再启动，"
+							+ "否则任何人都可伪造登录令牌。本地轻量模式（H2 profile）不受影响。");
+		}
 	}
 
 	public String generateToken(String userId, String username) {
 		Instant now = Instant.now();
 		return Jwts.builder()
 				.subject(username)
+				.id(java.util.UUID.randomUUID().toString()) // jti：登出黑名单的粒度
 				.claim("userId", userId)
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusSeconds(appProperties.getJwt().getExpirationSeconds())))

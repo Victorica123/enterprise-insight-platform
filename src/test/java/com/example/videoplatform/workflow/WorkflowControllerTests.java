@@ -43,6 +43,9 @@ class WorkflowControllerTests {
 	@MockBean
 	private JwtService jwtService;
 
+	@MockBean
+	private com.example.videoplatform.auth.TokenBlacklist tokenBlacklist;
+
 	@Test
 	void rejectsAnonymousTaskListRequest() throws Exception {
 		mockMvc.perform(get("/api/workflow/tasks"))
