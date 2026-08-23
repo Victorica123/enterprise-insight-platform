@@ -78,7 +78,7 @@ flowchart LR
 
 完整方法和原始结果见：
 
-- [MQ A/B 测试方法](docs/LOADTEST.md)
+- [性能与参数说明](docs/PERFORMANCE.md)
 - [实测结果快照](loadtest/results/RESULTS.md)
 
 ### 不上服务器也能验证异步
@@ -100,7 +100,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-async-lab.ps1 
 | 本地 `@Async` | 54/80 | 26/80 | 80/80 | 18.55 s |
 | RocketMQ | 80/80 | 0/80 | 80/80 | 11.32 s |
 
-本地拒绝的任务已先落库，10 秒 stale-task reaper 将它们重新投递，因此最终仍能完成。详细步骤见 [本地异步实验室](docs/ASYNC_LAB.md)。
+54/80 不是随机数：`maxPoolSize(4) + queueCapacity(50) = 54`，JDK 线程池「队列满才扩容」的行为精确决定了饱和点；本地拒绝的任务已先落库，由 stale-task reaper 在 10 秒后重新投递，因此最终仍能 80/80 完成。参数推导与全部实测数据见 [性能与参数](docs/PERFORMANCE.md)。
 
 ## 快速启动
 
@@ -156,7 +156,7 @@ Copy-Item .env.example .env
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preflight-deploy.ps1
 ```
 
-部署细节见 [小范围部署说明](docs/P5_SMALL_SCALE_DEPLOYMENT.md)。这部分是保留能力，不是当前主路线。
+部署细节见 [运维手册](docs/OPERATIONS.md)。这部分是保留能力，不是当前主路线。
 
 ## 自动化验证
 
@@ -174,7 +174,7 @@ mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskService
 node --check src/main/resources/static/app.js
 ```
 
-当前基线：85 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
+当前基线：95 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
 
 ## 关键设计取舍
 
@@ -202,31 +202,26 @@ Redis 保存上传会话、已上传 chunk、TTL 和锁。真正影响速度的�
 
 ```text
 src/main/java/com/example/videoplatform/
-├── auth/          JWT 与用户
+├── auth/          JWT、用户、限流、登出黑名单
 ├── media/         普通/分片/直传、存储、播放
 ├── workflow/      任务状态机、MQ、锁、重试、补偿
 ├── transcript/    FFmpeg 与 Whisper
 ├── summary/       LLM 摘要
-├── crawl/         视频信息抓取实验
 └── config/        安全、异步、指标、Redis
 
 src/main/resources/static/   前端工作台
 loadtest/                    k6 与实测结果
 observability/               Prometheus/Grafana
 scripts/                     preflight、smoke、handoff
-docs/                        P3/P4/P5、演示和排障文档
+docs/                        PERFORMANCE / OPERATIONS / DEMO_SCRIPT
 ```
 
 ## 演示与面试
 
 - [5-10 分钟演示脚本](docs/DEMO_SCRIPT.md)
 - [面试知识点](INTERVIEW_GUIDE.md)
-- [功能验证矩阵](docs/VERIFICATION_MATRIX.md)
-- [故障排查记录](docs/TROUBLESHOOTING.md)
-- [可靠性验证](docs/P3_RELIABILITY_VERIFICATION.md)
-- [对象存储验证](docs/P4_OBJECT_STORAGE.md)
-- [本地异步实验室](docs/ASYNC_LAB.md)
-- [跨模型项目交接](docs/AI_HANDOFF.md)
+- [性能与参数说明](docs/PERFORMANCE.md)
+- [运维手册](docs/OPERATIONS.md)
 
 ## 已知边界
 
