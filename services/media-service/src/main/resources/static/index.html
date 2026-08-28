@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频内容理解平台</title>
+    <link rel="stylesheet" href="/app.css?v=6">
+</head>
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5.14v13.72L18.98 12 8 5.14Z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1>视频内容理解平台</h1>
+                    <p>上传、排队、转写、摘要、播放与工程链路验证</p>
+                </div>
+            </div>
+            <nav class="top-links" aria-label="开发入口">
+                <a href="/swagger-ui.html" target="_blank" rel="noreferrer">Swagger</a>
+                <a href="/actuator/health" target="_blank" rel="noreferrer">Health</a>
+                <a href="/v3/api-docs" target="_blank" rel="noreferrer">OpenAPI</a>
+                <a href="http://localhost:19001" target="_blank" rel="noreferrer">MinIO</a>
+                <a href="http://localhost:3000" target="_blank" rel="noreferrer">Grafana</a>
+            </nav>
+        </header>
+
+        <section class="capability-strip" aria-label="当前可验证能力">
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>MySQL 持久化</strong>
+                <small>任务与用户数据落库</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>Redis 分片</strong>
+                <small>断点续传 / 上传会话</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>RocketMQ 削峰</strong>
+                <small>上传后异步排队处理</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot online"></span>
+                <strong>MinIO 直传</strong>
+                <small>浏览器直传对象存储</small>
+            </div>
+            <div class="capability-item">
+                <span class="capability-dot standby"></span>
+                <strong>Mock AI</strong>
+                <small>本地验证不用外部 API</small>
+            </div>
+        </section>
+
+        <main class="workbench">
+            <section class="left-rail" aria-label="操作区">
+                <section class="panel auth-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">1</span>
+                        <div>
+                            <h2>账号</h2>
+                            <p>先登录，再上传和查看历史</p>
+                        </div>
+                    </div>
+                    <div class="field-grid">
+                        <label class="field">
+                            <span>用户名</span>
+                            <input id="username" type="text" placeholder="用户名" autocomplete="username" maxlength="50">
+                        </label>
+                        <label class="field">
+                            <span>密码</span>
+                            <input id="password" type="password" placeholder="至少 8 位" autocomplete="current-password" minlength="8" maxlength="72">
+                        </label>
+                    </div>
+                    <div class="actions">
+                        <button id="loginButton" class="btn btn-primary">登录</button>
+                        <button id="registerButton" class="btn btn-secondary">注册</button>
+                    </div>
+                    <div class="session-state" id="tokenBar" style="display:none">
+                        <span class="state-dot"></span>
+                        <span id="tokenText">已登录</span>
+                        <button id="logoutButton" class="btn btn-secondary" type="button">退出登录</button>
+                    </div>
+                </section>
+
+                <section class="panel upload-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">2</span>
+                        <div>
+                            <h2>上传入口</h2>
+                            <p>选择一种路径，上传后统一进入任务队列</p>
+                        </div>
+                        <span class="quota-pill" id="quotaPill" hidden>处理中 0/5</span>
+                    </div>
+
+                    <div class="strategy-switch" role="radiogroup" aria-label="上传策略">
+                        <button class="strategy-option active" type="button" data-upload-mode="single" aria-pressed="true">
+                            <b>01</b>
+                            <span>普通上传</span>
+                            <small>文件经过应用服务器，适合小文件基线</small>
+                        </button>
+                        <button class="strategy-option" type="button" data-upload-mode="chunk" aria-pressed="false">
+                            <b>02</b>
+                            <span>Redis 分片</span>
+                            <small>init / chunk / merge，可观察断点续传</small>
+                        </button>
+                        <button class="strategy-option" type="button" data-upload-mode="direct" aria-pressed="false">
+                            <b>03</b>
+                            <span>对象存储直传</span>
+                            <small>浏览器 PUT 到 MinIO，降低服务器压力</small>
+                        </button>
+                    </div>
+
+                    <div class="dropzone" id="dropzone">
+                        <input id="videoFile" type="file" accept="video/*" aria-label="选择视频文件">
+                        <div class="dropzone-empty" id="dropzoneEmpty">
+                            <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M12 16V4"></path>
+                                <path d="m7 9 5-5 5 5"></path>
+                                <path d="M20 16.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5"></path>
+                            </svg>
+                            <strong>选择或拖入视频文件</strong>
+                            <span>建议用同一个小视频依次验证三种上传方式</span>
+                        </div>
+                        <div class="dropzone-file" id="dropzoneFile" style="display:none">
+                            <div class="file-meta">
+                                <div class="file-icon">VIDEO</div>
+                                <div class="file-text">
+                                    <strong id="fileName">-</strong>
+                                    <span id="fileSize">-</span>
+                                </div>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <div class="progress-row">
+                                <span id="progressText">准备上传</span>
+                                <strong id="progressPercent">0%</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button id="uploadButton" class="btn btn-primary" disabled>开始上传</button>
+                        <button id="refreshButton" class="btn btn-secondary" disabled>刷新任务</button>
+                    </div>
+                    <div class="task-id-row" id="taskField" style="display:none">
+                        <span>当前任务</span>
+                        <input id="taskId" type="text" readonly>
+                    </div>
+                </section>
+
+                <section class="panel metrics-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">ms</span>
+                        <div>
+                            <h2>上传观测</h2>
+                            <p>对比普通、分片、直传的客户端可见耗时</p>
+                        </div>
+                    </div>
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <span>当前策略</span>
+                            <strong id="metricMode">普通上传</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>总耗时</span>
+                            <strong id="metricTotal">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>文件大小</span>
+                            <strong id="metricSize">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>吞吐</span>
+                            <strong id="metricSpeed">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>分片数量</span>
+                            <strong id="metricChunks">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>平均分片</span>
+                            <strong id="metricAvgChunk">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>初始化</span>
+                            <strong id="metricInit">-</strong>
+                        </div>
+                        <div class="metric-item">
+                            <span>合并</span>
+                            <strong id="metricMerge">-</strong>
+                        </div>
+                    </div>
+                    <div class="compare-grid">
+                        <div class="compare-card">
+                            <span>最近普通上传</span>
+                            <strong id="singleCompare">尚未测试</strong>
+                        </div>
+                        <div class="compare-card">
+                            <span>最近 Redis 分片</span>
+                            <strong id="chunkCompare">尚未测试</strong>
+                        </div>
+                        <div class="compare-card">
+                            <span>最近对象存储直传</span>
+                            <strong id="directCompare">尚未测试</strong>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="center-stage" aria-label="任务结果区">
+                <section class="panel task-panel">
+                    <div class="panel-heading">
+                        <span class="step-badge">3</span>
+                        <div>
+                            <h2>当前任务</h2>
+                            <p>上传后这里会显示处理进度</p>
+                        </div>
+                        <span class="status-pill idle" id="statusPill" role="status" aria-live="polite">未开始</span>
+                    </div>
+                    <div class="pipeline" aria-label="任务处理状态">
+                        <div class="pipeline-step" data-status="UPLOADING">
+                            <span class="pipeline-dot"></span>
+                            <span>上传</span>
+                        </div>
+                        <div class="pipeline-step" data-status="QUEUED">
+                            <span class="pipeline-dot"></span>
+                            <span>排队</span>
+                        </div>
+                        <div class="pipeline-step" data-status="TRANSCRIBING">
+                            <span class="pipeline-dot"></span>
+                            <span>转写</span>
+                        </div>
+                        <div class="pipeline-step" data-status="SUMMARIZING">
+                            <span class="pipeline-dot"></span>
+                            <span>总结</span>
+                        </div>
+                        <div class="pipeline-step" data-status="COMPLETED">
+                            <span class="pipeline-dot"></span>
+                            <span>完成</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel result-panel">
+                    <div class="panel-heading result-heading">
+                        <span class="step-badge">4</span>
+                        <div>
+                            <h2>结果</h2>
+                            <p>转写用于还原内容，摘要用于快速理解</p>
+                        </div>
+                        <div class="result-actions" aria-label="结果操作">
+                            <button id="copyResult" class="result-action" type="button" disabled title="复制完整结果">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                                <span>复制结果</span>
+                            </button>
+                            <button id="downloadResult" class="result-action" type="button" disabled title="下载 Markdown 笔记">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M12 3v12"></path>
+                                    <path d="m7 10 5 5 5-5"></path>
+                                    <path d="M5 21h14"></path>
+                                </svg>
+                                <span>Markdown</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-preview" id="videoPreview" style="display:none">
+                        <video id="videoPlayer" controls preload="metadata" playsinline></video>
+                    </div>
+                    <div class="tabs" role="tablist" aria-label="结果类型">
+                        <button class="tab active" data-target="pane-transcript" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 4h14v16H5z"></path>
+                                <path d="M8 9h8"></path>
+                                <path d="M8 13h8"></path>
+                                <path d="M8 17h5"></path>
+                            </svg>
+                            <span>转写文本</span>
+                        </button>
+                        <button class="tab" data-target="pane-summary" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 5h16"></path>
+                                <path d="M4 12h10"></path>
+                                <path d="M4 19h7"></path>
+                                <path d="m17 15 2 2 4-5"></path>
+                            </svg>
+                            <span>AI 摘要</span>
+                        </button>
+                    </div>
+                    <div class="tab-panes">
+                        <div class="tab-pane active" id="pane-transcript">
+                            <textarea id="transcript" readonly placeholder="任务完成后显示语音转写内容"></textarea>
+                        </div>
+                        <div class="tab-pane" id="pane-summary">
+                            <textarea id="summary" readonly placeholder="任务完成后显示 AI 摘要"></textarea>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel log-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">log</span>
+                        <div>
+                            <h2>操作日志</h2>
+                            <p>定位上传、认证、任务查询问题</p>
+                        </div>
+                    </div>
+                    <textarea id="messages" readonly placeholder="等待操作..." role="log" aria-live="polite" aria-label="操作日志"></textarea>
+                </section>
+            </section>
+
+            <aside class="right-rail" aria-label="历史任务">
+                <section class="panel mode-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">i</span>
+                        <div>
+                            <h2>模式说明</h2>
+                            <p>面试时可以按这三句话解释取舍</p>
+                        </div>
+                    </div>
+                    <div class="mode-list" aria-label="上传模式说明">
+                        <div class="mode-item">
+                            <span>普通上传</span>
+                            <strong>简单可靠，但应用服务器压力最大</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>Redis 分片</span>
+                            <strong>解决大文件中断、重试、合并一致性</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>对象存储</span>
+                            <strong>让文件流量绕开应用服务器</strong>
+                        </div>
+                        <div class="mode-item">
+                            <span>MQ 异步</span>
+                            <strong>高峰先接住请求，后台慢慢消费</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel engineering-panel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">ops</span>
+                        <div>
+                            <h2>工程验证</h2>
+                            <p>把后端能力翻译成可以演示的业务现象</p>
+                        </div>
+                    </div>
+                    <div class="ops-list">
+                        <div class="ops-item">
+                            <strong>MQ 削峰</strong>
+                            <span>不是让单个任务更快，而是高峰时先接住请求，再排队处理，减少直接失败。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>P3 任务补偿</strong>
+                            <span>处理进程异常中断时，定时器会把卡住的任务重新放回队列。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>P4 对象存储</strong>
+                            <span>视频文件可从应用服务器磁盘迁到 MinIO/S3，降低服务器磁盘和播放流量压力。</span>
+                        </div>
+                        <div class="ops-item">
+                            <strong>失败重试</strong>
+                            <span>历史任务失败后可手动重试，适合临时网络、转写服务抖动等可恢复问题。</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel async-lab-panel" id="asyncLabPanel">
+                    <div class="panel-heading compact">
+                        <span class="step-badge muted">mq</span>
+                        <div>
+                            <h2>异步实验室</h2>
+                            <p id="labRuntimeMeta">登录后读取当前运行模式</p>
+                        </div>
+                        <span class="runtime-pill" id="labRuntimeMode">未连接</span>
+                    </div>
+                    <div class="lab-controls">
+                        <label for="labTaskCount">任务数</label>
+                        <input id="labTaskCount" type="number" min="1" max="100" step="1" value="80">
+                        <button id="runAsyncLab" class="btn btn-primary" type="button" disabled>发送任务</button>
+                    </div>
+                    <div class="lab-stats" aria-label="异步实验统计">
+                        <div><span>HTTP 接收</span><strong id="labAccepted">0</strong></div>
+                        <div><span>HTTP 拒绝</span><strong id="labRejected">0</strong></div>
+                        <div><span>后台任务</span><strong id="labBackend">0</strong></div>
+                        <div><span>排队 / 处理</span><strong id="labActive">0</strong></div>
+                        <div><span>已完成</span><strong id="labCompleted">0</strong></div>
+                        <div><span>总耗时</span><strong id="labElapsed">-</strong></div>
+                    </div>
+                    <div class="lab-progress" aria-hidden="true">
+                        <span id="labProgress"></span>
+                    </div>
+                    <div class="lab-compare">
+                        <div><span>上次本地异步</span><strong id="labLocalResult">暂无</strong></div>
+                        <div><span>上次 RocketMQ</span><strong id="labMqResult">暂无</strong></div>
+                    </div>
+                    <button id="cleanupAsyncLab" class="btn btn-secondary lab-cleanup" type="button" disabled>清理本轮任务</button>
+                </section>
+
+                <section class="panel history-panel" id="myVideosCard" style="display:none">
+                    <div class="panel-heading">
+                        <span class="step-badge">5</span>
+                        <div>
+                            <h2>我的视频</h2>
+                            <p>点击历史任务可重新查看结果</p>
+                        </div>
+                        <button id="loadMyVideos" class="icon-button" type="button" title="刷新列表" aria-label="刷新视频列表">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                                <path d="M21 3v6h-6"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="video-list" id="videoList">
+                        <p class="empty-state">暂无视频，请先上传</p>
+                    </div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script src="/vendor/spark-md5.min.js"></script>
+    <script src="/app.js?v=10"></script>
+</body>
+</html>

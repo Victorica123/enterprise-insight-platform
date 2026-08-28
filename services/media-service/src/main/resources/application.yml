@@ -1,0 +1,173 @@
+server:
+  port: ${SERVER_PORT:8081}
+  # 优雅停机：SIGTERM 后先停止接收新请求，等待在途请求完成（上限 30s）。
+  # 与 stale-task reaper 联动：正在处理的任务若因停机中断，重启后由补偿机制重投递。
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_GRACE_PERIOD:30s}
+  application:
+    name: video-platform
+  docker:
+    compose:
+      enabled: true
+      lifecycle-management: start_only
+      profiles:
+        active: mysql
+  servlet:
+    multipart:
+      max-file-size: 256MB
+      max-request-size: 256MB
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      # 宿主机 6379 在本机被系统保留无法绑定，docker-compose 将 redis 暴露在 7379
+      port: ${REDIS_PORT:7379}
+      database: 0
+      timeout: 5s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+  # ===== 默认使用 MySQL（Spring Boot 启动时由 docker-compose 自动拉起 mysql 容器）=====
+  # 零依赖本地开发可用 H2：-Dspring-boot.run.profiles=h2（见文件末尾 h2 profile）
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8&useUnicode=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+rocketmq:
+  nameServer: ${ROCKETMQ_NAMESERVER:localhost:9876}
+  producer:
+    group: video-platform-producer
+    send-message-timeout: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+# 日志级别行附带 traceId（TraceIdFilter 写入 MDC），一条请求的日志可用同一 id 串联排查
+logging:
+  pattern:
+    level: "%5p [%X{traceId:--}]"
+  metrics:
+    distribution:
+      # 开启直方图桶（Prometheus 端用 histogram_quantile 聚合 P50/P95/P99）；
+      # 同时暴露服务端预聚合分位数，便于 /actuator/metrics 直接查看。
+      percentiles-histogram:
+        http.server.requests: true
+        video.task.processing: true
+        video.task.e2e: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+        video.task.processing: 0.5, 0.95, 0.99
+        video.task.e2e: 0.5, 0.95, 0.99
+      # 直方图桶上界。Micrometer Timer 默认封顶 30s：过载时端到端耗时可达数分钟，
+      # 不抬高上界则 P99 会被钳在 30s。e2e 给到 10min 覆盖重度积压场景。
+      maximum-expected-value:
+        video.task.e2e: 600s
+        video.task.processing: 60s
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:01234567890123456789012345678901}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
+  security:
+    # 登录防爆破：滑动窗口按用户名计数；Redis 可用时用 ZSET+Lua 保证多实例原子性，
+    # 不可用时降级为进程内窗口（单实例语义），见 LoginRateLimiter 两个实现。
+    login-rate-limit:
+      max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
+      window-seconds: ${APP_LOGIN_WINDOW_SECONDS:300}
+  storage:
+    base-path: ${APP_STORAGE_BASE_PATH:./storage}
+    type: ${APP_STORAGE_TYPE:local}
+    cleanup:
+      retry-interval-ms: ${APP_MEDIA_CLEANUP_RETRY_INTERVAL_MS:60000}
+      chunk-scan-interval-ms: ${APP_CHUNK_CLEANUP_SCAN_INTERVAL_MS:600000}
+      chunk-scan-initial-delay-ms: ${APP_CHUNK_CLEANUP_INITIAL_DELAY_MS:60000}
+      chunk-retention: ${APP_CHUNK_RETENTION:24h}
+    s3:
+      endpoint: ${APP_STORAGE_S3_ENDPOINT:http://localhost:19000}
+      public-endpoint: ${APP_STORAGE_S3_PUBLIC_ENDPOINT:}
+      region: ${APP_STORAGE_S3_REGION:us-east-1}
+      bucket: ${APP_STORAGE_S3_BUCKET:video-platform}
+      access-key: ${APP_STORAGE_S3_ACCESS_KEY:minioadmin}
+      secret-key: ${APP_STORAGE_S3_SECRET_KEY:minioadmin123}
+      path-style-access: ${APP_STORAGE_S3_PATH_STYLE_ACCESS:true}
+  redis:
+    enabled: ${APP_REDIS_ENABLED:true}
+  mq:
+    enabled: ${APP_MQ_ENABLED:false}
+    # 默认与本地 @Async maxPoolSize=4 对齐，使 MQ 开/关 A/B 只比较排队位置与接收率。
+    consumer-threads: ${APP_MQ_CONSUMER_THREADS:4}
+  workflow:
+    # 定时补偿：超过该时间仍停留在 QUEUED/TRANSCRIBING/SUMMARIZING 的任务会被重新投递。
+    # 解决进程崩溃、MQ 异常、单飞赢家中断后任务永久卡住的问题；默认保守设为 1 小时，避免误伤长视频。
+    stale-task-timeout: ${APP_WORKFLOW_STALE_TASK_TIMEOUT:60m}
+    reaper-enabled: ${APP_WORKFLOW_REAPER_ENABLED:true}
+    reaper-interval-ms: ${APP_WORKFLOW_REAPER_INTERVAL_MS:60000}
+    reaper-initial-delay-ms: ${APP_WORKFLOW_REAPER_INITIAL_DELAY_MS:60000}
+  quota:
+    # 0 表示关闭限制；生产小范围试用建议配置 5-10，防止单个用户压满队列与外部 AI 配额。
+    max-active-tasks-per-user: ${APP_MAX_ACTIVE_TASKS_PER_USER:5}
+  transcript:
+    enabled: ${APP_TRANSCRIPT_ENABLED:false}
+    # 压测用：Mock 转写模拟处理耗时（毫秒）。默认 0 即刻返回；P2 压测时设为秒级还原慢消费者（见 docs/LOADTEST.md）
+    mock-delay-ms: ${APP_TRANSCRIPT_MOCK_DELAY_MS:0}
+    whisper:
+      # 硅基流动 API: https://api.siliconflow.cn/v1
+      api-base-url: ${WHISPER_API_BASE_URL:https://api.siliconflow.cn/v1}
+      api-key: ${WHISPER_API_KEY:}
+      model: ${WHISPER_MODEL:iic/SenseVoiceSmall}
+      ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+  summary:
+    enabled: ${APP_SUMMARY_ENABLED:false}
+    llm:
+      # DeepSeek API: https://api.deepseek.com/v1
+      api-base-url: ${LLM_API_BASE_URL:https://api.deepseek.com/v1}
+      api-key: ${LLM_API_KEY:}
+      model: ${LLM_MODEL:deepseek-chat}
+      system-prompt: 请将以下视频转写内容总结为3-5条要点，并给出一个简短结论。
+
+---
+# ===== 零依赖本地开发：H2 内存库 + 关闭 Redis/MQ/Docker（-Dspring-boot.run.profiles=h2）=====
+spring:
+  config:
+    activate:
+      on-profile: h2
+  docker:
+    compose:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+app:
+  redis:
+    enabled: false
+  mq:
+    enabled: false

@@ -1,0 +1,221 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video-platform:local
+    container_name: video-platform-app
+    restart: unless-stopped
+    logging: *default-logging
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+      SERVER_PORT: ${SERVER_PORT:-8081}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      APP_REDIS_ENABLED: ${APP_REDIS_ENABLED:-true}
+      APP_MQ_ENABLED: ${APP_MQ_ENABLED:-true}
+      APP_MQ_CONSUMER_THREADS: ${APP_MQ_CONSUMER_THREADS:-4}
+      APP_MAX_ACTIVE_TASKS_PER_USER: ${APP_MAX_ACTIVE_TASKS_PER_USER:-5}
+      APP_STORAGE_TYPE: ${APP_STORAGE_TYPE:-s3}
+      APP_STORAGE_BASE_PATH: ${APP_STORAGE_BASE_PATH:-/app/storage}
+      APP_STORAGE_S3_ENDPOINT: ${APP_STORAGE_S3_ENDPOINT:-http://minio:9000}
+      APP_STORAGE_S3_PUBLIC_ENDPOINT: ${APP_STORAGE_S3_PUBLIC_ENDPOINT}
+      APP_STORAGE_S3_REGION: ${APP_STORAGE_S3_REGION:-us-east-1}
+      APP_STORAGE_S3_BUCKET: ${APP_STORAGE_S3_BUCKET:-video-platform}
+      APP_STORAGE_S3_ACCESS_KEY: ${APP_STORAGE_S3_ACCESS_KEY}
+      APP_STORAGE_S3_SECRET_KEY: ${APP_STORAGE_S3_SECRET_KEY}
+      APP_STORAGE_S3_PATH_STYLE_ACCESS: ${APP_STORAGE_S3_PATH_STYLE_ACCESS:-true}
+      APP_MEDIA_CLEANUP_RETRY_INTERVAL_MS: ${APP_MEDIA_CLEANUP_RETRY_INTERVAL_MS:-60000}
+      APP_CHUNK_CLEANUP_SCAN_INTERVAL_MS: ${APP_CHUNK_CLEANUP_SCAN_INTERVAL_MS:-600000}
+      APP_CHUNK_CLEANUP_INITIAL_DELAY_MS: ${APP_CHUNK_CLEANUP_INITIAL_DELAY_MS:-60000}
+      APP_CHUNK_RETENTION: ${APP_CHUNK_RETENTION:-24h}
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-8081}:${SERVER_PORT:-8081}"
+    volumes:
+      - app-storage:/app/storage
+      - app-logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rocketmq-broker:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mysql:
+    image: mysql:8.4
+    container_name: video-platform-mysql
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: video-platform-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-namesrv
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqnamesrv
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-broker
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: -server -Xms512m -Xmx512m -Xmn256m
+    command: sh mqbroker -n rocketmq-namesrv:9876
+    depends_on:
+      - rocketmq-namesrv
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: video-platform-minio
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MINIO_ROOT_USER: ${APP_STORAGE_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${APP_STORAGE_S3_SECRET_KEY}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:19001:9001"
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: video-platform-minio-init
+    restart: "no"
+    logging: *default-logging
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do sleep 2; done;
+      mc mb -p local/$${APP_STORAGE_S3_BUCKET} || true;
+      mc anonymous set none local/$${APP_STORAGE_S3_BUCKET} || true;
+      "
+    environment:
+      MINIO_ROOT_USER: ${APP_STORAGE_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${APP_STORAGE_S3_SECRET_KEY}
+      APP_STORAGE_S3_BUCKET: ${APP_STORAGE_S3_BUCKET:-video-platform}
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: video-platform-caddy
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      PUBLIC_APP_DOMAIN: ${PUBLIC_APP_DOMAIN}
+      PUBLIC_FILES_DOMAIN: ${PUBLIC_FILES_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: video-platform-prometheus
+    profiles:
+      - observability
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:19090:9090"
+    volumes:
+      - ./observability/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: video-platform-grafana
+    profiles:
+      - observability
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:13000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  app-storage:
+  app-logs:
+  mysql-data:
+  redis-data:
+  minio-data:
+  grafana-data:
+  caddy-data:
+  caddy-config:

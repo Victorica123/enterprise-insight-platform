@@ -1,0 +1,128 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: video-platform-redis
+    ports:
+      - "7379:6379"
+    command: redis-server --bind 0.0.0.0 --protected-mode no
+
+  mysql:
+    image: mysql:8.4
+    container_name: video-platform-mysql
+    profiles:
+      - mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: videoplatform
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-namesrv
+    profiles:
+      - mq
+    ports:
+      - "9876:9876"
+    environment:
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqnamesrv
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.2.0
+    container_name: video-platform-broker
+    profiles:
+      - mq
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m -Xmn128m
+    volumes:
+      # brokerIP1=127.0.0.1：让 broker 对宿主机客户端通告可达地址（详见该文件注释）
+      - ./observability/rocketmq/broker.conf:/home/rocketmq/broker-custom.conf:ro
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/broker-custom.conf
+    depends_on:
+      - rocketmq-namesrv
+
+  # ===== 可观测栈（P2 MQ 量化验证）：docker compose --profile observability up -d =====
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: video-platform-prometheus
+    profiles:
+      - observability
+    ports:
+      # 宿主机 9090 落在系统保留端口段（netsh excludedportrange，9079-9478）无法绑定，
+      # 与 redis 6379→7379 同理，映射到 19090；容器内仍是 9090（Grafana 数据源不受影响）
+      - "19090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      # 应用跑在宿主机（8081）；Linux 下需显式 host-gateway，Docker Desktop 原生支持
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: video-platform-grafana
+    profiles:
+      - observability
+    ports:
+      - "3000:3000"
+    environment:
+      # 本地压测看板免登录（P5 公网部署时移除匿名并配真实账号）
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  # ===== P4 对象存储验证：docker compose --profile object-storage up -d minio =====
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: video-platform-minio
+    profiles:
+      - object-storage
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+      # 前端页面跑在 http://localhost:8081，直传 PUT 到 http://localhost:19000 属于跨域请求。
+      # 不设置 CORS 时浏览器会在预检阶段拦截，导致直传 UI 看起来“网络失败”。
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:8081,http://127.0.0.1:8081
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: video-platform-minio-init
+    profiles:
+      - object-storage
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin123; do sleep 2; done;
+      mc mb -p local/video-platform || true;
+      mc anonymous set none local/video-platform || true;
+      "
+
+volumes:
+  mysql-data:
+  minio-data:

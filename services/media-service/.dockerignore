@@ -1,0 +1,9 @@
+target/
+.git/
+.idea/
+.vscode/
+storage/
+logs/
+loadtest/results/
+node_modules/
+*.log
