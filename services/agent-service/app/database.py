@@ -26,6 +26,13 @@ def init_db() -> None:
             create table if not exists documents (
                 id text primary key,
                 filename text not null,
+                tenant_id text not null default 'legacy',
+                owner_id text not null default 'legacy',
+                source_type text not null default 'document',
+                external_id text not null default '',
+                source_version integer not null default 1,
+                payload_sha256 text not null default '',
+                metadata_json text not null default '{}',
                 created_at text not null default current_timestamp
             )
             """
@@ -38,6 +45,14 @@ def init_db() -> None:
                 filename text not null,
                 chunk_index integer not null,
                 content text not null,
+                tenant_id text not null default 'legacy',
+                owner_id text not null default 'legacy',
+                source_type text not null default 'document',
+                asset_id text,
+                segment_id text,
+                start_ms integer,
+                end_ms integer,
+                speaker text,
                 created_at text not null default current_timestamp,
                 foreign key (document_id) references documents(id)
             )
@@ -54,6 +69,57 @@ def init_db() -> None:
         ensure_column(conn, table="chunks", column="embedding_v2", definition="text")
         # A4: 结构感知切块的块标题（最近的 markdown 标题）
         ensure_column(conn, table="chunks", column="chunk_title", definition="text not null default ''")
+        # 统一平台来源、租户与视频时间戳字段；旧文档迁移到 legacy 隔离域。
+        for column, definition in {
+            "tenant_id": "text not null default 'legacy'",
+            "owner_id": "text not null default 'legacy'",
+            "source_type": "text not null default 'document'",
+            "external_id": "text not null default ''",
+            "source_version": "integer not null default 1",
+            "payload_sha256": "text not null default ''",
+            "metadata_json": "text not null default '{}'",
+        }.items():
+            ensure_column(conn, table="documents", column=column, definition=definition)
+        for column, definition in {
+            "tenant_id": "text not null default 'legacy'",
+            "owner_id": "text not null default 'legacy'",
+            "source_type": "text not null default 'document'",
+            "asset_id": "text",
+            "segment_id": "text",
+            "start_ms": "integer",
+            "end_ms": "integer",
+            "speaker": "text",
+        }.items():
+            ensure_column(conn, table="chunks", column=column, definition=definition)
+        conn.execute(
+            """
+            create unique index if not exists uk_documents_external_version
+            on documents(tenant_id, source_type, external_id, source_version)
+            where external_id != ''
+            """
+        )
+        conn.execute(
+            """
+            create index if not exists idx_chunks_tenant_owner_source
+            on chunks(tenant_id, owner_id, source_type, asset_id)
+            """
+        )
+        conn.execute(
+            """
+            create table if not exists ingestion_receipts (
+                event_id text primary key,
+                event_type text not null,
+                tenant_id text not null,
+                resource_id text not null,
+                resource_version integer not null,
+                payload_sha256 text not null,
+                document_id text not null,
+                trace_id text not null,
+                created_at text not null default current_timestamp,
+                foreign key (document_id) references documents(id)
+            )
+            """
+        )
         conn.execute(
             """
             create table if not exists chat_metrics (
@@ -174,16 +240,27 @@ def insert_document(
     chunks: Iterable[tuple[str, str]],
     *,
     conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+    source_type: str = "document",
+    external_id: str = "",
+    source_version: int = 1,
+    payload_sha256: str = "",
+    metadata: dict[str, object] | None = None,
+    chunk_metadata: list[dict[str, object]] | None = None,
 ) -> int:
     """chunks: (块标题, 内容) 迭代；chunk_index 由写入顺序生成。"""
     chunk_rows = list(chunks)
     # A3: 真实 embedding 批量生成（模型不可用时为 None，只写哈希版）。
     real_vectors = embed_real([content for _title, content in chunk_rows])
     rows_to_insert = []
+    if chunk_metadata is not None and len(chunk_metadata) != len(chunk_rows):
+        raise ValueError("chunk_metadata length must match chunks length")
     for index, (title, content) in enumerate(chunk_rows):
+        details = chunk_metadata[index] if chunk_metadata else {}
         rows_to_insert.append(
             (
-                f"{document_id}:{index}",
+                f"{document_id}:{details.get('segment_id') or index}",
                 document_id,
                 filename,
                 index,
@@ -191,15 +268,47 @@ def insert_document(
                 embedding_to_json(build_embedding(content)),
                 embedding_to_json(real_vectors[index]) if real_vectors else None,
                 title,
+                tenant_id,
+                owner_id,
+                source_type,
+                details.get("asset_id"),
+                details.get("segment_id"),
+                details.get("start_ms"),
+                details.get("end_ms"),
+                details.get("speaker"),
             )
         )
 
     if conn is not None:
-        _insert_document_rows(conn, document_id, filename, rows_to_insert)
+        _insert_document_rows(
+            conn,
+            document_id,
+            filename,
+            rows_to_insert,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            source_type=source_type,
+            external_id=external_id,
+            source_version=source_version,
+            payload_sha256=payload_sha256,
+            metadata=metadata,
+        )
     else:
         init_db()
         with connect() as local_conn:
-            _insert_document_rows(local_conn, document_id, filename, rows_to_insert)
+            _insert_document_rows(
+                local_conn,
+                document_id,
+                filename,
+                rows_to_insert,
+                tenant_id=tenant_id,
+                owner_id=owner_id,
+                source_type=source_type,
+                external_id=external_id,
+                source_version=source_version,
+                payload_sha256=payload_sha256,
+                metadata=metadata,
+            )
 
     return len(chunk_rows)
 
@@ -209,57 +318,189 @@ def _insert_document_rows(
     document_id: str,
     filename: str,
     rows: list[tuple[object, ...]],
+    *,
+    tenant_id: str,
+    owner_id: str,
+    source_type: str,
+    external_id: str,
+    source_version: int,
+    payload_sha256: str,
+    metadata: dict[str, object] | None,
 ) -> None:
     conn.execute(
-        "insert into documents (id, filename) values (?, ?)",
-        (document_id, filename),
+        """
+        insert into documents (
+            id, filename, tenant_id, owner_id, source_type, external_id,
+            source_version, payload_sha256, metadata_json
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            document_id,
+            filename,
+            tenant_id,
+            owner_id,
+            source_type,
+            external_id,
+            source_version,
+            payload_sha256,
+            json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True),
+        ),
     )
     conn.executemany(
         """
-        insert into chunks (id, document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
+        insert into chunks (
+            id, document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title,
+            tenant_id, owner_id, source_type, asset_id, segment_id, start_ms, end_ms, speaker
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
     bump_content_revision(conn)
 
 
-def list_document_rows() -> list[sqlite3.Row]:
+def list_document_rows(
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> list[sqlite3.Row]:
     init_db()
+    predicates: list[str] = []
+    parameters: list[object] = []
+    if tenant_id is not None:
+        predicates.append("documents.tenant_id = ?")
+        parameters.append(tenant_id)
+    if owner_id is not None:
+        predicates.append("documents.owner_id = ?")
+        parameters.append(owner_id)
+    where_clause = f"where {' and '.join(predicates)}" if predicates else ""
     with connect() as conn:
         return conn.execute(
-            """
+            f"""
             select
                 documents.id,
                 documents.filename,
+                documents.source_type,
+                documents.external_id,
                 documents.created_at,
                 count(chunks.id) as chunk_count
             from documents
             left join chunks on chunks.document_id = documents.id
+            {where_clause}
             group by documents.id
             order by documents.created_at desc
-            """
+            """,
+            parameters,
         ).fetchall()
 
 
-def list_chunk_rows() -> list[sqlite3.Row]:
+def list_chunk_rows(
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+    asset_ids: tuple[str, ...] = (),
+) -> list[sqlite3.Row]:
     init_db()
+    predicates: list[str] = []
+    parameters: list[object] = []
+    if tenant_id is not None:
+        predicates.append("tenant_id = ?")
+        parameters.append(tenant_id)
+    if owner_id is not None:
+        predicates.append("owner_id = ?")
+        parameters.append(owner_id)
+    if asset_ids:
+        placeholders = ",".join("?" for _ in asset_ids)
+        predicates.append(f"asset_id in ({placeholders})")
+        parameters.extend(asset_ids)
+    where_clause = f"where {' and '.join(predicates)}" if predicates else ""
     with connect() as conn:
         return conn.execute(
-            """
-            select document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title
+            f"""
+            select document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title,
+                   tenant_id, owner_id, source_type, asset_id, segment_id, start_ms, end_ms, speaker
             from chunks
+            {where_clause}
             order by created_at asc, chunk_index asc
-            """
+            """,
+            parameters,
         ).fetchall()
 
 
-def delete_document(document_id: str) -> bool:
+def get_ingestion_receipt(event_id: str, *, conn: sqlite3.Connection) -> sqlite3.Row | None:
+    return conn.execute(
+        "select * from ingestion_receipts where event_id = ?",
+        (event_id,),
+    ).fetchone()
+
+
+def find_evidence_document(
+    tenant_id: str,
+    source_type: str,
+    external_id: str,
+    source_version: int,
+    *,
+    conn: sqlite3.Connection,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        select * from documents
+        where tenant_id = ? and source_type = ? and external_id = ? and source_version = ?
+        """,
+        (tenant_id, source_type, external_id, source_version),
+    ).fetchone()
+
+
+def insert_ingestion_receipt(
+    *,
+    event_id: str,
+    event_type: str,
+    tenant_id: str,
+    resource_id: str,
+    resource_version: int,
+    payload_sha256: str,
+    document_id: str,
+    trace_id: str,
+    conn: sqlite3.Connection,
+) -> None:
+    conn.execute(
+        """
+        insert into ingestion_receipts (
+            event_id, event_type, tenant_id, resource_id, resource_version,
+            payload_sha256, document_id, trace_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_id,
+            event_type,
+            tenant_id,
+            resource_id,
+            resource_version,
+            payload_sha256,
+            document_id,
+            trace_id,
+        ),
+    )
+
+
+def delete_document(
+    document_id: str,
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> bool:
     init_db()
+    predicates = ["id = ?"]
+    parameters: list[object] = [document_id]
+    if tenant_id is not None:
+        predicates.append("tenant_id = ?")
+        parameters.append(tenant_id)
+    if owner_id is not None:
+        predicates.append("owner_id = ?")
+        parameters.append(owner_id)
     with connect() as conn:
         existing = conn.execute(
-            "select id from documents where id = ?",
-            (document_id,),
+            f"select id from documents where {' and '.join(predicates)}",
+            parameters,
         ).fetchone()
         if existing is None:
             return False

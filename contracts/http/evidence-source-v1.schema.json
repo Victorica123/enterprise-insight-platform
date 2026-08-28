@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/evidence-source-v1.schema.json",
+  "title": "EvidenceSourceV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_type", "document_id", "filename", "chunk_index", "score", "content", "title"],
+  "properties": {
+    "source_type": { "enum": ["document", "video"] },
+    "document_id": { "type": "string" },
+    "filename": { "type": "string" },
+    "chunk_index": { "type": "integer", "minimum": 0 },
+    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "content": { "type": "string" },
+    "title": { "type": "string" },
+    "asset_id": { "type": ["string", "null"] },
+    "segment_id": { "type": ["string", "null"] },
+    "start_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "end_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "speaker": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source_type": { "const": "video" } } },
+      "then": { "required": ["asset_id", "segment_id", "start_ms", "end_ms"] }
+    }
+  ]
+}

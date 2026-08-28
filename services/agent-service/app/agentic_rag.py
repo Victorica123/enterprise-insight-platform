@@ -37,7 +37,7 @@ from app.rag import (
     expand_queries,
     title_term_boost,
 )
-from app.retrievers import RetrievalHit, get_retriever
+from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
 from app.slot_extraction import (
     extract_assignee,
     extract_priority,
@@ -68,6 +68,7 @@ class AgenticRagState:
     retriever_mode: str
     actor_role: str = "operator"
     actor_user: str = "anonymous"
+    retrieval_scope: RetrievalScope | None = None
     intent: str = "general"
     complexity: str = "simple"
     queries: list[str] = field(default_factory=list)
@@ -96,6 +97,7 @@ def answer_agentic_question(
     retriever_mode: str = "hybrid",
     actor_role: str = "operator",
     actor_user: str = "anonymous",
+    retrieval_scope: RetrievalScope | None = None,
 ) -> ChatResponse:
     init_tools()
 
@@ -105,6 +107,7 @@ def answer_agentic_question(
         retriever_mode=retriever_mode,
         actor_role=actor_role,
         actor_user=actor_user,
+        retrieval_scope=retrieval_scope,
         trace=[
             TraceStep(
                 name="question_received",
@@ -524,7 +527,11 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
     for round_index in range(1, MAX_RETRIEVAL_ROUNDS + 1):
         state.retrieval_rounds = round_index
         state.agents.append("Retriever Agent")
-        result = retriever.search(round_queries)
+        result = (
+            retriever.search(round_queries)
+            if state.retrieval_scope is None
+            else retriever.search(round_queries, state.retrieval_scope)
+        )
         merge_hits(state.hits, result.hits)
         state.sources = hits_to_sources(state.hits, state.question)
         useful_count = sum(1 for hit in result.hits if hit.score > 0)
@@ -587,12 +594,18 @@ def hits_to_sources(
     )[:MAX_SOURCES]
     return [
         Source(
+            source_type=hit.chunk.source_type,
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
             score=hit.score,
             content=hit.chunk.content,
             title=hit.chunk.title,
+            asset_id=hit.chunk.asset_id,
+            segment_id=hit.chunk.segment_id,
+            start_ms=hit.chunk.start_ms,
+            end_ms=hit.chunk.end_ms,
+            speaker=hit.chunk.speaker,
         )
         for hit in ranked
     ]

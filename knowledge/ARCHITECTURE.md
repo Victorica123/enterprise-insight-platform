@@ -36,6 +36,7 @@ Agent Service
 - 拥有对话、分析会话、知识、PRD、审批和行动项。
 - 对模型输出执行结构验证、证据校验、权限检查和审批门禁。
 - 视频引用只持有媒体逻辑身份和时间范围，播放授权仍由 Media Service 颁发。
+- 摄取同时按 `event_id` 和 `tenant_id + asset_id + transcript_version` 两级去重；相同键内容冲突返回 409 并保留旧事实。
 
 ### React Web
 
@@ -53,4 +54,3 @@ Agent Service
 ## 迁移原则
 
 原始 Video Platform 与 Agent Platform 仓库历史已导入本仓库；原仓库保持不动。整合通过纵向链路逐步替换旧入口，未迁移能力不会被无验证删除。
-

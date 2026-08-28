@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.auth import validate_auth_configuration
 from app.config import get_default_answer_mode, get_llm_settings, get_retriever_mode, load_local_env
 from app.database import get_embedding_stats, init_db
 from app.embeddings import warm_up_embeddings
@@ -23,6 +24,7 @@ from app.routes.chat import router as chat_router
 from app.routes.documents import router as documents_router
 from app.routes.embedding_admin import router as embedding_router
 from app.routes.graph import router as graph_router
+from app.routes.internal_media import router as internal_media_router
 from app.routes.observability import router as observability_router
 from app.routes.tickets import router as tickets_router
 from app.status_service import build_embedding_status
@@ -39,6 +41,7 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    validate_auth_configuration()
     init_db()
     init_tools()
     init_graph_store()
@@ -57,14 +60,15 @@ TAG_METADATA = [
     {"name": "observability", "description": "指标、请求日志与回放、工具调用审计、用户反馈。审计数据需 operator+。"},
     {"name": "graph", "description": "关系图谱：概览、实体、关系、关系链查询与重建。重建需 operator+。"},
     {"name": "embeddings", "description": "Embedding 覆盖率查询与全量重建。重建需 operator+。"},
+    {"name": "internal-media", "description": "Media Service 专用的版本化证据摄取接口。"},
 ]
 
 app = FastAPI(
     title="Enterprise AI Workflow Assistant API",
     description=(
         "企业智能工单与知识助手平台 API。\n\n"
-        "**鉴权**：所有端点接受 `X-User-Role`（viewer / operator / admin，默认 viewer）；"
-        "写操作与审计数据端点要求 operator+；`X-User-Id` 用于审批职责分离。\n\n"
+        "**鉴权**：生产环境只接受统一平台签发的 Bearer JWT，JWT 携带 tenant、用户和角色；"
+        "开发模式可显式启用兼容身份头。写操作与审计数据端点要求 operator+。\n\n"
         "零配置即可运行：不配置 LLM Key 时使用本地模板回答模式。"
     ),
     version=__version__,
@@ -92,6 +96,7 @@ for feature_router in (
     observability_router,
     graph_router,
     tickets_router,
+    internal_media_router,
 ):
     app.include_router(feature_router)
 

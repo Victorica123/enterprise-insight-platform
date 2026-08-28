@@ -2,6 +2,7 @@
 import re
 
 from app.models import Source
+from app.evidence import source_location
 
 
 def review_citations(answer: str, sources: list[Source]) -> tuple[str, str, str]:
@@ -9,7 +10,7 @@ def review_citations(answer: str, sources: list[Source]) -> tuple[str, str, str]
         return answer, "failed", "Reviewer Agent 未发现可验证的答案或来源。"
 
     citation_lines = [
-        f"- [来源 {index}] {source.filename} / chunk {source.chunk_index}"
+        f"- [来源 {index}] {source_location(source)}"
         for index, source in enumerate(sources, start=1)
     ]
     expected_markers = [f"[来源 {index}]" for index in range(1, len(sources) + 1)]

@@ -2,12 +2,12 @@
 import re
 
 from app.models import Source
+from app.evidence import source_location
 
 
 def build_fallback_answer(sources: list[Source], note: str) -> str:
     evidence = "\n\n".join(
-        f"[来源 {index + 1}: {source.filename} / chunk {source.chunk_index}"
-        + (f" / 章节：{source.title}" if source.title else "")
+        f"[来源 {index + 1}: {source_location(source)}"
         + f"]\n{source.content}"
         for index, source in enumerate(sources)
     )

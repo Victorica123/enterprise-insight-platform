@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
 
@@ -131,15 +131,35 @@ class ChatRequest(BaseModel):
         default="agentic",
         description="工作流模式：standard=单轮 RAG，agentic=分类、改写、多轮检索和引用审核。",
     )
+    asset_ids: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description="可选视频资产范围；为空时检索当前用户有权访问的全部证据。",
+    )
 
 
 class Source(BaseModel):
+    source_type: Literal["document", "video"] = "document"
     document_id: str
     filename: str
     chunk_index: int
     score: int
     content: str
     title: str = ""  # A4: 块标题，帮助模型理解来源上下文
+    asset_id: str | None = None
+    segment_id: str | None = None
+    start_ms: int | None = Field(default=None, ge=0)
+    end_ms: int | None = Field(default=None, ge=0)
+    speaker: str | None = None
+
+    @model_validator(mode="after")
+    def validate_video_location(self) -> "Source":
+        if self.source_type == "video":
+            if not self.asset_id or not self.segment_id or self.start_ms is None or self.end_ms is None:
+                raise ValueError("video evidence requires asset, segment and time range")
+            if self.end_ms < self.start_ms:
+                raise ValueError("video evidence end_ms must be greater than or equal to start_ms")
+        return self
 
 
 class TraceStep(BaseModel):

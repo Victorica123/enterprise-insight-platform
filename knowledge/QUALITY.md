@@ -10,7 +10,7 @@
 
 ## 当前已知基线
 
-- Agent Service 在整合前的回归基线为 87 个 pytest 用例通过。
+- Agent Service 在整合前的回归基线为 87 个 pytest 用例通过；首批契约、幂等摄取、检索隔离、JWT 与时间戳引用加入后为 98 个用例通过。
 - React 应用在整合前可完成 TypeScript/Vite 生产构建。
 - Media Service 声明支持 JDK 17/18；JDK 25 下 Mockito inline/ByteBuddy 失败属于不支持工具链，不能作为服务回归结论，也不能当作通过。
 
@@ -31,4 +31,3 @@
 - 有 citation 字段不等于引用真实正确。
 - UI 隐藏资源不等于完成授权。
 - happy path 演示不等于任务具备重试、幂等和恢复能力。
-

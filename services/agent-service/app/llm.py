@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from app.config import get_llm_settings
 from app.llm_client import create_chat_completion
 from app.models import Source
+from app.evidence import source_location
 
 
 @dataclass(frozen=True)
@@ -66,10 +67,10 @@ def build_user_prompt(
 ) -> str:
     evidence = "\n\n".join(
         f"来源 {index + 1}\n"
-        f"文档：{source.filename}\n"
-        + (f"章节：{source.title}\n" if source.title else "")
-        + f"Chunk：{source.chunk_index}\n"
-        f"内容：{source.content}"
+        f"来源类型：{source.source_type}\n"
+        f"位置：{source_location(source)}\n"
+        + (f"资产 ID：{source.asset_id}\n片段 ID：{source.segment_id}\n" if source.source_type == "video" else "")
+        + f"内容：{source.content}"
         for index, source in enumerate(sources)
     )
 

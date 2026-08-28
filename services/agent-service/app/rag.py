@@ -5,12 +5,13 @@ import re
 from uuid import uuid4
 
 from app.config import get_llm_pricing
+from app import database
 from app.database import connect, init_db, insert_document, list_document_rows
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
 from app.models import ChatResponse, DocumentSummary, DocumentUploadResponse, Source, TokenUsage, TraceStep
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
-from app.retrievers import RetrievalHit, get_retriever
+from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,14 @@ class EvidencePolicy:
     min_intent_coverage: float
 
 
-def ingest_document(filename: str, content: str) -> DocumentUploadResponse:
+def ingest_document(
+    filename: str,
+    content: str,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+    index_graph: bool = True,
+) -> DocumentUploadResponse:
     document_id = str(uuid4())
     document_chunks = split_text(content)
     init_db()
@@ -57,8 +65,11 @@ def ingest_document(filename: str, content: str) -> DocumentUploadResponse:
             filename=filename,
             chunks=document_chunks,
             conn=conn,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
         )
-        index_document_graph(document_id, conn=conn)
+        if index_graph:
+            index_document_graph(document_id, conn=conn)
 
     return DocumentUploadResponse(
         document_id=document_id,
@@ -67,7 +78,9 @@ def ingest_document(filename: str, content: str) -> DocumentUploadResponse:
     )
 
 
-def list_documents() -> list[DocumentSummary]:
+def list_documents(
+    *, tenant_id: str | None = None, owner_id: str | None = None
+) -> list[DocumentSummary]:
     return [
         DocumentSummary(
             document_id=row["id"],
@@ -75,12 +88,20 @@ def list_documents() -> list[DocumentSummary]:
             chunk_count=row["chunk_count"],
             created_at=row["created_at"],
         )
-        for row in list_document_rows()
+        for row in list_document_rows(tenant_id=tenant_id, owner_id=owner_id)
     ]
 
 
-def delete_document(document_id: str) -> bool:
-    return delete_document_and_rebuild(document_id)
+def delete_document(
+    document_id: str,
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+    rebuild_graph: bool = True,
+) -> bool:
+    if rebuild_graph and tenant_id is None and owner_id is None:
+        return delete_document_and_rebuild(document_id)
+    return database.delete_document(document_id, tenant_id=tenant_id, owner_id=owner_id)
 
 
 def split_text(text: str) -> list[tuple[str, str]]:
@@ -175,7 +196,12 @@ def _pack_sentences(title: str, sentences: list[str]) -> list[tuple[str, str]]:
     return chunks
 
 
-def answer_question(question: str, answer_mode: str = "auto", retriever_mode: str | None = None) -> ChatResponse:
+def answer_question(
+    question: str,
+    answer_mode: str = "auto",
+    retriever_mode: str | None = None,
+    scope: RetrievalScope | None = None,
+) -> ChatResponse:
     queries = expand_queries(question)
     trace: list[TraceStep] = [
         TraceStep(
@@ -190,7 +216,7 @@ def answer_question(question: str, answer_mode: str = "auto", retriever_mode: st
         )
     ]
     retriever = get_retriever(retriever_mode)
-    retrieval_result = retriever.search(queries)
+    retrieval_result = retriever.search(queries) if scope is None else retriever.search(queries, scope)
     ranked_hits = retrieval_result.hits
 
     if not ranked_hits:
@@ -232,12 +258,18 @@ def answer_question(question: str, answer_mode: str = "auto", retriever_mode: st
     )[:MAX_SOURCES]
     sources = [
         Source(
+            source_type=hit.chunk.source_type,
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
             score=hit.score,
             content=hit.chunk.content,
             title=hit.chunk.title,
+            asset_id=hit.chunk.asset_id,
+            segment_id=hit.chunk.segment_id,
+            start_ms=hit.chunk.start_ms,
+            end_ms=hit.chunk.end_ms,
+            speaker=hit.chunk.speaker,
         )
         for hit in selected
     ]

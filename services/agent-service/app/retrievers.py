@@ -24,6 +24,14 @@ class Chunk:
     embedding: list[float] | None = None
     embedding_v2: list[float] | None = None  # A3: 真实语义 embedding（512 维）
     title: str = ""  # A4: 块标题（最近的 markdown 标题）
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
+    source_type: str = "document"
+    asset_id: str | None = None
+    segment_id: str | None = None
+    start_ms: int | None = None
+    end_ms: int | None = None
+    speaker: str | None = None
 
 
 @dataclass
@@ -37,6 +45,15 @@ class RetrievalHit:
 class RetrievalResult:
     hits: list[RetrievalHit]
     scanned_count: int
+
+
+@dataclass(frozen=True)
+class RetrievalScope:
+    """Authorization filter applied before any evidence reaches a model."""
+
+    tenant_id: str
+    owner_id: str | None = None
+    asset_ids: tuple[str, ...] = ()
 
 
 # RRF 的平滑常数，取检索文献常用的 60：排名靠前的差异被放大，长尾被压平。
@@ -71,20 +88,20 @@ def reciprocal_rank_fusion(ranked_lists: list[list[tuple[str, int]]]) -> dict[tu
 class Retriever(Protocol):
     name: str
 
-    def search(self, queries: list[str]) -> RetrievalResult:
+    def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
         ...
 
 
 class KeywordRetriever:
     name = "keyword"
 
-    def search(self, queries: list[str]) -> RetrievalResult:
+    def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
         query_terms = [(query, extract_search_terms(query)) for query in queries]
         query_terms = [(query, terms) for query, terms in query_terms if terms]
         if not query_terms:
             return RetrievalResult(hits=[], scanned_count=0)
 
-        chunks = load_chunks()
+        chunks = load_chunks(scope)
         hits: list[RetrievalHit] = []
         for chunk in chunks:
             # A4: 标题词项并入 chunk 词项——"违约责任条款"这类标题关键词才能命中
@@ -115,12 +132,12 @@ class KeywordRetriever:
 class EmbeddingRetriever:
     name = "embedding"
 
-    def search(self, queries: list[str]) -> RetrievalResult:
+    def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
         query_texts = [query for query in queries if query.strip()]
         if not query_texts:
             return RetrievalResult(hits=[], scanned_count=0)
 
-        chunks = load_chunks()
+        chunks = load_chunks(scope)
 
         # A3: 真实语义 embedding 优先（query 与缺失 chunk 向量各批量推理一次）；
         # 模型不可用或推理失败时整体回退哈希 n-gram 版。
@@ -215,9 +232,9 @@ class HybridRetriever:
 
     name = "hybrid"
 
-    def search(self, queries: list[str]) -> RetrievalResult:
-        keyword_result = KeywordRetriever().search(queries)
-        embedding_result = EmbeddingRetriever().search(queries)
+    def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
+        keyword_result = KeywordRetriever().search(queries, scope)
+        embedding_result = EmbeddingRetriever().search(queries, scope)
 
         chunks: dict[tuple[str, int], Chunk] = {}
         keyword_scores: dict[tuple[str, int], int] = {}
@@ -297,13 +314,26 @@ def get_retriever(mode: str | None = None) -> Retriever:
     return KeywordRetriever()
 
 
-def load_chunks() -> list[Chunk]:
+def load_chunks(scope: RetrievalScope | None = None) -> list[Chunk]:
     revision = database.get_content_revision()
-    return list(_load_chunks_cached(str(database.DB_PATH.resolve()), revision))
+    tenant_id = scope.tenant_id if scope else None
+    owner_id = scope.owner_id if scope else None
+    asset_ids = scope.asset_ids if scope else ()
+    return list(
+        _load_chunks_cached(
+            str(database.DB_PATH.resolve()), revision, tenant_id, owner_id, asset_ids
+        )
+    )
 
 
-@lru_cache(maxsize=16)
-def _load_chunks_cached(db_path: str, revision: int) -> tuple[Chunk, ...]:
+@lru_cache(maxsize=64)
+def _load_chunks_cached(
+    db_path: str,
+    revision: int,
+    tenant_id: str | None,
+    owner_id: str | None,
+    asset_ids: tuple[str, ...],
+) -> tuple[Chunk, ...]:
     # Both values intentionally participate in the cache key. The revision is
     # stored in SQLite, so writes from another process invalidate this cache too.
     del db_path, revision
@@ -316,8 +346,20 @@ def _load_chunks_cached(db_path: str, revision: int) -> tuple[Chunk, ...]:
             embedding=embedding_from_json(row["embedding"]),
             embedding_v2=embedding_from_json(row["embedding_v2"]) if "embedding_v2" in row.keys() else None,
             title=row["chunk_title"] if "chunk_title" in row.keys() else "",
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "legacy",
+            owner_id=row["owner_id"] if "owner_id" in row.keys() else "legacy",
+            source_type=row["source_type"] if "source_type" in row.keys() else "document",
+            asset_id=row["asset_id"] if "asset_id" in row.keys() else None,
+            segment_id=row["segment_id"] if "segment_id" in row.keys() else None,
+            start_ms=row["start_ms"] if "start_ms" in row.keys() else None,
+            end_ms=row["end_ms"] if "end_ms" in row.keys() else None,
+            speaker=row["speaker"] if "speaker" in row.keys() else None,
         )
-        for row in database.list_chunk_rows()
+        for row in database.list_chunk_rows(
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            asset_ids=asset_ids,
+        )
     )
 
 

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/events/transcript-ready-v1.schema.json",
+  "title": "transcript.ready.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "trace_id",
+    "tenant_id",
+    "owner_id",
+    "data"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "event_type": { "const": "transcript.ready.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "owner_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "transcript_version", "filename", "segments"],
+      "properties": {
+        "asset_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "transcript_version": { "type": "integer", "minimum": 1 },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "language": { "type": ["string", "null"], "maxLength": 32 },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "segments": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["segment_id", "sequence", "start_ms", "end_ms", "text"],
+            "properties": {
+              "segment_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "sequence": { "type": "integer", "minimum": 0 },
+              "start_ms": { "type": "integer", "minimum": 0 },
+              "end_ms": { "type": "integer", "minimum": 0 },
+              "speaker": { "type": ["string", "null"], "maxLength": 128 },
+              "text": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

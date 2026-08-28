@@ -2,13 +2,14 @@
 import logging
 from time import perf_counter
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.agentic_rag import answer_agentic_question
-from app.auth import normalize_actor_user, validate_actor_role
+from app.auth import ActorPrincipal, current_principal
 from app.database import record_chat_log, record_chat_metric
 from app.models import ChatRequest, ChatResponse
 from app.rag import answer_question
+from app.retrievers import RetrievalScope
 
 
 logger = logging.getLogger(__name__)
@@ -20,30 +21,42 @@ router = APIRouter(tags=["chat"])
              responses={200: {"description": "回答 + 来源证据 + 执行轨迹 + token 用量 + 待审批操作"}})
 def chat(
     request: ChatRequest,
-    x_user_role: str = Header(default="viewer"),
-    x_user_id: str = Header(default=""),
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> ChatResponse:
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    actor_role = validate_actor_role(x_user_role)
-    actor_user = normalize_actor_user(x_user_id)
+    actor_role = principal.role
+    actor_user = principal.actor_user
+    retrieval_scope = (
+        RetrievalScope(
+            tenant_id=principal.tenant_id,
+            owner_id=principal.retrieval_owner_id,
+            asset_ids=tuple(dict.fromkeys(request.asset_ids)),
+        )
+        if principal.auth_mode == "jwt" or request.asset_ids
+        else None
+    )
     started_at = perf_counter()
     try:
         if request.workflow_mode == "agentic":
-            response = answer_agentic_question(
-                request.question,
-                answer_mode=request.answer_mode,
-                retriever_mode=request.retriever_mode,
-                actor_role=actor_role,
-                actor_user=actor_user,
-            )
+            kwargs = {
+                "answer_mode": request.answer_mode,
+                "retriever_mode": request.retriever_mode,
+                "actor_role": actor_role,
+                "actor_user": actor_user,
+            }
+            if retrieval_scope is not None:
+                kwargs["retrieval_scope"] = retrieval_scope
+            response = answer_agentic_question(request.question, **kwargs)
         else:
-            response = answer_question(
-                request.question,
-                answer_mode=request.answer_mode,
-                retriever_mode=request.retriever_mode,
-            )
+            kwargs = {
+                "answer_mode": request.answer_mode,
+                "retriever_mode": request.retriever_mode,
+            }
+            if retrieval_scope is not None:
+                kwargs["scope"] = retrieval_scope
+            response = answer_question(request.question, **kwargs)
     except Exception:
         logger.exception("chat_failed workflow=%s mode=%s", request.workflow_mode, request.answer_mode)
         safe_record_chat_metric(

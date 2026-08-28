@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import (
-    normalize_actor_user,
+    ActorPrincipal,
+    current_principal,
     require_operator_role,
+    require_tenant_safe_feature,
     require_write_role,
-    validate_actor_role,
 )
 from app.models import (
     ApprovalRequest,
@@ -35,7 +36,9 @@ def get_tickets(
     status: str | None = None,
     priority: str | None = None,
     keyword: str = "",
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketListResponse:
+    require_tenant_safe_feature(principal, "Tickets")
     tickets = list_tickets(status=status, priority=priority, keyword=keyword)
     return TicketListResponse(
         tickets=[TicketResponse(**ticket.to_dict()) for ticket in tickets],
@@ -45,7 +48,11 @@ def get_tickets(
 
 
 @router.get("/tickets/{ticket_id}", response_model=TicketResponse, summary="工单详情")
-def get_ticket_by_id(ticket_id: str) -> TicketResponse:
+def get_ticket_by_id(
+    ticket_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> TicketResponse:
+    require_tenant_safe_feature(principal, "Tickets")
     ticket = get_ticket(ticket_id)
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found.")
@@ -56,9 +63,10 @@ def get_ticket_by_id(ticket_id: str) -> TicketResponse:
              responses={403: {"description": "viewer 无写权限"}})
 def create_ticket_manual(
     request: TicketCreateRequest,
-    x_user_role: str = Header(default="viewer"),
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketResponse:
-    require_write_role(validate_actor_role(x_user_role))
+    require_tenant_safe_feature(principal, "Tickets")
+    require_write_role(principal.role)
     ticket = create_ticket(
         title=request.title,
         description=request.description,
@@ -75,14 +83,14 @@ def create_ticket_manual(
 def create_ticket_status_draft(
     ticket_id: str,
     request: TicketStatusDraftRequest,
-    x_user_role: str = Header(default="viewer"),
-    x_user_id: str = Header(default=""),
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> PendingActionResponse:
+    require_tenant_safe_feature(principal, "Tickets")
     result = execute_tool(
         "update_ticket_status",
         {"ticket_id": ticket_id, "new_status": request.new_status, "assignee": request.assignee},
-        actor_role=validate_actor_role(x_user_role),
-        actor_user=normalize_actor_user(x_user_id),
+        actor_role=principal.role,
+        actor_user=principal.actor_user,
     )
     if not result.success:
         status_code = 403 if result.status == "denied" else 400
@@ -95,8 +103,12 @@ def create_ticket_status_draft(
 
 @router.delete("/tickets/{ticket_id}", summary="删除工单（operator+）",
              responses={403: {"description": "viewer 无写权限"}, 404: {"description": "工单不存在"}})
-def remove_ticket(ticket_id: str, x_user_role: str = Header(default="viewer")) -> dict[str, str]:
-    require_write_role(validate_actor_role(x_user_role))
+def remove_ticket(
+    ticket_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> dict[str, str]:
+    require_tenant_safe_feature(principal, "Tickets")
+    require_write_role(principal.role)
     if not delete_ticket(ticket_id):
         raise HTTPException(status_code=404, detail="Ticket not found.")
     return {"status": "deleted", "ticket_id": ticket_id}
@@ -105,9 +117,10 @@ def remove_ticket(ticket_id: str, x_user_role: str = Header(default="viewer")) -
 @router.get("/pending-actions", response_model=list[PendingActionResponse], summary="待审批操作队列（operator+）")
 def get_pending_actions(
     status: str = "pending",
-    x_user_role: str = Header(default="viewer"),
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> list[PendingActionResponse]:
-    require_operator_role(validate_actor_role(x_user_role))
+    require_tenant_safe_feature(principal, "Tickets")
+    require_operator_role(principal.role)
     actions = list_pending_actions(status=None if status == "all" else status)
     return [PendingActionResponse(**action.to_dict()) for action in actions]
 
@@ -118,14 +131,14 @@ def get_pending_actions(
 def approve_action(
     action_id: str,
     request: ApprovalRequest,
-    x_user_role: str = Header(default="viewer"),
-    x_user_id: str = Header(default=""),
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> ApprovalResponse:
+    require_tenant_safe_feature(principal, "Tickets")
     resolution = resolve_tool_action(
         action_id,
         request.approved,
-        actor_role=validate_actor_role(x_user_role),
-        actor_user=normalize_actor_user(x_user_id),
+        actor_role=principal.role,
+        actor_user=principal.actor_user,
     )
     if resolution.status == "not_found":
         raise HTTPException(status_code=404, detail=resolution.message)
