@@ -16,11 +16,16 @@ public class MockTranscriptService implements TranscriptService {
 	}
 
 	@Override
-	public String extract(String storagePath, String fileName) {
+	public TranscriptResult extract(String storagePath, String fileName) {
 		simulateProcessingDelay();
-		return "模拟转写结果: 文件 " + fileName + " 已完成音频识别。"
+		String text = "模拟转写结果: 文件 " + fileName + " 已完成音频识别。"
 				+ " 存储路径 " + storagePath + "。"
 				+ " 处理时间 " + Instant.now() + "。";
+		return new TranscriptResult(
+				text,
+				java.util.List.of(new TranscriptResult.Segment("segment-0", 0, 0, 5_000, "演示说话人", text)),
+				"zh-CN",
+				5_000L);
 	}
 
 	/** 压测用：模拟真实转写的处理耗时（app.transcript.mock-delay-ms，默认 0 不生效）。 */

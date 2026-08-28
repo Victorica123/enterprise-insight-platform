@@ -1,5 +1,6 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.transcript.TranscriptResult;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -29,6 +30,13 @@ public class MediaAsset {
 
 	@Column(columnDefinition = "TEXT")
 	private String transcript;
+
+	@Column(columnDefinition = "TEXT")
+	private String transcriptSegmentsJson;
+
+	private String transcriptLanguage;
+
+	private Long transcriptDurationMs;
 
 	@Column(columnDefinition = "TEXT")
 	private String summary;
@@ -81,11 +89,23 @@ public class MediaAsset {
 		return errorMessage;
 	}
 
-	public void markReady(String transcript, String summary) {
-		this.transcript = transcript;
+	public void markReady(TranscriptResult transcript, String summary) {
+		this.transcript = transcript.text();
+		this.transcriptSegmentsJson = transcript.segmentsJson();
+		this.transcriptLanguage = transcript.language();
+		this.transcriptDurationMs = transcript.durationMs();
 		this.summary = summary;
 		this.status = AssetStatus.READY;
 		this.updatedAt = Instant.now();
+	}
+
+	/** Compatibility helper for pre-timestamp unit fixtures and migrated rows. */
+	public void markReady(String transcript, String summary) {
+		markReady(TranscriptResult.fromPlainText(transcript), summary);
+	}
+
+	public TranscriptResult getTranscriptResult() {
+		return TranscriptResult.fromStored(transcript, transcriptSegmentsJson, transcriptLanguage, transcriptDurationMs);
 	}
 
 	public void markFailed(String errorMessage) {

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.example.videoplatform.media.MediaStorageService;
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
+import com.example.videoplatform.transcript.TranscriptResult;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -35,6 +36,7 @@ class WorkflowProcessorTests {
 			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics,
 			mediaStorageService);
 	private static final String RESOLVED_STORAGE_PATH = Path.of("storage", "demo.mp4").toString();
+	private static final TranscriptResult TRANSCRIPT = TranscriptResult.fromPlainText("transcript");
 
 	private static VideoTask task(String contentMd5) {
 		return new VideoTask("task-1", "video-1", "user-1", "demo.mp4", "storage/demo.mp4", contentMd5);
@@ -45,7 +47,7 @@ class WorkflowProcessorTests {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 		stubResolvedMedia();
-		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");
@@ -53,7 +55,7 @@ class WorkflowProcessorTests {
 		InOrder inOrder = inOrder(videoTaskService, transcriptService, summaryService);
 		inOrder.verify(videoTaskService).claimForProcessing("task-1");
 		inOrder.verify(transcriptService).extract(RESOLVED_STORAGE_PATH, "demo.mp4");
-		inOrder.verify(videoTaskService).completeTranscript("task-1", "transcript");
+		inOrder.verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT);
 		inOrder.verify(summaryService).summarize("transcript");
 		inOrder.verify(videoTaskService).completeSummary("task-1", "summary");
 		verifyNoInteractions(lockService);
@@ -69,7 +71,8 @@ class WorkflowProcessorTests {
 		processor.processAsync("task-1");
 
 		// 去重命中：直接复用，不抢占、不加锁、不跑 FFmpeg/Whisper/LLM
-		verify(videoTaskService).completeFromAsset("task-1", "cached transcript", "cached summary");
+		verify(videoTaskService).completeFromAsset(
+				"task-1", TranscriptResult.fromPlainText("cached transcript"), "cached summary");
 		verify(videoTaskService, never()).claimForProcessing(anyString());
 		verifyNoInteractions(lockService, transcriptService, summaryService);
 	}
@@ -81,7 +84,7 @@ class WorkflowProcessorTests {
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 		when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(true);
 		stubResolvedMedia();
-		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");
@@ -89,8 +92,8 @@ class WorkflowProcessorTests {
 		InOrder inOrder = inOrder(lockService, mediaAssetService, videoTaskService);
 		inOrder.verify(lockService).tryLockWithWatchdog("lock:asset:md5-1");
 		inOrder.verify(mediaAssetService).markProcessing("md5-1", "storage/demo.mp4");
-		inOrder.verify(mediaAssetService).markReady("md5-1", "transcript", "summary");
-		inOrder.verify(videoTaskService).completeAllByContentMd5("md5-1", "transcript", "summary");
+		inOrder.verify(mediaAssetService).markReady("md5-1", TRANSCRIPT, "summary");
+		inOrder.verify(videoTaskService).completeAllByContentMd5("md5-1", TRANSCRIPT, "summary");
 		inOrder.verify(lockService).unlock("lock:asset:md5-1");
 	}
 
@@ -160,12 +163,12 @@ class WorkflowProcessorTests {
 			when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 			when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 			stubResolvedMedia();
-			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
+			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 			when(summaryService.summarize("transcript")).thenThrow(new IllegalStateException("summary failed"));
 
 			processor.processAsync("task-1");
 
-			verify(videoTaskService).completeTranscript("task-1", "transcript");
+			verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT);
 			verify(videoTaskService).markFailed("task-1", "summary failed");
 		});
 	}
@@ -175,7 +178,7 @@ class WorkflowProcessorTests {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
 		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
 		stubResolvedMedia();
-		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn("transcript");
+		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
 
 		processor.processAsync("task-1");

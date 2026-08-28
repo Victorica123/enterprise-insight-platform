@@ -3,6 +3,7 @@ package com.example.videoplatform.workflow;
 import com.example.videoplatform.media.MediaStorageService;
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptService;
+import com.example.videoplatform.transcript.TranscriptResult;
 import io.micrometer.core.instrument.Timer;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -78,7 +79,7 @@ public class WorkflowProcessor {
 			if (ready.isPresent()) {
 				log.info("Content {} already processed, reusing result for task {}", md5, taskId);
 				Timer.Sample sample = metrics.startProcessing();
-				videoTaskService.completeFromAsset(taskId, ready.get().getTranscript(), ready.get().getSummary());
+				videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
 				metrics.stopProcessing(sample, "dedup", "completed");
 				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
@@ -116,7 +117,7 @@ public class WorkflowProcessor {
 			// double-check：抢锁期间赢家可能刚写好结果
 			Optional<MediaAsset> ready = readyAsset(md5);
 			if (ready.isPresent()) {
-				videoTaskService.completeFromAsset(taskId, ready.get().getTranscript(), ready.get().getSummary());
+				videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
 				metrics.stopProcessing(sample, "dedup", "completed");
 				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
@@ -124,11 +125,11 @@ public class WorkflowProcessor {
 
 			mediaAssetService.markProcessing(md5, task.getStoragePath());
 
-			String transcript;
+			TranscriptResult transcript;
 			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
 				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
 			}
-			String summary = summaryService.summarize(transcript);
+			String summary = summaryService.summarize(transcript.text());
 
 			mediaAssetService.markReady(md5, transcript, summary);
 			int completed = videoTaskService.completeAllByContentMd5(md5, transcript, summary);
@@ -149,13 +150,13 @@ public class WorkflowProcessor {
 	private void processStandalone(String taskId, VideoTask task) {
 		Timer.Sample sample = metrics.startProcessing();
 		try {
-			String transcript;
+			TranscriptResult transcript;
 			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
 				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
 			}
 			videoTaskService.completeTranscript(taskId, transcript);
 
-			String summary = summaryService.summarize(transcript);
+			String summary = summaryService.summarize(transcript.text());
 			videoTaskService.completeSummary(taskId, summary);
 			log.info("Video task {} completed", taskId);
 			metrics.stopProcessing(sample, "standalone", "completed");

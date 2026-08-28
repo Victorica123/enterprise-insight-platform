@@ -24,7 +24,7 @@ public class WhisperTranscriptService implements TranscriptService {
 	}
 
 	@Override
-	public String extract(String storagePath, String fileName) {
+	public TranscriptResult extract(String storagePath, String fileName) {
 		String ffmpegPath = appProperties.getTranscript().getWhisper().getFfmpegPath();
 		Path wavPath = audioExtractionService.extractToWav(storagePath, ffmpegPath);
 		try {

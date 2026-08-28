@@ -1,6 +1,8 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.transcript.TranscriptResult;
 import java.time.Instant;
+import java.util.List;
 
 public final class WorkflowDtos {
 
@@ -13,6 +15,10 @@ public final class WorkflowDtos {
 			String owner,
 			String fileName,
 			String transcript,
+			List<TranscriptResult.Segment> transcriptSegments,
+			String transcriptLanguage,
+			Long transcriptDurationMs,
+			int transcriptVersion,
 			String summary,
 			VideoTask.TaskStatus status,
 			String errorMessage,
@@ -26,6 +32,10 @@ public final class WorkflowDtos {
 					task.getOwner(),
 					task.getFileName(),
 					task.getTranscript(),
+					task.getTranscriptResult().segments(),
+					task.getTranscriptResult().language(),
+					task.getTranscriptResult().durationMs(),
+					task.getTranscriptVersion(),
 					task.getSummary(),
 					task.getStatus(),
 					task.getErrorMessage(),

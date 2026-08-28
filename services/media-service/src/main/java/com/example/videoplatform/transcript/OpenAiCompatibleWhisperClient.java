@@ -32,7 +32,7 @@ public class OpenAiCompatibleWhisperClient {
 		this.objectMapper = objectMapper;
 	}
 
-	public String transcribe(Path audioFile) {
+	public TranscriptResult transcribe(Path audioFile) {
 		AppProperties.Transcript.Whisper whisper = appProperties.getTranscript().getWhisper();
 		String baseUrl = whisper.getApiBaseUrl();
 		String apiKey = whisper.getApiKey();
@@ -57,11 +57,11 @@ public class OpenAiCompatibleWhisperClient {
 				throw new IllegalStateException("Whisper API 调用失败，status=" + response.statusCode() + "，body=" + response.body());
 			}
 
-			String text = extractJsonTextField(response.body());
-			if (text == null) {
+			TranscriptResult result = parseTranscript(response.body());
+			if (result.text().isBlank()) {
 				throw new IllegalStateException("Whisper 返回缺少 text 字段: " + response.body());
 			}
-			return text;
+			return result;
 		} catch (IOException exception) {
 			throw new IllegalStateException("读取音频文件失败: " + audioFile, exception);
 		} catch (InterruptedException exception) {
@@ -78,6 +78,12 @@ public class OpenAiCompatibleWhisperClient {
 		head.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n");
 		head.append(model).append("\r\n");
 		head.append("--").append(boundary).append("\r\n");
+		head.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n");
+		head.append("verbose_json\r\n");
+		head.append("--").append(boundary).append("\r\n");
+		head.append("Content-Disposition: form-data; name=\"timestamp_granularities[]\"\r\n\r\n");
+		head.append("segment\r\n");
+		head.append("--").append(boundary).append("\r\n");
 		head.append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(fileName).append("\"\r\n");
 		head.append("Content-Type: ").append(contentType).append("\r\n\r\n");
 
@@ -92,11 +98,36 @@ public class OpenAiCompatibleWhisperClient {
 		return payload;
 	}
 
-	private String extractJsonTextField(String body) {
+	TranscriptResult parseTranscript(String body) {
 		try {
 			JsonNode root = objectMapper.readTree(body);
-			JsonNode textNode = root.path("text");
-			return textNode.isMissingNode() ? null : textNode.asText();
+			String text = root.path("text").asText("");
+			String language = root.path("language").isTextual() ? root.path("language").asText() : null;
+			Long durationMs = root.path("duration").isNumber()
+					? Math.max(0L, Math.round(root.path("duration").asDouble() * 1000))
+					: null;
+			java.util.List<TranscriptResult.Segment> segments = new java.util.ArrayList<>();
+			JsonNode segmentNodes = root.path("segments");
+			if (segmentNodes.isArray()) {
+				int sequence = 0;
+				for (JsonNode segment : segmentNodes) {
+					String segmentText = segment.path("text").asText("").strip();
+					if (segmentText.isEmpty()) {
+						continue;
+					}
+					long startMs = Math.max(0L, Math.round(segment.path("start").asDouble(0) * 1000));
+					long endMs = Math.max(startMs, Math.round(segment.path("end").asDouble(startMs / 1000.0) * 1000));
+					String id = segment.path("id").isMissingNode()
+							? "segment-" + sequence
+							: "segment-" + segment.path("id").asText(Integer.toString(sequence));
+					String speaker = segment.path("speaker").isTextual() ? segment.path("speaker").asText() : null;
+					segments.add(new TranscriptResult.Segment(id, sequence++, startMs, endMs, speaker, segmentText));
+				}
+			}
+			if (segments.isEmpty()) {
+				return TranscriptResult.fromPlainText(text);
+			}
+			return new TranscriptResult(text, segments, language, durationMs);
 		} catch (IOException exception) {
 			throw new IllegalStateException("Whisper 响应解析失败: " + body, exception);
 		}

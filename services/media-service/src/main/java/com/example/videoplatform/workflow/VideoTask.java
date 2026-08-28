@@ -1,5 +1,6 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.transcript.TranscriptResult;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -37,6 +38,15 @@ public class VideoTask {
 
 	@Column(columnDefinition = "TEXT")
 	private String transcript;
+
+	@Column(columnDefinition = "TEXT")
+	private String transcriptSegmentsJson;
+
+	private String transcriptLanguage;
+
+	private Long transcriptDurationMs;
+
+	private int transcriptVersion = 1;
 
 	@Column(columnDefinition = "TEXT")
 	private String summary;
@@ -103,6 +113,23 @@ public class VideoTask {
 	public void setTranscript(String transcript) {
 		this.transcript = transcript;
 		this.updatedAt = Instant.now();
+	}
+
+	public void setTranscriptResult(TranscriptResult result) {
+		this.transcript = result.text();
+		this.transcriptSegmentsJson = result.segmentsJson();
+		this.transcriptLanguage = result.language();
+		this.transcriptDurationMs = result.durationMs();
+		this.transcriptVersion = 1;
+		this.updatedAt = Instant.now();
+	}
+
+	public TranscriptResult getTranscriptResult() {
+		return TranscriptResult.fromStored(transcript, transcriptSegmentsJson, transcriptLanguage, transcriptDurationMs);
+	}
+
+	public int getTranscriptVersion() {
+		return transcriptVersion <= 0 ? 1 : transcriptVersion;
 	}
 
 	public String getSummary() {

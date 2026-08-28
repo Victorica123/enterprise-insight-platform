@@ -12,10 +12,14 @@ class MockTranscriptServiceTests {
 		MockTranscriptService service = new MockTranscriptService(new AppProperties());
 
 		long start = System.nanoTime();
-		String transcript = service.extract("storage/demo.mp4", "demo.mp4");
+		TranscriptResult transcript = service.extract("storage/demo.mp4", "demo.mp4");
 		long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
-		assertThat(transcript).contains("demo.mp4").contains("storage/demo.mp4");
+		assertThat(transcript.text()).contains("demo.mp4").contains("storage/demo.mp4");
+		assertThat(transcript.segments()).singleElement().satisfies(segment -> {
+			assertThat(segment.startMs()).isZero();
+			assertThat(segment.endMs()).isEqualTo(5_000);
+		});
 		// 默认 mock-delay-ms=0：不引入任何等待（给足余量防抖动）
 		assertThat(elapsedMs).isLessThan(500);
 	}

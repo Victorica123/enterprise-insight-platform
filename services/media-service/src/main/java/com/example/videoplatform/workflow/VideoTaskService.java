@@ -2,6 +2,7 @@ package com.example.videoplatform.workflow;
 
 import com.example.videoplatform.auth.UserAccountRepository;
 import com.example.videoplatform.config.AppProperties;
+import com.example.videoplatform.transcript.TranscriptResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -121,9 +122,9 @@ public class VideoTaskService {
 
 	/** 短事务：写入转写结果并进入 SUMMARIZING 状态。 */
 	@Transactional
-	public void completeTranscript(String taskId, String transcript) {
+	public void completeTranscript(String taskId, TranscriptResult transcript) {
 		VideoTask task = requireManagedTask(taskId);
-		task.setTranscript(transcript);
+		task.setTranscriptResult(transcript);
 		task.setStatus(VideoTask.TaskStatus.SUMMARIZING);
 	}
 
@@ -174,9 +175,9 @@ public class VideoTaskService {
 
 	/** 从已就绪的资产直接复用结果，秒完成任务（内容级去重命中路径）。 */
 	@Transactional
-	public void completeFromAsset(String taskId, String transcript, String summary) {
+	public void completeFromAsset(String taskId, TranscriptResult transcript, String summary) {
 		VideoTask task = requireManagedTask(taskId);
-		task.setTranscript(transcript);
+		task.setTranscriptResult(transcript);
 		task.setSummary(summary);
 		task.setStatus(VideoTask.TaskStatus.COMPLETED);
 	}
@@ -186,11 +187,11 @@ public class VideoTaskService {
 	 * 单飞的赢家处理完后调用，一并完成那些因抢锁失败而等待的同内容任务。
 	 */
 	@Transactional
-	public int completeAllByContentMd5(String contentMd5, String transcript, String summary) {
+	public int completeAllByContentMd5(String contentMd5, TranscriptResult transcript, String summary) {
 		int affected = 0;
 		for (VideoTask task : taskRepository.findByContentMd5(contentMd5)) {
 			if (task.getStatus() != VideoTask.TaskStatus.COMPLETED) {
-				task.setTranscript(transcript);
+				task.setTranscriptResult(transcript);
 				task.setSummary(summary);
 				task.setStatus(VideoTask.TaskStatus.COMPLETED);
 				affected++;

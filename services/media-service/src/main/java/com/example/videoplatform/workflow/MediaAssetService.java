@@ -1,5 +1,6 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.transcript.TranscriptResult;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,7 @@ public class MediaAssetService {
 	}
 
 	@Transactional
-	public void markReady(String contentMd5, String transcript, String summary) {
+	public void markReady(String contentMd5, TranscriptResult transcript, String summary) {
 		MediaAsset asset = assetRepository.findById(contentMd5)
 				.orElseThrow(() -> new IllegalStateException("资产不存在: " + contentMd5));
 		asset.markReady(transcript, summary);
