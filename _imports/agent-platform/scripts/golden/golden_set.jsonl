@@ -1,0 +1,42 @@
+{"id": "fact-01", "intent": "fact", "question": "客户A的项目负责人是谁？", "should_answer": true, "expected_facts": ["李四"], "expected_docs": ["customer-a-project.md"]}
+{"id": "fact-02", "intent": "fact", "question": "项目的原计划交付日期是什么时候？", "should_answer": true, "expected_facts": ["2026年6月20日"], "expected_docs": ["customer-a-project.md"]}
+{"id": "fact-03", "intent": "fact", "question": "项目调整后的交付日期是几号？", "should_answer": true, "expected_facts": ["2026年7月8日"], "expected_docs": ["customer-a-project.md"]}
+{"id": "fact-04", "intent": "fact", "question": "客户A项目的合同编号是多少？", "should_answer": true, "expected_facts": ["HT-2026-0118"], "expected_docs": ["customer-a-project.md"]}
+{"id": "fact-05", "intent": "fact", "question": "谁负责集成方案？", "should_answer": true, "expected_facts": ["王五"], "expected_docs": ["meeting-notes.md"]}
+{"id": "fact-06", "intent": "fact", "question": "P0工单的响应时限是多少？", "should_answer": true, "expected_facts": ["30分钟"], "expected_docs": ["support-handbook.md"]}
+{"id": "fact-07", "intent": "fact", "question": "P1工单需要在几小时内解决？", "should_answer": true, "expected_facts": ["8小时"], "expected_docs": ["support-handbook.md"]}
+{"id": "fact-08", "intent": "fact", "question": "合同的首付款比例是多少？", "should_answer": true, "expected_facts": ["30%"], "expected_docs": ["contract-terms.md"]}
+{"id": "fact-09", "intent": "fact", "question": "项目周会是什么时候召开的？", "should_answer": true, "expected_facts": ["2026年6月12日"], "expected_docs": ["meeting-notes.md"]}
+{"id": "fact-10", "intent": "fact", "question": "保密条款的有效期是多久？", "should_answer": true, "expected_facts": ["5年"], "expected_docs": ["contract-terms.md"]}
+{"id": "causal-01", "intent": "causal", "question": "客户A的项目为什么延期？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "causal-02", "intent": "causal", "question": "测试环境第一次部署失败是什么原因造成的？", "should_answer": true, "expected_facts": ["网络策略"], "expected_docs": ["meeting-notes.md"]}
+{"id": "causal-03", "intent": "causal", "question": "项目交付时间为什么被推迟了？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "causal-04", "intent": "causal", "question": "集成方案为什么没有按时完成？", "should_answer": true, "expected_facts": ["王五"], "expected_docs": ["meeting-notes.md"]}
+{"id": "causal-05", "intent": "causal", "question": "项目延期的根因有哪些？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "causal-06", "intent": "causal", "question": "为什么延期超过十五天要提交风险说明？", "should_answer": true, "expected_facts": ["书面风险说明"], "expected_docs": ["contract-terms.md", "customer-a-project.md"]}
+{"id": "risk-01", "intent": "risk", "question": "合同里对延期有什么风险约定？", "should_answer": true, "expected_facts": ["书面风险说明"], "expected_docs": ["customer-a-project.md", "contract-terms.md"]}
+{"id": "risk-02", "intent": "risk", "question": "延期超过多少天需要提交书面风险说明？", "should_answer": true, "expected_facts": ["15天"], "expected_docs": ["customer-a-project.md", "contract-terms.md"]}
+{"id": "risk-03", "intent": "risk", "question": "延期违约金的计算比例是多少？", "should_answer": true, "expected_facts": ["0.05%"], "expected_docs": ["contract-terms.md"]}
+{"id": "risk-04", "intent": "risk", "question": "客户A项目当前有什么风险？", "should_answer": true, "expected_facts": ["书面风险说明"], "expected_docs": ["customer-a-project.md"]}
+{"id": "risk-05", "intent": "risk", "question": "违约责任条款是怎么规定的？", "should_answer": true, "expected_facts": ["0.05%"], "expected_docs": ["contract-terms.md"]}
+{"id": "risk-06", "intent": "risk", "question": "项目延期多久会触发风险升级机制？", "should_answer": true, "expected_facts": ["10天"], "expected_docs": ["meeting-notes.md"]}
+{"id": "summary-01", "intent": "summary", "question": "总结一下客户A项目的整体情况", "should_answer": true, "expected_facts": ["李四"], "expected_docs": ["customer-a-project.md"]}
+{"id": "summary-02", "intent": "summary", "question": "概括一下项目周会的主要内容", "should_answer": true, "expected_facts": ["网络策略"], "expected_docs": ["meeting-notes.md"]}
+{"id": "summary-03", "intent": "summary", "question": "运维手册规定了哪些工单处理要求？", "should_answer": true, "expected_facts": ["响应时限"], "expected_docs": ["support-handbook.md"]}
+{"id": "summary-04", "intent": "summary", "question": "合同的付款是怎么安排的？", "should_answer": true, "expected_facts": ["30%"], "expected_docs": ["contract-terms.md"]}
+{"id": "relation-01", "intent": "fact", "question": "客户A的项目涉及哪份合同？", "should_answer": true, "expected_facts": ["HT-2026-0118"], "expected_docs": ["customer-a-project.md"]}
+{"id": "relation-02", "intent": "risk", "question": "针对延期风险应该采取什么处理动作？", "should_answer": true, "expected_facts": ["风险说明"], "expected_docs": ["customer-a-project.md"]}
+{"id": "relation-03", "intent": "fact", "question": "谁应该跟进测试环境的排查工作？", "should_answer": true, "expected_facts": ["赵六"], "expected_docs": ["meeting-notes.md"]}
+{"id": "relation-04", "intent": "fact", "question": "工单超时未解决时应该怎么处理？", "should_answer": true, "expected_facts": ["值班经理"], "expected_docs": ["support-handbook.md"]}
+{"id": "para-01", "intent": "causal", "question": "甲方客户A的交付时间为何推迟了？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "para-02", "intent": "causal", "question": "项目进度的延误是由什么因素导致的？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "para-03", "intent": "risk", "question": "什么时候需要给客户提交书面的风险解释材料？", "should_answer": true, "expected_facts": ["15天"], "expected_docs": ["customer-a-project.md", "contract-terms.md"]}
+{"id": "para-04", "intent": "fact", "question": "系统上线前的质量门槛是什么？", "should_answer": true, "expected_facts": ["95%"], "expected_docs": ["contract-terms.md"]}
+{"id": "long-01", "intent": "causal", "question": "我们负责的客户A试点项目，因为什么原因导致交付推迟，并且合同中关于延期有什么条款约定，负责人接下来要做什么？", "should_answer": true, "expected_facts": ["测试环境部署失败"], "expected_docs": ["customer-a-project.md"]}
+{"id": "long-02", "intent": "summary", "question": "请把项目的延期原因、原计划和调整后的交付时间、负责人以及需要提交的材料整理一下告诉我", "should_answer": true, "expected_facts": ["2026年7月8日"], "expected_docs": ["customer-a-project.md"]}
+{"id": "long-03", "intent": "summary", "question": "如果我想了解工单处理的响应时限、解决时限、超时升级规则和巡检频率，请汇总一下", "should_answer": true, "expected_facts": ["值班经理"], "expected_docs": ["support-handbook.md"]}
+{"id": "refuse-01", "intent": "general", "question": "火星基地的氧气供应方案是什么？", "should_answer": false, "expected_facts": [], "expected_docs": []}
+{"id": "refuse-02", "intent": "general", "question": "我们公司的股票代码是多少？", "should_answer": false, "expected_facts": [], "expected_docs": []}
+{"id": "refuse-03", "intent": "general", "question": "如何配置思科路由器的BGP协议？", "should_answer": false, "expected_facts": [], "expected_docs": []}
+{"id": "refuse-04", "intent": "general", "question": "客户C的项目交付情况如何？", "should_answer": false, "expected_facts": [], "expected_docs": []}
+{"id": "refuse-05", "intent": "general", "question": "明年公司的年会什么时候举办？", "should_answer": false, "expected_facts": [], "expected_docs": []}

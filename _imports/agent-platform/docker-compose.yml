@@ -1,0 +1,27 @@
+# 一键启动：docker compose up --build
+# 访问 http://127.0.0.1:8080（前端），后端 API 通过 /api/ 反代同源访问
+services:
+  api:
+    build: ./apps/api
+    environment:
+      # 零配置本地模式；接 LLM 请在此注入 DEEPSEEK_API_KEY 等（见 apps/api/.env.example）
+      - LLM_ROUTER_ENABLED=${LLM_ROUTER_ENABLED:-0}
+    volumes:
+      - api-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build: ./apps/web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  api-data:

@@ -1,0 +1,4 @@
+# A3 可选依赖：真实语义 embedding + reranker（ONNX 本地推理，无 torch）
+# 安装：pip install -r requirements-embedding.txt
+# 不安装时系统自动回退哈希 n-gram embedding（离线门禁仍可运行）。
+fastembed==0.8.0

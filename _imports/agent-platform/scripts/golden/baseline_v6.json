@@ -1,0 +1,23 @@
+{
+  "keyword": {
+    "decision_accuracy": 0.9524,
+    "recall3": 0.973,
+    "fact_coverage": 0.8919,
+    "avg_latency_ms": 7.51,
+    "p95_latency_ms": 12.75
+  },
+  "embedding": {
+    "decision_accuracy": 0.9286,
+    "recall3": 0.8649,
+    "fact_coverage": 0.7838,
+    "avg_latency_ms": 7.89,
+    "p95_latency_ms": 13.25
+  },
+  "hybrid": {
+    "decision_accuracy": 0.9524,
+    "recall3": 0.973,
+    "fact_coverage": 0.8919,
+    "avg_latency_ms": 11.71,
+    "p95_latency_ms": 16.14
+  }
+}

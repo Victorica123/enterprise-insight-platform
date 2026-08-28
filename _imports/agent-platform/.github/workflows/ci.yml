@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    name: 后端测试 + 评测门禁
+    runs-on: ubuntu-latest
+    env:
+      # 离线确定性门禁：LLM 路由走规则降级通道，不消耗 API 额度
+      LLM_ROUTER_ENABLED: "0"
+      FASTEMBED_CACHE_DIR: /tmp/fastembed_cache
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run regression tests
+        run: python -m pytest tests -q
+
+      - name: Evaluation gates (V2-V6)
+        working-directory: .
+        run: |
+          python scripts/evaluate_v2.py
+          python scripts/evaluate_v3.py
+          python scripts/evaluate_v4.py
+          python scripts/evaluate_v5.py
+          python scripts/evaluate_v6.py
+
+  frontend:
+    name: 前端类型检查与构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check and build
+        run: npm run build
+
+  docker:
+    name: Docker 镜像构建与 compose 冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t ea-api ./apps/api
+          docker build -t ea-web ./apps/web
+
+      - name: Compose up
+        run: docker compose up -d --wait || true
+
+      - name: Dump api logs
+        if: always()
+        run: docker compose logs api || true
+
+      - name: Smoke test
+        run: |
+          curl -sf http://127.0.0.1:8080/api/health | grep '"status":"ok"'
+          # index.html 的 title 是中文（h1 在 JS bundle 里渲染），断言用真实标题
+          curl -sf http://127.0.0.1:8080/ | grep -q "企业智能工单与知识助手"
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v || true
