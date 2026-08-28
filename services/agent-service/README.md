@@ -5,7 +5,7 @@
 ## 本地开发
 
 ```bash
-cd apps/api
+cd services/agent-service
 pip install -r requirements.txt          # 基础依赖（零配置可跑，无需 API Key）
 # 可选：真实语义 embedding（fastembed/BGE-small-zh，本地 ONNX）
 pip install -r requirements-embedding.txt
@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 - API 交互文档：<http://127.0.0.1:8000/docs>
-- 数据库自动创建于 `apps/api/data/knowledge_base.sqlite3`（已 gitignore）
+- 数据库自动创建于 `services/agent-service/data/knowledge_base.sqlite3`（已 gitignore）
 
 ## 配置
 

@@ -8,8 +8,8 @@ from time import perf_counter
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-API_DIR = ROOT / "apps" / "api"
+ROOT = Path(__file__).resolve().parents[2]
+API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
 
 # 离线门禁：关闭 LLM 路由（确定性 + 不消耗 API 额度），走规则降级通道
@@ -53,7 +53,7 @@ def main() -> int:
     # 旧版直读开发库，全新克隆里库为空会让"该回答"用例全部误判为拒答。
     with tempfile.TemporaryDirectory() as temp_dir:
         with patch("app.database.DB_PATH", Path(temp_dir) / "v2-evaluation.sqlite3"):
-            corpus = ROOT / "docs" / "sample-project-delay-cn.pdf"
+            corpus = ROOT / "docs" / "archive" / "agent-docs" / "sample-project-delay-cn.pdf"
             ingest_document(corpus.name, parse_document(filename=corpus.name, raw=corpus.read_bytes()))
             return _run_cases()
 

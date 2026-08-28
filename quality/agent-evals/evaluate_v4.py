@@ -7,8 +7,8 @@ from time import perf_counter
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "apps" / "api"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "services" / "agent-service"))
 
 from app.agentic_rag import answer_agentic_question  # noqa: E402
 from app.graph_rag import lookup_graph  # noqa: E402

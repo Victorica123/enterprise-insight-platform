@@ -1,15 +1,15 @@
 """Deterministic V6 golden-set gate: retrieval recall, answer fidelity, refusal accuracy.
 
 A1 方法论核心：不是"规则系统检查规则系统"，而是用人工标注的黄金问答集
-（scripts/golden/golden_set.jsonl + fixtures/ 语料）做端到端裁判：
+（quality/agent-evals/golden/golden_set.jsonl + fixtures/ 语料）做端到端裁判：
 
 - decision_accuracy：该答的答了、该拒的拒了（evidence 门控行为）
 - recall@3：期望文档是否出现在 Top-3 来源里（检索命中）
 - fact_coverage：答案是否包含标注的关键事实（回答保真）
 
 用法：
-    python scripts/evaluate_v6.py                  # 跑门禁，与基线对比
-    python scripts/evaluate_v6.py --save-baseline  # 首次运行，把当前数字存为基线
+    python quality/agent-evals/evaluate_v6.py                  # 跑门禁，与基线对比
+    python quality/agent-evals/evaluate_v6.py --save-baseline  # 首次运行，把当前数字存为基线
 
 判定用"事实子串 + 期望文档"而非 chunk 索引，对 A4 重切块免疫。
 """
@@ -26,8 +26,8 @@ from time import perf_counter
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-API_DIR = ROOT / "apps" / "api"
+ROOT = Path(__file__).resolve().parents[2]
+API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
 
 # 离线门禁：关闭 LLM 路由（确定性 + 不消耗 API 额度），走规则降级通道

@@ -8,8 +8,8 @@ from time import perf_counter
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "apps" / "api"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "services" / "agent-service"))
 
 # 离线门禁：关闭 LLM 路由（确定性 + 不消耗 API 额度），走规则降级通道
 os.environ.setdefault("LLM_ROUTER_ENABLED", "0")

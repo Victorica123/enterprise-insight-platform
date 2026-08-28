@@ -2,8 +2,8 @@
 
 演示/评测前先跑这个脚本，保证知识库、图谱、工单和监控面板都处于已知状态：
 
-    python scripts/seed_demo.py            # 重置并灌入演示语料
-    python scripts/seed_demo.py --no-traffic   # 只灌语料，不生成监控数据
+    python quality/agent-evals/seed_demo.py            # 重置并灌入演示语料
+    python quality/agent-evals/seed_demo.py --no-traffic   # 只灌语料，不生成监控数据
 
 之所以需要它：离线门禁（evaluate_v2/v4）直接读开发库，库里多一份无关文档
 就可能让"该拒答"的用例变成"答了"。种子脚本让这个前置条件变成可复现的一步。
@@ -16,8 +16,8 @@ from pathlib import Path
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
-API_DIR = ROOT / "apps" / "api"
+ROOT = Path(__file__).resolve().parents[2]
+API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
 
 from app.database import init_db, list_document_rows  # noqa: E402
@@ -28,7 +28,7 @@ from app.ticket_store import create_ticket, delete_ticket, init_ticket_store, li
 
 
 # 演示语料：字段连排的脏文本，用于展示图谱抽取对真实 PDF 的兼容
-CORPUS = [ROOT / "docs" / "sample-project-delay-cn.pdf"]
+CORPUS = [ROOT / "docs" / "archive" / "agent-docs" / "sample-project-delay-cn.pdf"]
 
 DEMO_TICKETS = [
     {
@@ -150,7 +150,7 @@ def main() -> int:
     print()
     print("演示环境就绪：")
     print(f"  文档 {len(list_document_rows())} 份 · 工单 {len(list_tickets())} 条 · 图谱实体 {overview['entity_count']} 个")
-    print("  启动后端：cd apps/api && uvicorn app.main:app --reload --port 8000")
+    print("  启动后端：cd services/agent-service && uvicorn app.main:app --reload --port 8000")
     return 0
 
 

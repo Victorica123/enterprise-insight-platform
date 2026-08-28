@@ -1,0 +1,6 @@
+interface:
+  display_name: "Enterprise Insight Maintainer"
+  short_description: "Maintain product code, contracts, knowledge, and evidence"
+  default_prompt: "Use $enterprise-insight-maintainer to safely evolve the Enterprise Insight Platform and keep its knowledge base current."
+policy:
+  allow_implicit_invocation: true
