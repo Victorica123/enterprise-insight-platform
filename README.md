@@ -12,6 +12,8 @@
 
 当前已贯通统一登录、个人/团队 Workspace 创建邀请与切换、团队资源共享与个人隔离、视频转写入库、时间戳证据问答、六阶段分析等待/恢复、证据化 PRD、人工发布审批、不可变 PRD 版本、知识候选审批与行动项工单审批。个人 Workspace 使用 OWNER 二次确认，团队 Workspace 使用不同成员四眼审批；两种路径都保留审计链。
 
+完整的代码框架、纵向数据流、RAG/Embedding、缓存、可靠性和面试技术点见 [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)。项目维护 Skill 已接入可再生语义索引，用 Top-K 原文路由降低重复上下文加载。
+
 ## 无域名本地验收
 
 安装 Python 基础依赖、Maven 与 JDK 17/18 后，在仓库根目录执行：

@@ -23,6 +23,10 @@ Agent Service
 
 两个服务共享身份语义和跨服务契约，不共享数据库表。前端可以聚合展示媒体状态与分析状态，但后端不把两套状态压成一个易失真的枚举。
 
+## 工程知识维护平面
+
+工程知识平面不参与客户请求：项目 Skill 调用 `scripts/knowledge_index.py`，从生成的维护语义索引取得 Top-K 文件、标题和行号，再回读人工知识原文。索引只覆盖仓库文档、ADR、契约与 Skill 参考，与 Agent Service 的 tenant 业务向量表完全隔离。chunk 内容指纹支持增量向量复用，corpus revision 同时驱动查询缓存失效；完整决策见 ADR-0007。
+
 ## 服务职责
 
 ### Media Service

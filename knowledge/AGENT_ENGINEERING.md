@@ -21,6 +21,15 @@
 - 检索结果在进入模型前完成权限过滤；模型不能扩张检索范围。
 - 最终答案校验引用存在、归属正确、时间范围有效，并拒绝伪造引用。
 
+## 检索与缓存实现
+
+- hash embedding 是 64 维字符 n-gram 的离线保底；本地 BGE 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。
+- hybrid 先独立执行 keyword 与 embedding，再以 RRF 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。
+- 可选 cross-encoder 只精排 Top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。
+- chunk 快照 LRU 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asset scope。写入提升 revision，多进程读不会长期复用旧授权范围或旧内容。
+- BGE 向量 LRU 以 model identity + 文本 SHA-256 为 key，最大 512 项；同 batch 去重，缓存只保存向量，不保存原文。该缓存是 embedding 计算复用，不等同于 LLM attention KV cache。
+- 工程维护文档另有独立的确定性语义索引，不能被业务检索 API 查询。实现和缓存矩阵见 `TECHNICAL_IMPLEMENTATION.md` 与 ADR-0007。
+
 ## 等待与恢复
 
 分析会话需要持久化检查点。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`，记录结构化问题、原因和恢复令牌；用户或授权专家补充后从检查点继续，不从头重跑。

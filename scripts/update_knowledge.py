@@ -6,6 +6,8 @@ import re
 import sys
 from pathlib import Path
 
+from knowledge_index import update_index
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "knowledge" / "generated" / "CURRENT_STATE.md"
@@ -148,16 +150,31 @@ def main() -> int:
 
     if args.check:
         actual = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        semantic_passed, semantic_stats = update_index(ROOT, check=True)
         if actual != expected:
             print(f"Knowledge drift detected: {OUTPUT.relative_to(ROOT)}", file=sys.stderr)
             print("Run: python scripts/update_knowledge.py", file=sys.stderr)
             return 1
+        if not semantic_passed:
+            print("Semantic knowledge drift detected: knowledge/generated/SEMANTIC_INDEX.json", file=sys.stderr)
+            print("Run: python scripts/update_knowledge.py", file=sys.stderr)
+            return 1
+        print(
+            f"Semantic index check passed: {semantic_stats['sources']} sources, "
+            f"{semantic_stats['chunks']} chunks."
+        )
         print("Knowledge check passed.")
         return 0
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(expected, encoding="utf-8", newline="\n")
     print(f"Updated {OUTPUT.relative_to(ROOT)}")
+    _, semantic_stats = update_index(ROOT)
+    print(
+        "Updated knowledge\\generated\\SEMANTIC_INDEX.json "
+        f"({semantic_stats['sources']} sources, {semantic_stats['chunks']} chunks, "
+        f"reused {semantic_stats['reused']}, computed {semantic_stats['computed']})"
+    )
     return 0
 
 

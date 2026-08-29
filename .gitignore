@@ -5,6 +5,7 @@
 .vscode/
 .pytest_cache/
 .ruff_cache/
+.codex-cache/
 __pycache__/
 *.py[cod]
 node_modules/

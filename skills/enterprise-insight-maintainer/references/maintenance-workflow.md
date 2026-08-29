@@ -7,6 +7,8 @@
 - Public APIs and events: `knowledge/CONTRACTS.md` plus `contracts/`
 - Ownership, tenancy, privacy and approval: `knowledge/DATA_AND_SECURITY.md`
 - Agent nodes, prompts, evidence and evaluations: `knowledge/AGENT_ENGINEERING.md`
+- Complete framework, data flow, RAG, caching and technical explanation: `knowledge/TECHNICAL_IMPLEMENTATION.md`
+- Complete framework, data flow, RAG, caching and technical explanation: `knowledge/TECHNICAL_IMPLEMENTATION.md`
 - Tests, gates and verified claims: `knowledge/QUALITY.md`
 - Local runtime, deployment and incidents: `knowledge/OPERATIONS.md`
 - Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
@@ -55,6 +57,8 @@ Never reinterpret an unsupported local toolchain failure as an application regre
 | Endpoint, event or shared DTO | `CONTRACTS.md` and machine-readable contract |
 | Auth, tenancy, retention, approval | `DATA_AND_SECURITY.md` and usually an ADR |
 | Prompt, model routing, evidence policy, tool behavior | `AGENT_ENGINEERING.md` plus evaluation data |
+| Embedding, cache, Skill routing or framework explanation | `TECHNICAL_IMPLEMENTATION.md`, `AGENT_ENGINEERING.md` and usually ADR-0007 |
+| Embedding, cache, Skill routing or framework explanation | `TECHNICAL_IMPLEMENTATION.md`, `AGENT_ENGINEERING.md` and usually ADR-0007 |
 | Tests, metrics or verified claim | `QUALITY.md` |
 | Startup, configuration, deployment or recovery | `OPERATIONS.md` |
 

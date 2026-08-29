@@ -3,6 +3,8 @@ import json
 import math
 import os
 import re
+from collections import OrderedDict
+from threading import RLock
 
 
 DEFAULT_EMBEDDING_DIMENSION = 64
@@ -17,6 +19,11 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "")
 
 _real_model_state: dict[str, object] = {}
 _reranker_state: dict[str, object] = {}
+_real_embedding_cache_size = 512
+_real_embedding_cache: OrderedDict[tuple[int, str], tuple[float, ...]] = OrderedDict()
+_real_embedding_cache_lock = RLock()
+_real_embedding_cache_hits = 0
+_real_embedding_cache_misses = 0
 
 
 def get_real_embedding_model():
@@ -59,15 +66,69 @@ def warm_up_embeddings() -> None:
 
 
 def embed_real(texts: list[str]) -> list[list[float]] | None:
-    """批量真实 embedding；任何失败返回 None，调用方回退哈希版。"""
+    """批量真实 embedding；任何失败返回 None，调用方回退哈希版。
+
+    向量缓存使用 ``(model identity, sha256(text))`` 作为 key，只保留向量而不保留
+    原文。一个 batch 内的重复文本会合并推理，跨请求重复文本从有界 LRU 命中。
+    这与 LLM KV cache 的目标相同：复用稳定输入的已计算表示；但缓存层级是
+    embedding 结果，不冒充模型运行时的 attention KV cache。
+    """
+    global _real_embedding_cache_hits, _real_embedding_cache_misses
     model = get_real_embedding_model()
     if model is None:
         return None
     try:
         safe_texts = [text if text and text.strip() else " " for text in texts]
-        return [[float(value) for value in vector] for vector in model.embed(safe_texts)]
+        keys = [(id(model), hashlib.sha256(text.encode("utf-8")).hexdigest()) for text in safe_texts]
+        resolved: dict[tuple[int, str], tuple[float, ...]] = {}
+        missing: OrderedDict[tuple[int, str], str] = OrderedDict()
+        with _real_embedding_cache_lock:
+            for key, text in zip(keys, safe_texts):
+                cached = _real_embedding_cache.get(key)
+                if cached is not None:
+                    _real_embedding_cache.move_to_end(key)
+                    resolved[key] = cached
+                    _real_embedding_cache_hits += 1
+                elif key not in missing:
+                    missing[key] = text
+                    _real_embedding_cache_misses += 1
+
+        if missing:
+            generated = list(model.embed(list(missing.values())))
+            if len(generated) != len(missing):
+                return None
+            additions = {
+                key: tuple(float(value) for value in vector)
+                for key, vector in zip(missing, generated)
+            }
+            resolved.update(additions)
+            with _real_embedding_cache_lock:
+                for key, vector in additions.items():
+                    _real_embedding_cache[key] = vector
+                    _real_embedding_cache.move_to_end(key)
+                while len(_real_embedding_cache) > _real_embedding_cache_size:
+                    _real_embedding_cache.popitem(last=False)
+        return [list(resolved[key]) for key in keys]
     except Exception:  # pragma: no cover - 推理失败时降级
         return None
+
+
+def clear_real_embedding_cache() -> None:
+    global _real_embedding_cache_hits, _real_embedding_cache_misses
+    with _real_embedding_cache_lock:
+        _real_embedding_cache.clear()
+        _real_embedding_cache_hits = 0
+        _real_embedding_cache_misses = 0
+
+
+def get_real_embedding_cache_stats() -> dict[str, int]:
+    with _real_embedding_cache_lock:
+        return {
+            "entries": len(_real_embedding_cache),
+            "max_entries": _real_embedding_cache_size,
+            "hits": _real_embedding_cache_hits,
+            "misses": _real_embedding_cache_misses,
+        }
 
 
 def get_reranker():

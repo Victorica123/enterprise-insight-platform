@@ -10,8 +10,10 @@ from unittest.mock import patch
 
 from app.database import get_embedding_stats, init_db, list_chunk_rows
 from app.embeddings import (
+    clear_real_embedding_cache,
     cosine_similarity,
     embed_real,
+    get_real_embedding_cache_stats,
     get_real_embedding_model,
     is_real_embedding_available,
 )
@@ -58,13 +60,44 @@ class RealEmbeddingProviderTests(unittest.TestCase):
             self.assertFalse(is_real_embedding_available())
 
     def test_embed_real_converts_numpy_to_python_floats(self) -> None:
+        clear_real_embedding_cache()
         with patch("app.embeddings.get_real_embedding_model", return_value=FakeEmbeddingModel()):
             vectors = embed_real(["a", "b"])
+        clear_real_embedding_cache()
         self.assertIsNotNone(vectors)
         assert vectors is not None
         self.assertEqual(len(vectors), 2)
         self.assertTrue(all(isinstance(value, float) for value in vectors[0]))
         self.assertAlmostEqual(vectors[1][0], 0.1)
+
+    def test_embed_real_reuses_digest_keyed_vectors_across_batches(self) -> None:
+        class CountingEmbeddingModel:
+            def __init__(self) -> None:
+                self.calls: list[list[str]] = []
+
+            def embed(self, texts: list[str]):
+                self.calls.append(list(texts))
+                return [[float(len(text)), 1.0] for text in texts]
+
+        model = CountingEmbeddingModel()
+        clear_real_embedding_cache()
+        try:
+            with patch("app.embeddings.get_real_embedding_model", return_value=model):
+                first = embed_real(["重复证据", "新的证据", "重复证据"])
+                second = embed_real(["重复证据", "新的证据"])
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            assert first is not None and second is not None
+            self.assertEqual(len(model.calls), 1)
+            self.assertEqual(model.calls[0], ["重复证据", "新的证据"])
+            self.assertEqual(first, [first[0], first[1], first[0]])
+            self.assertEqual(second, first[:2])
+            stats = get_real_embedding_cache_stats()
+            self.assertEqual(stats["entries"], 2)
+            self.assertEqual(stats["misses"], 2)
+            self.assertEqual(stats["hits"], 2)
+        finally:
+            clear_real_embedding_cache()
 
     def test_cosine_similarity_dim_mismatch_is_zero(self) -> None:
         self.assertEqual(cosine_similarity([1.0, 0.0], [1.0, 0.0, 0.0]), 0.0)

@@ -1,6 +1,6 @@
 ---
 name: enterprise-insight-maintainer
-description: Maintain, review, debug, extend, or release the Enterprise Insight Platform monorepo across its Spring media service, FastAPI agent service, React application, cross-service contracts, project knowledge base, and quality evidence. Use only for this product and its migration sources.
+description: Maintain, review, debug, extend, or release the Enterprise Insight Platform monorepo across its Spring media service, FastAPI agent service, React application, contracts, semantic project knowledge, and quality evidence. Use only for this product and its migration sources.
 metadata:
   short-description: Maintain the Enterprise Insight Platform
 ---
@@ -13,8 +13,9 @@ Keep this repository a coherent product rather than two demos placed side by sid
 
 1. Resolve the repository root and read `AGENTS.md`.
 2. Read `knowledge/INDEX.md`, then load only the references it routes to for the task.
-3. Inspect the affected service and its tests before changing code. Treat the original repositories as read-only migration sources.
-4. Check the working tree and preserve unrelated user changes.
+3. For cross-service, architectural, RAG, unfamiliar, or broad tasks, run `python scripts/query_project_knowledge.py "<task>" --repo <root>` from this Skill directory. Read the returned source ranges; never treat index previews as truth. A known single-file task can use the manual route directly.
+4. Inspect the affected service and its tests before changing code. Treat the original repositories as read-only migration sources.
+5. Check the working tree and preserve unrelated user changes.
 
 ## Product invariants
 
@@ -47,10 +48,13 @@ Do not pause for discoverable implementation details, reversible refactors, test
 
 Read [references/maintenance-workflow.md](references/maintenance-workflow.md) for task routing, verification levels, knowledge ownership and handoff requirements.
 
+When changing retrieval, caching, project knowledge or this Skill, also read [references/semantic-knowledge.md](references/semantic-knowledge.md). Keep the stable Skill prefix short; retrieve dynamic Top-K context after the task is known.
+
 ## Knowledge base contract
 
 - Human-maintained truth lives under `knowledge/`.
 - `knowledge/generated/CURRENT_STATE.md` is generated; never edit it by hand.
+- `knowledge/generated/SEMANTIC_INDEX.json` is a generated routing index, not a fact source; never load its raw vectors into model context or edit it by hand.
 - After material code, contract, dependency or test changes, run:
 
 ```powershell

@@ -16,6 +16,17 @@ python scripts/local_acceptance.py
 
 脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；除个人全链路外，还会注册第二个用户，验证团队创建、一次性邀请、显式切换、跨成员视频与 Agent 共享、个人隔离、团队四眼发布、知识/工单交付和 VIEWER 只读。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
 
+维护知识索引使用以下命令，不依赖外部 embedding 服务：
+
+```powershell
+python scripts/knowledge_index.py query "JWT 与 tenant 如何隔离" --top-k 5
+python scripts/knowledge_index.py stats
+python scripts/update_knowledge.py
+python scripts/update_knowledge.py --check
+```
+
+首次 query 写入已忽略的 `.codex-cache/`，相同 corpus revision 与 query digest 再次查询命中缓存；知识文件变化后 revision 自动更换。提交的是可再生语义索引，不提交查询缓存。
+
 需要持久数据和统一浏览器入口时使用根目录 Compose：
 
 ```powershell
