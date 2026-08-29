@@ -29,10 +29,18 @@ public interface VideoTaskRepository extends JpaRepository<VideoTask, String> {
 	 */
 	List<VideoTask> findByOwnerOrderByCreatedAtDesc(String owner);
 
+	List<VideoTask> findByTenantIdOrderByCreatedAtDesc(String tenantId);
+
+	List<VideoTask> findByTenantIdAndOwnerOrderByCreatedAtDesc(String tenantId, String owner);
+
 	/**
 	 * 按owner + taskId查询（带权限校验）
 	 */
 	Optional<VideoTask> findByTaskIdAndOwner(String taskId, String owner);
+
+	Optional<VideoTask> findByTaskIdAndTenantId(String taskId, String tenantId);
+
+	Optional<VideoTask> findByTaskIdAndTenantIdAndOwner(String taskId, String tenantId, String owner);
 
 	Optional<VideoTask> findFirstByOwnerAndStoragePathOrderByCreatedAtDesc(String owner, String storagePath);
 

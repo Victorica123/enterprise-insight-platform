@@ -53,6 +53,15 @@ def request_json(url: str, *, method: str = "GET", token: str | None = None,
         return response.status, json.loads(raw) if raw else None
 
 
+def request_json_with_errors(url: str, **kwargs):
+    """Return JSON for both success and expected 4xx responses."""
+    try:
+        return request_json(url, **kwargs)
+    except urllib.error.HTTPError as error:
+        raw = error.read()
+        return error.code, json.loads(raw) if raw else None
+
+
 def wait_ready(url: str, process: subprocess.Popen, log_path: Path, timeout: float = 35) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -285,11 +294,183 @@ def main() -> int:
             with urllib.request.urlopen(request, timeout=10) as response:
                 assert response.status == 206 and response.read() == b"loca"
 
+            # Team Workspace slice: one owner creates and uploads, a second
+            # registered member consumes the same media/Agent resources, while
+            # that member's personal workspace remains isolated.
+            _, team_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces", method="POST", token=token,
+                payload={"name": "Local Acceptance Team"},
+            )
+            team = team_envelope["data"]
+            team_tenant = team["tenantId"]
+            assert team["workspaceType"] == "team" and team["role"] == "OWNER"
+
+            _, invitation_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/{team_tenant}/invitations",
+                method="POST", token=token,
+            )
+            invitation_code = invitation_envelope["data"]["invitationCode"]
+            assert len(invitation_code) >= 32
+
+            member_username = f"acceptance-member-{uuid.uuid4().hex[:10]}"
+            _, member_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/auth/register", method="POST",
+                payload={"username": member_username, "password": "local-pass-123"},
+            )
+            member_personal = member_envelope["data"]
+            _, accepted_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/invitations/accept",
+                method="POST", token=member_personal["token"],
+                payload={"invitationCode": invitation_code},
+            )
+            assert accepted_envelope["data"]["role"] == "MEMBER"
+
+            _, owner_team_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/{team_tenant}/switch",
+                method="POST", token=token,
+            )
+            owner_team = owner_team_envelope["data"]
+            _, member_team_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/{team_tenant}/switch",
+                method="POST", token=member_personal["token"],
+            )
+            member_team = member_team_envelope["data"]
+            assert owner_team["role"] == "admin" and member_team["role"] == "operator"
+
+            team_upload_body, team_upload_type = multipart_file(
+                "file", "team-acceptance.mp4", b"team-video-acceptance-content",
+            )
+            _, team_upload_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/media/upload/file",
+                method="POST", token=owner_team["token"],
+                body=team_upload_body, content_type=team_upload_type,
+            )
+            team_task_id = team_upload_envelope["data"]["taskId"]
+            team_task = None
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                _, team_task_envelope = request_json(
+                    f"http://127.0.0.1:{media_port}/api/workflow/tasks/{team_task_id}",
+                    token=member_team["token"],
+                )
+                team_task = team_task_envelope["data"]
+                if team_task["status"] in {"COMPLETED", "FAILED"}:
+                    break
+                time.sleep(0.2)
+            assert team_task and team_task["status"] == "COMPLETED", team_task
+            assert team_task["owner"] == auth["userId"] and team_task["tenantId"] == team_tenant
+
+            _, member_personal_tasks = request_json(
+                f"http://127.0.0.1:{media_port}/api/workflow/tasks",
+                token=member_personal["token"],
+            )
+            assert team_task_id not in {item["taskId"] for item in member_personal_tasks["data"]}
+
+            team_chat = None
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                _, team_chat = request_json(
+                    f"http://127.0.0.1:{agent_port}/chat", method="POST", token=member_team["token"],
+                    payload={
+                        "question": "team-acceptance.mp4 的团队视频内容是什么？",
+                        "answer_mode": "local", "retriever_mode": "keyword", "workflow_mode": "standard",
+                        "asset_ids": [team_task["videoId"]],
+                    },
+                )
+                if any(source.get("asset_id") == team_task["videoId"] for source in team_chat.get("sources", [])):
+                    break
+                time.sleep(0.25)
+            assert team_chat and any(
+                source.get("asset_id") == team_task["videoId"] for source in team_chat["sources"]
+            ), team_chat
+
+            _, team_analysis = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions", method="POST",
+                token=owner_team["token"],
+                payload={"objective": "生成团队视频协作验收 PRD", "asset_ids": [team_task["videoId"]]},
+            )
+            if team_analysis["status"] == "WAITING_CONFIRMATION":
+                team_answers = {
+                    question["question_id"]: answer_defaults[question["question_id"]]
+                    for question in team_analysis["open_questions"]
+                }
+                _, team_analysis = request_json(
+                    f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}/confirm",
+                    method="POST", token=owner_team["token"],
+                    payload={"resume_token": team_analysis["resume_token"], "answers": team_answers},
+                )
+            assert team_analysis["status"] == "DRAFT_READY"
+            _, team_publication = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}/publication/request",
+                method="POST", token=owner_team["token"],
+            )
+            approval_payload = {
+                "request_id": team_publication["publication"]["request_id"],
+                "approval_token": team_publication["publication"]["approval_token"],
+                "confirmation": "PUBLISH",
+            }
+            self_status, _ = request_json_with_errors(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}/publication/approve",
+                method="POST", token=owner_team["token"], payload=approval_payload,
+            )
+            assert self_status == 403
+            _, team_publication = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}/publication/approve",
+                method="POST", token=member_team["token"], payload=approval_payload,
+            )
+            assert team_publication["status"] == "PUBLISHED"
+            _, team_deliverables = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}/deliverables",
+                token=member_team["token"],
+            )
+            team_candidate = team_deliverables["knowledge_candidates"][0]
+            _, team_candidate = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}"
+                f"/knowledge-candidates/{team_candidate['candidate_id']}/decision",
+                method="POST", token=member_team["token"], payload={"approved": True},
+            )
+            assert team_candidate["status"] == "APPROVED"
+
+            _, team_ticket_draft = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}"
+                f"/action-items/{team_deliverables['action_items'][0]['action_item_id']}/ticket-draft",
+                method="POST", token=member_team["token"],
+            )
+            _, team_ticket_approval = request_json(
+                f"http://127.0.0.1:{agent_port}/pending-actions/{team_ticket_draft['pending_action_id']}/approve",
+                method="POST", token=owner_team["token"], payload={"approved": True},
+            )
+            assert team_ticket_approval["status"] == "succeeded"
+
+            _, role_update = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/{team_tenant}/members/{member_personal['userId']}",
+                method="PATCH", token=owner_team["token"], payload={"role": "VIEWER"},
+            )
+            assert role_update["data"]["role"] == "VIEWER"
+            _, viewer_session_envelope = request_json(
+                f"http://127.0.0.1:{media_port}/api/workspaces/{team_tenant}/switch",
+                method="POST", token=member_team["token"],
+            )
+            viewer_team = viewer_session_envelope["data"]
+            assert viewer_team["role"] == "viewer"
+            _, viewer_tasks = request_json(
+                f"http://127.0.0.1:{media_port}/api/workflow/tasks", token=viewer_team["token"],
+            )
+            assert team_task_id in {item["taskId"] for item in viewer_tasks["data"]}
+            denied_body, denied_type = multipart_file("file", "viewer-denied.mp4", b"denied")
+            denied_status, _ = request_json_with_errors(
+                f"http://127.0.0.1:{media_port}/api/media/upload/file",
+                method="POST", token=viewer_team["token"], body=denied_body, content_type=denied_type,
+            )
+            assert denied_status == 403
+
             print(json.dumps({
                 "result": "PASS",
                 "network_scope": "localhost-only",
                 "tenant_id": auth["tenantId"],
+                "team_tenant_id": team_tenant,
                 "task_id": task_id,
+                "team_task_id": team_task_id,
                 "asset_id": task["videoId"],
                 "video_evidence": {"start_ms": source["start_ms"], "end_ms": source["end_ms"]},
                 "checks": ["register_workspace", "jwt_tenant", "upload", "mock_transcript",
@@ -297,7 +478,10 @@ def main() -> int:
                            "analysis_wait_resume", "evidence_prd", "publication_approval_audit",
                            "immutable_prd_snapshot", "knowledge_candidate_approval",
                            "action_item_ticket_approval",
-                           "range_playback"],
+                           "range_playback", "team_invitation_and_switch",
+                           "team_media_cross_member_read", "personal_workspace_isolation",
+                           "team_agent_retrieval", "team_four_eyes_publication",
+                           "team_knowledge_and_ticket_delivery", "viewer_read_only"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

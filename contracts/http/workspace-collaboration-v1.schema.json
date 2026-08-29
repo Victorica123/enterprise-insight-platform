@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/workspace-collaboration-v1.schema.json",
+  "title": "WorkspaceCollaborationV1",
+  "description": "Shared DTOs for team Workspace membership, invitations and active-Workspace token switching.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "workspaceRole": {
+      "enum": ["OWNER", "ADMIN", "MEMBER", "VIEWER"]
+    },
+    "workspaceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenantId", "name", "workspaceType", "role", "jwtRole", "createdBy", "createdAt", "joinedAt"],
+      "properties": {
+        "tenantId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "workspaceType": { "enum": ["personal", "team"] },
+        "role": { "$ref": "#/$defs/workspaceRole" },
+        "jwtRole": { "enum": ["viewer", "operator", "admin"] },
+        "createdBy": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "username", "role", "jwtRole", "joinedAt"],
+      "properties": {
+        "userId": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/workspaceRole" },
+        "jwtRole": { "enum": ["viewer", "operator", "admin"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "invitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invitationCode", "tenantId", "workspaceName", "expiresAt"],
+      "properties": {
+        "invitationCode": { "type": "string", "minLength": 32 },
+        "tenantId": { "type": "string", "minLength": 1 },
+        "workspaceName": { "type": "string", "minLength": 1 },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "activeSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "username", "tenantId", "role", "workspaceType", "token"],
+      "properties": {
+        "userId": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["viewer", "operator", "admin"] },
+        "workspaceType": { "enum": ["personal", "team"] },
+        "token": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

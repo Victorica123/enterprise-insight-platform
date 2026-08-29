@@ -5,6 +5,8 @@
 - 浏览器只提交受信身份提供方签发的 JWT；两个后端使用相同的 issuer、audience 和签名信任配置。
 - `sub` 映射用户身份，`tenant_id` 是强制租户声明，角色/权限来自受信声明或服务端授权表。
 - 注册会创建独立 Workspace 和 OWNER 成员关系；`tenant_id` 是 Workspace ID，不等同于 user ID。老账号在首次登录时幂等补建。
+- OWNER 可创建 team Workspace；OWNER/ADMIN 签发 15 分钟、一次性的邀请码，服务端只保存 SHA-256。已注册用户消费邀请码后以 MEMBER 加入。
+- active Workspace 切换必须由 Media Service 从服务端成员关系重签 JWT；前端不能自报 tenant 或 role。Workspace 角色映射为受信令牌角色：VIEWER→viewer、MEMBER→operator、ADMIN/OWNER→admin。
 - 新签发令牌使用身份契约 V2，并携带受信的 `workspace_type=personal|team`。旧 V1 令牌缺失该声明时按 team 处理，不能获得个人 OWNER 自批能力。
 - 生产路径禁止使用客户端自报的 `X-Role`、`X-User` 等头部获得权限。
 - Agent Service 的兼容身份头仅存在于显式 `development` 模式；`APP_ENV=production` 搭配非 JWT 模式会拒绝启动。
@@ -13,7 +15,8 @@
 ## 授权规则
 
 - 每一次资源读取、检索、播放、导出和写操作都在服务端校验租户。
-- owner 私有资源默认仅本人可见；共享依赖显式成员关系或权限记录。
+- personal Workspace 的资源按 tenant + owner 私有；team Workspace 的资源按 tenant 向成员共享读取，`owner_id` 保留创建者归属与审计信息。
+- VIEWER 只读；MEMBER、ADMIN、OWNER 可发起写操作。只有 OWNER 可调整非 OWNER 成员角色，OWNER 不能经普通角色接口被降级或替换。
 - 向量检索与图检索必须在查询阶段过滤 tenant/owner，不能检索后再删结果。
 - 视频/文档检索、图谱、工单、待审批动作、聊天指标、聊天明细与工具审计都在查询或写入阶段绑定 tenant/owner。旧图谱表会幂等迁移到 `legacy/legacy` 隔离域，不会混入新 Workspace。
 - Media Service 是播放授权来源；Agent Service 不持有对象存储凭证。
@@ -31,8 +34,8 @@
 
 PRD 发布已经执行差异化职责分离：个人 Workspace 的 OWNER 必须先申请、再用一次性 token 明确确认；team Workspace 必须由同租户另一位具备写权限的成员批准。状态比较更新、审计事件、不可变 PRD 版本和派生交付物同事务提交；跨租户审批统一返回 404。
 
-知识候选不会因 PRD 发布而自动进入正式知识：个人 Workspace 需要 OWNER 单独决定，team Workspace 需要不同写角色成员决定。行动项只会生成受控工具的 pending action，审批成功后才创建 owner 范围内的工单。团队工单是否共享仍取决于待确认的 Workspace 成员与共享策略。
+知识候选不会因 PRD 发布而自动进入正式知识：个人 Workspace 需要 OWNER 单独决定，team Workspace 需要不同写角色成员决定。行动项只会生成受控工具的 pending action，审批成功后才创建工单。团队工单按 tenant 共享读取但保留创建者 `owner_id`；个人工单仍按 owner 私有。
 
 ## 待发布决策
 
-team Workspace 的邀请、角色变更、主动 Workspace 切换与团队工单共享策略仍需用户确认；生产身份提供方、默认媒体/转写保留期限和外部模型数据策略也必须在生产发布定义前由用户拍板并新增 ADR。
+本地成员角色变化在下一次重签 JWT 后生效；已签发短期令牌在自然过期前仍可能有效。生产身份提供方、即时撤权机制、默认媒体/转写保留期限和外部模型数据策略必须在生产发布定义前由用户拍板并新增 ADR。

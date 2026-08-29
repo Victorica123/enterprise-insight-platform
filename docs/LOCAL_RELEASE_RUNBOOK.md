@@ -74,6 +74,13 @@ The automated localhost runner verifies:
 7. knowledge candidates need a separate human decision;
 8. action items only create a pending ticket action, then require approval and project the real ticket ID back;
 9. signed playback supports HTTP Range.
+10. an OWNER creates a team Workspace and a second registered user consumes a one-time invitation;
+11. explicit Workspace switching reissues trusted JWT claims for both members;
+12. one member uploads media and the other reads it and retrieves its Agent evidence;
+13. the second member's personal Workspace cannot see team resources;
+14. team PRD publication rejects self-approval and accepts another write-capable member;
+15. team knowledge and ticket delivery remain shared and audited;
+16. a freshly switched VIEWER can read shared resources but cannot upload.
 
 ## Rollback
 

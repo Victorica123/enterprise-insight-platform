@@ -116,16 +116,23 @@ def get_session(session_id: str, tenant_id: str, owner_id: str) -> AnalysisSessi
     return _from_row(row) if row else None
 
 
-def list_sessions(tenant_id: str, owner_id: str, limit: int = 50) -> list[AnalysisSessionResponse]:
+def list_sessions(
+    tenant_id: str, owner_id: str | None, limit: int = 50,
+) -> list[AnalysisSessionResponse]:
     init_analysis_store()
+    owner_clause = " and owner_id = ?" if owner_id is not None else ""
+    params: list[object] = [tenant_id]
+    if owner_id is not None:
+        params.append(owner_id)
+    params.append(max(1, min(limit, 100)))
     with database.connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             select * from analysis_sessions
-            where tenant_id = ? and owner_id = ?
+            where tenant_id = ?{owner_clause}
             order by created_at desc limit ?
             """,
-            (tenant_id, owner_id, max(1, min(limit, 100))),
+            params,
         ).fetchall()
     return [_from_row(row) for row in rows]
 

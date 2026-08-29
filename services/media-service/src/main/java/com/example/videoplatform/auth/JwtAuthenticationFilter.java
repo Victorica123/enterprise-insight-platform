@@ -40,9 +40,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 					// 避免 username/userId 不一致导致真实登录用户上传报“用户不存在”
 					String principal = claims.getSubject();
 					String role = claims.get("role", String.class);
+					String tenantId = claims.get("tenant_id", String.class);
+					String workspaceType = claims.get("workspace_type", String.class);
+					// V1 access tokens did not carry workspace_type. Treat them as team so
+					// they never inherit personal-workspace self-approval semantics.
+					if (workspaceType == null) {
+						workspaceType = "team";
+					}
+					if (tenantId == null || tenantId.isBlank()
+							|| !("personal".equals(workspaceType) || "team".equals(workspaceType))) {
+						filterChain.doFilter(request, response);
+						return;
+					}
 					String authority = role == null || role.isBlank() ? "ROLE_USER" : "ROLE_" + role.toUpperCase();
 					UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-							principal, null, List.of(new SimpleGrantedAuthority(authority)));
+							new WorkspacePrincipal(
+									principal, claims.get("username", String.class), tenantId, role, workspaceType),
+							null, List.of(new SimpleGrantedAuthority(authority)));
 					auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 					SecurityContextHolder.getContext().setAuthentication(auth);
 				}

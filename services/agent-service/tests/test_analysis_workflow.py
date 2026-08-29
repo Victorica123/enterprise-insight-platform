@@ -186,6 +186,18 @@ class AnalysisApiTests(unittest.TestCase):
             "/analysis/sessions", headers=author,
             json={"objective": "团队发布合规 PRD", "asset_ids": ["asset-a"]},
         ).json()
+
+        # Team sessions are tenant-shared, while the same user in personal mode
+        # cannot use the team tenant as an owner-bypass.
+        shared = self.client.get(
+            f"/analysis/sessions/{created['session_id']}", headers=reviewer,
+        )
+        self.assertEqual(shared.status_code, 200, shared.text)
+        personal_reviewer = {**reviewer, "X-Workspace-Type": "personal"}
+        hidden = self.client.get(
+            f"/analysis/sessions/{created['session_id']}", headers=personal_reviewer,
+        )
+        self.assertEqual(hidden.status_code, 404)
         requested = self.client.post(
             f"/analysis/sessions/{created['session_id']}/publication/request", headers=author,
         ).json()

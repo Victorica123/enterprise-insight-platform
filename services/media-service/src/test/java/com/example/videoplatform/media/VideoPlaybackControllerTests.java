@@ -6,12 +6,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.videoplatform.auth.JwtService;
+import com.example.videoplatform.auth.WorkspacePrincipal;
 import com.example.videoplatform.config.AppProperties;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
 
 class VideoPlaybackControllerTests {
@@ -49,8 +52,10 @@ class VideoPlaybackControllerTests {
 	@Test
 	void playbackTokenReturnsSignedStreamUrl() {
 		VideoTask task = new VideoTask("task-1", "video-1", "alice", "demo.mp4", "/tmp/demo.mp4");
-		when(videoTaskService.requireTask("task-1", "alice")).thenReturn(task);
-		Authentication auth = new UsernamePasswordAuthenticationToken("alice", null);
+		when(videoTaskService.requireTaskForWorkspace("task-1", "tenant-a", "alice", true)).thenReturn(task);
+		Authentication auth = new UsernamePasswordAuthenticationToken(
+				new WorkspacePrincipal("alice", "alice", "tenant-a", "operator", "team"), null,
+				List.of(new SimpleGrantedAuthority("ROLE_OPERATOR")));
 
 		MediaDtos.PlaybackTokenResponse response = controller.playbackToken(auth, "task-1").data();
 

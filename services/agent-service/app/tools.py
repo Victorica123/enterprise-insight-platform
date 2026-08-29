@@ -38,6 +38,10 @@ class ToolExecutionContext:
     owner_id: str = "legacy"
     workspace_type: str = "team"
 
+    @property
+    def resource_owner_id(self) -> str | None:
+        return None if self.workspace_type == "team" else self.owner_id
+
 
 @dataclass(frozen=True)
 class ToolDefinition:
@@ -496,14 +500,14 @@ def _query_tickets(context: ToolExecutionContext, arguments: dict) -> dict:
         keyword=arguments.get("keyword", ""),
         limit=20,
         tenant_id=context.tenant_id,
-        owner_id=context.owner_id,
+        owner_id=context.resource_owner_id,
     )
     return {"count": len(tickets), "tickets": [ticket.to_dict() for ticket in tickets]}
 
 
 def _get_ticket_detail(context: ToolExecutionContext, arguments: dict) -> dict:
     ticket_id = arguments["ticket_id"]
-    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.owner_id)
+    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.resource_owner_id)
     return ticket.to_dict() if ticket else {"error": f"工单 {ticket_id} 不存在。"}
 
 
@@ -527,7 +531,7 @@ def _draft_update_status(context: ToolExecutionContext, payload: dict) -> dict:
     ticket_id = payload["ticket_id"]
     new_status = payload["new_status"]
     assignee = payload.get("assignee", "")
-    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.owner_id)
+    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.resource_owner_id)
     if ticket is None:
         return {"error": f"工单 {ticket_id} 不存在。"}
     return {
@@ -545,7 +549,7 @@ def _execute_update_status(context: ToolExecutionContext, payload: dict) -> dict
     assignee = payload.get("assignee", "")
     ticket = update_ticket_status(
         ticket_id, new_status, assignee=assignee or None,
-        tenant_id=context.tenant_id, owner_id=context.owner_id,
+        tenant_id=context.tenant_id, owner_id=context.resource_owner_id,
     )
     if ticket is None:
         return {"error": f"工单 {ticket_id} 不存在。"}

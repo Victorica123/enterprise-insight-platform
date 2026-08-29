@@ -117,6 +117,22 @@ class UnifiedAuthTests(unittest.TestCase):
             ),
         )
 
+    def test_team_chat_uses_tenant_wide_retrieval_scope(self) -> None:
+        response_model = ChatResponse(answer="ok", sources=[])
+        with (
+            patch("app.routes.chat.answer_agentic_question", return_value=response_model) as answer,
+            patch("app.routes.chat.safe_record_chat_metric", return_value=0),
+        ):
+            response = self.client.post(
+                "/chat",
+                headers={"Authorization": f"Bearer {access_token(workspace_type='team')}"},
+                json={"question": "团队素材结论是什么？", "workflow_mode": "agentic"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(answer.call_args.kwargs["retrieval_scope"].owner_id)
+        self.assertEqual(answer.call_args.kwargs["workspace_type"], "team")
+
     def test_jwt_mode_ignores_self_declared_identity_headers(self) -> None:
         response = self.client.get(
             "/documents",

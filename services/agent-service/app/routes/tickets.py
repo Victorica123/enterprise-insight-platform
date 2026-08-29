@@ -31,8 +31,8 @@ router = APIRouter(tags=["tickets"])
 
 
 def _private_scope(principal: ActorPrincipal) -> tuple[str | None, str | None]:
-    """Scope by server principal; default development fixtures resolve to legacy/legacy."""
-    return principal.tenant_id, principal.user_id
+    """Personal resources are owner-private; team resources share the signed tenant."""
+    return principal.tenant_id, principal.resource_owner_id
 
 
 def _tenant_scope(principal: ActorPrincipal) -> str | None:
@@ -85,7 +85,8 @@ def create_ticket_manual(
     principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketResponse:
     require_write_role(principal.role)
-    tenant_id, owner_id = _private_scope(principal)
+    tenant_id = principal.tenant_id
+    owner_id = principal.user_id
     ticket = create_ticket(
         title=request.title,
         description=request.description,
@@ -94,8 +95,8 @@ def create_ticket_manual(
         assignee=request.assignee,
         risk_level=request.risk_level,
         source_document_ids=request.source_document_ids,
-        tenant_id=tenant_id or "legacy",
-        owner_id=owner_id or "legacy",
+        tenant_id=tenant_id,
+        owner_id=owner_id,
     )
     return TicketResponse(**ticket.to_dict())
 

@@ -4,6 +4,34 @@ export const MEDIA_API_BASE_URL = import.meta.env.VITE_MEDIA_API_BASE_URL ?? "ht
 
 type MediaEnvelope<T> = { success: boolean; data: T; message?: string };
 
+export type WorkspaceRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+
+export type WorkspaceSummary = {
+  tenantId: string;
+  name: string;
+  workspaceType: "personal" | "team";
+  role: WorkspaceRole;
+  jwtRole: WorkspaceSession["role"];
+  createdBy: string;
+  createdAt: string;
+  joinedAt: string;
+};
+
+export type WorkspaceMember = {
+  userId: string;
+  username: string;
+  role: WorkspaceRole;
+  jwtRole: WorkspaceSession["role"];
+  joinedAt: string;
+};
+
+export type WorkspaceInvitation = {
+  invitationCode: string;
+  tenantId: string;
+  workspaceName: string;
+  expiresAt: string;
+};
+
 export type TranscriptSegment = {
   segmentId: string;
   sequence: number;
@@ -45,6 +73,50 @@ export async function authenticate(
 
 export async function logout(): Promise<void> {
   await mediaRequest<void>("/api/auth/logout", { method: "POST" });
+}
+
+export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
+  return mediaRequest<WorkspaceSummary[]>("/api/workspaces");
+}
+
+export async function createWorkspace(name: string): Promise<WorkspaceSummary> {
+  return mediaRequest<WorkspaceSummary>("/api/workspaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function acceptWorkspaceInvitation(invitationCode: string): Promise<WorkspaceSummary> {
+  return mediaRequest<WorkspaceSummary>("/api/workspaces/invitations/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ invitationCode }),
+  });
+}
+
+export async function switchWorkspace(tenantId: string): Promise<WorkspaceSession> {
+  return mediaRequest<WorkspaceSession>(`/api/workspaces/${tenantId}/switch`, { method: "POST" });
+}
+
+export async function listWorkspaceMembers(tenantId: string): Promise<WorkspaceMember[]> {
+  return mediaRequest<WorkspaceMember[]>(`/api/workspaces/${tenantId}/members`);
+}
+
+export async function createWorkspaceInvitation(tenantId: string): Promise<WorkspaceInvitation> {
+  return mediaRequest<WorkspaceInvitation>(`/api/workspaces/${tenantId}/invitations`, { method: "POST" });
+}
+
+export async function updateWorkspaceMemberRole(
+  tenantId: string,
+  userId: string,
+  role: Exclude<WorkspaceRole, "OWNER">,
+): Promise<WorkspaceMember> {
+  return mediaRequest<WorkspaceMember>(`/api/workspaces/${tenantId}/members/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
 }
 
 export async function listMediaTasks(): Promise<MediaTask[]> {

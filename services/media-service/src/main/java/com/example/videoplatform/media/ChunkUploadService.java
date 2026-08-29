@@ -30,9 +30,9 @@ public class ChunkUploadService {
 	private static final String UPLOAD_META_KEY = "upload:%s:meta";
 	private static final String UPLOAD_CHUNKS_KEY = "upload:%s:chunks";
 	private static final String LOCK_MERGE_KEY = "lock:merge:%s";
-	private static final String FILE_MD5_KEY = "file:md5:%s";
+	private static final String FILE_MD5_KEY = "file:md5:%s:%s";
 	// 断点续传：文件 MD5 → 进行中的 uploadId，使刷新页面后仍能找回未完成的会话。
-	private static final String INPROGRESS_MD5_KEY = "upload:inprogress:%s";
+	private static final String INPROGRESS_MD5_KEY = "upload:inprogress:%s:%s:%s";
 
 	private final StringRedisTemplate redisTemplate;
 	private final AppProperties appProperties;
@@ -53,20 +53,28 @@ public class ChunkUploadService {
 	}
 
 	public MediaDtos.InitUploadResponse initUpload(String owner, MediaDtos.InitUploadRequest request) {
+		return initUpload(owner, "legacy", request);
+	}
+
+	public MediaDtos.InitUploadResponse initUpload(
+			String owner, String tenantId, MediaDtos.InitUploadRequest request) {
 		String safeName = MediaFileValidator.safeVideoFileName(request.fileName());
 		String fileMd5 = request.fileMd5();
 		if (fileMd5 != null && !fileMd5.isBlank()) {
-			String existingPath = redisTemplate.opsForValue().get(String.format(FILE_MD5_KEY, fileMd5));
+			String existingPath = redisTemplate.opsForValue().get(fileMd5Key(tenantId, fileMd5));
 			if (existingPath != null) {
 				try {
 					if (mediaStorageService.objectExists(existingPath)) {
-						VideoTask task = videoTaskService.createTask(owner, safeName, existingPath, fileMd5);
+						VideoTask task = "legacy".equals(tenantId)
+								? videoTaskService.createTask(owner, safeName, existingPath, fileMd5)
+								: videoTaskService.createTaskInWorkspace(
+										owner, tenantId, safeName, existingPath, fileMd5);
 						workflowPublisher.publish(task.getTaskId());
 						return new MediaDtos.InitUploadResponse(
 								task.getTaskId(), null, request.totalChunks(), null, fileMd5, true, java.util.List.of());
 					}
 					// Media may have been removed after its last task was deleted; do not trust a stale cache hit.
-					redisTemplate.delete(String.format(FILE_MD5_KEY, fileMd5));
+					redisTemplate.delete(fileMd5Key(tenantId, fileMd5));
 				} catch (IOException exception) {
 					throw new IllegalStateException("检查秒传文件失败，请稍后重试", exception);
 				}
@@ -74,7 +82,7 @@ public class ChunkUploadService {
 
 			// 断点续传：同一文件（相同 MD5）存在未完成的会话时，复用它并回传已上传分片，
 			// 让前端跳过已传部分。刷新页面 / 断网重连都能续传。
-			MediaDtos.InitUploadResponse resumed = tryResume(owner, fileMd5);
+			MediaDtos.InitUploadResponse resumed = tryResume(owner, tenantId, fileMd5);
 			if (resumed != null) {
 				return resumed;
 			}
@@ -89,6 +97,7 @@ public class ChunkUploadService {
 		meta.put("totalChunks", String.valueOf(request.totalChunks()));
 		meta.put("chunkSize", String.valueOf(request.chunkSize()));
 		meta.put("owner", owner);
+		meta.put("tenantId", tenantId);
 		meta.put("createdAt", String.valueOf(Instant.now().toEpochMilli()));
 		if (fileMd5 != null && !fileMd5.isBlank()) {
 			meta.put("fileMd5", fileMd5);
@@ -97,7 +106,8 @@ public class ChunkUploadService {
 		redisTemplate.opsForHash().putAll(metaKey, meta);
 		redisTemplate.expire(metaKey, Duration.ofHours(24));
 		if (fileMd5 != null && !fileMd5.isBlank()) {
-			redisTemplate.opsForValue().set(String.format(INPROGRESS_MD5_KEY, fileMd5), uploadId, Duration.ofHours(24));
+			redisTemplate.opsForValue().set(
+					inprogressMd5Key(tenantId, owner, fileMd5), uploadId, Duration.ofHours(24));
 		}
 
 		return new MediaDtos.InitUploadResponse(uploadId, "/api/media/upload/chunk", request.totalChunks(),
@@ -108,14 +118,15 @@ public class ChunkUploadService {
 	 * 若该 MD5 存在归属于 owner 的未完成会话，返回复用响应（含已上传分片）；否则返回 null。
 	 * 会话已过期或属于他人时，清理悬空映射并当作新会话处理。
 	 */
-	private MediaDtos.InitUploadResponse tryResume(String owner, String fileMd5) {
-		String inprogressKey = String.format(INPROGRESS_MD5_KEY, fileMd5);
+	private MediaDtos.InitUploadResponse tryResume(String owner, String tenantId, String fileMd5) {
+		String inprogressKey = inprogressMd5Key(tenantId, owner, fileMd5);
 		String existingUploadId = redisTemplate.opsForValue().get(inprogressKey);
 		if (existingUploadId == null) {
 			return null;
 		}
 		Map<Object, Object> meta = redisTemplate.opsForHash().entries(String.format(UPLOAD_META_KEY, existingUploadId));
-		if (meta == null || meta.isEmpty() || !owner.equals(meta.get("owner"))) {
+		if (meta == null || meta.isEmpty()
+				|| !owner.equals(meta.get("owner")) || !tenantMatches(meta.get("tenantId"), tenantId)) {
 			redisTemplate.delete(inprogressKey);
 			return null;
 		}
@@ -126,12 +137,16 @@ public class ChunkUploadService {
 
 	/** 断点续传状态查询：返回该会话已完成的分片索引（升序）。 */
 	public MediaDtos.UploadStatusResponse getUploadStatus(String owner, String uploadId) {
+		return getUploadStatus(owner, "legacy", uploadId);
+	}
+
+	public MediaDtos.UploadStatusResponse getUploadStatus(String owner, String tenantId, String uploadId) {
 		String metaKey = String.format(UPLOAD_META_KEY, uploadId);
 		Map<Object, Object> meta = redisTemplate.opsForHash().entries(metaKey);
 		if (meta == null || meta.isEmpty()) {
 			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
 		}
-		requireUploadOwner(meta, owner);
+		requireUploadScope(meta, owner, tenantId);
 		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
 		java.util.List<Integer> uploaded = uploadedChunks(uploadId);
 		return new MediaDtos.UploadStatusResponse(uploadId, totalChunks, uploaded, uploaded.size() >= totalChunks);
@@ -146,6 +161,11 @@ public class ChunkUploadService {
 	}
 
 	public MediaDtos.ChunkUploadResponse uploadChunk(String owner, String uploadId, int chunkIndex, MultipartFile file) {
+		return uploadChunk(owner, "legacy", uploadId, chunkIndex, file);
+	}
+
+	public MediaDtos.ChunkUploadResponse uploadChunk(
+			String owner, String tenantId, String uploadId, int chunkIndex, MultipartFile file) {
 		if (file == null || file.isEmpty()) {
 			throw new IllegalArgumentException("分片文件不能为空");
 		}
@@ -155,7 +175,7 @@ public class ChunkUploadService {
 		if (meta == null || meta.isEmpty()) {
 			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
 		}
-		requireUploadOwner(meta, owner);
+		requireUploadScope(meta, owner, tenantId);
 
 		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
 		if (chunkIndex < 0 || chunkIndex >= totalChunks) {
@@ -181,7 +201,8 @@ public class ChunkUploadService {
 		redisTemplate.expire(metaKey, Duration.ofHours(24));
 		Object fileMd5 = meta.get("fileMd5");
 		if (fileMd5 instanceof String md5 && !md5.isBlank()) {
-			redisTemplate.expire(String.format(INPROGRESS_MD5_KEY, md5), Duration.ofHours(24));
+			redisTemplate.expire(
+					inprogressMd5Key(tenantId, owner, md5), Duration.ofHours(24));
 		}
 		Long uploaded = redisTemplate.opsForSet().size(chunksKey);
 		return new MediaDtos.ChunkUploadResponse(chunkIndex, uploaded != null ? uploaded.intValue() : 0,
@@ -189,13 +210,18 @@ public class ChunkUploadService {
 	}
 
 	public MediaDtos.MergeResponse mergeChunks(String owner, MediaDtos.MergeRequest request) {
+		return mergeChunks(owner, "legacy", request);
+	}
+
+	public MediaDtos.MergeResponse mergeChunks(
+			String owner, String tenantId, MediaDtos.MergeRequest request) {
 		String uploadId = request.uploadId();
 		String metaKey = String.format(UPLOAD_META_KEY, uploadId);
 		Map<Object, Object> meta = redisTemplate.opsForHash().entries(metaKey);
 		if (meta == null || meta.isEmpty()) {
 			throw new IllegalArgumentException("上传会话不存在或已过期: " + uploadId);
 		}
-		requireUploadOwner(meta, owner);
+		requireUploadScope(meta, owner, tenantId);
 
 		int totalChunks = Integer.parseInt((String) meta.get("totalChunks"));
 		String fileName = (String) meta.get("fileName");
@@ -252,7 +278,9 @@ public class ChunkUploadService {
 
 			VideoTask task;
 			try {
-				task = videoTaskService.createTask(owner, safeName, stored, fileMd5);
+				task = "legacy".equals(tenantId)
+						? videoTaskService.createTask(owner, safeName, stored, fileMd5)
+						: videoTaskService.createTaskInWorkspace(owner, tenantId, safeName, stored, fileMd5);
 			} catch (RuntimeException exception) {
 				deleteStoredUploadQuietly(stored);
 				throw exception;
@@ -270,8 +298,9 @@ public class ChunkUploadService {
 
 			// 记录 MD5 映射（如有）
 			if (fileMd5 != null && !fileMd5.isBlank()) {
-				redisTemplate.opsForValue().set(String.format(FILE_MD5_KEY, fileMd5), stored, Duration.ofDays(7));
-				redisTemplate.delete(String.format(INPROGRESS_MD5_KEY, fileMd5));
+				redisTemplate.opsForValue().set(
+						fileMd5Key(tenantId, fileMd5), stored, Duration.ofDays(7));
+				redisTemplate.delete(inprogressMd5Key(tenantId, owner, fileMd5));
 			}
 
 			workflowPublisher.publish(task.getTaskId());
@@ -335,10 +364,27 @@ public class ChunkUploadService {
 		}
 	}
 
-	private static void requireUploadOwner(Map<Object, Object> meta, String owner) {
+	private static void requireUploadScope(Map<Object, Object> meta, String owner, String tenantId) {
 		Object uploadOwner = meta.get("owner");
-		if (uploadOwner == null || !uploadOwner.equals(owner)) {
+		Object uploadTenant = meta.get("tenantId");
+		if (uploadOwner == null || !uploadOwner.equals(owner) || !tenantMatches(uploadTenant, tenantId)) {
 			throw new IllegalArgumentException("上传会话不存在或无权限访问");
 		}
+	}
+
+	private static boolean tenantMatches(Object storedTenant, String tenantId) {
+		return tenantId.equals(storedTenant) || ("legacy".equals(tenantId) && storedTenant == null);
+	}
+
+	private static String fileMd5Key(String tenantId, String fileMd5) {
+		return "legacy".equals(tenantId)
+				? "file:md5:" + fileMd5
+				: String.format(FILE_MD5_KEY, tenantId, fileMd5);
+	}
+
+	private static String inprogressMd5Key(String tenantId, String owner, String fileMd5) {
+		return "legacy".equals(tenantId)
+				? "upload:inprogress:" + fileMd5
+				: String.format(INPROGRESS_MD5_KEY, tenantId, owner, fileMd5);
 	}
 }

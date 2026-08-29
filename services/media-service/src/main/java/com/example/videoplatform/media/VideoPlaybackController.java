@@ -1,6 +1,7 @@
 package com.example.videoplatform.media;
 
 import com.example.videoplatform.auth.JwtService;
+import com.example.videoplatform.auth.WorkspacePrincipal;
 import com.example.videoplatform.common.ApiResponse;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
@@ -52,9 +53,11 @@ public class VideoPlaybackController {
 	@GetMapping("/{taskId}/playback-token")
 	public ApiResponse<MediaDtos.PlaybackTokenResponse> playbackToken(Authentication authentication,
 			@PathVariable String taskId) {
-		String owner = authentication.getName();
-		VideoTask task = videoTaskService.requireTask(taskId, owner); // owner 校验，越权直接抛出
-		String token = jwtService.generatePlaybackToken(task.getTaskId(), owner);
+		WorkspacePrincipal principal = WorkspacePrincipal.require(authentication);
+		VideoTask task = videoTaskService.requireTaskForWorkspace(
+				taskId, principal.tenantId(), principal.userId(), principal.isTeam());
+		String token = jwtService.generatePlaybackToken(
+				task.getTaskId(), principal.userId(), principal.tenantId(), principal.workspaceType());
 		String streamUrl = "/api/media/video/" + task.getTaskId() + "/stream?token=" + token;
 		return ApiResponse.ok(new MediaDtos.PlaybackTokenResponse(token, streamUrl,
 				jwtService.getPlaybackTokenSeconds()));
@@ -65,8 +68,16 @@ public class VideoPlaybackController {
 	public void stream(@PathVariable String taskId, @RequestParam String token,
 			@RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader,
 			HttpServletResponse response) throws IOException {
-		String owner = verifyPlaybackToken(token, taskId);
-		VideoTask task = videoTaskService.requireTask(taskId, owner);
+		Claims claims = verifyPlaybackToken(token, taskId);
+		String tenantId = claims.get("tenant_id", String.class);
+		String workspaceType = claims.get("workspace_type", String.class);
+		if (tenantId == null || !("personal".equals(workspaceType) || "team".equals(workspaceType))) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "播放令牌缺少工作区范围");
+		}
+		VideoTask task = "legacy".equals(tenantId)
+				? videoTaskService.requireTask(taskId, claims.getSubject())
+				: videoTaskService.requireTaskForWorkspace(
+						taskId, tenantId, claims.getSubject(), "team".equals(workspaceType));
 
 		java.util.Optional<String> redirectUrl = mediaStorageService.createPlaybackRedirectUrl(task.getStoragePath(),
 				Duration.ofSeconds(jwtService.getPlaybackTokenSeconds()));
@@ -117,13 +128,13 @@ public class VideoPlaybackController {
 		writeRange(file, start, contentLength, response.getOutputStream());
 	}
 
-	private String verifyPlaybackToken(String token, String taskId) {
+	private Claims verifyPlaybackToken(String token, String taskId) {
 		try {
 			Claims claims = jwtService.parse(token);
 			if (!"playback".equals(claims.get("purpose")) || !taskId.equals(claims.get("taskId"))) {
 				throw new ResponseStatusException(HttpStatus.FORBIDDEN, "播放令牌无效");
 			}
-			return claims.getSubject();
+			return claims;
 		} catch (ResponseStatusException e) {
 			throw e;
 		} catch (Exception e) {

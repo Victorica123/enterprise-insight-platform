@@ -67,12 +67,19 @@ public class JwtService {
 	 * 令牌绑定 taskId 与 owner，仅用于播放该视频。
 	 */
 	public String generatePlaybackToken(String taskId, String username) {
+		return generatePlaybackToken(taskId, username, "legacy", "personal");
+	}
+
+	public String generatePlaybackToken(
+			String taskId, String username, String tenantId, String workspaceType) {
 		Instant now = Instant.now();
 		return Jwts.builder()
 				.issuer(appProperties.getJwt().getIssuer())
 				.audience().add(appProperties.getJwt().getAudience()).and()
 				.subject(username)
 				.claim("taskId", taskId)
+				.claim("tenant_id", tenantId)
+				.claim("workspace_type", workspaceType)
 				.claim("purpose", "playback")
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusSeconds(PLAYBACK_TOKEN_SECONDS)))
@@ -81,11 +88,17 @@ public class JwtService {
 	}
 
 	public String generateDirectUploadToken(String username, String fileName, String storagePath) {
+		return generateDirectUploadToken(username, "legacy", fileName, storagePath);
+	}
+
+	public String generateDirectUploadToken(
+			String username, String tenantId, String fileName, String storagePath) {
 		Instant now = Instant.now();
 		return Jwts.builder()
 				.issuer(appProperties.getJwt().getIssuer())
 				.audience().add(appProperties.getJwt().getAudience()).and()
 				.subject(username)
+				.claim("tenant_id", tenantId)
 				.claim("fileName", fileName)
 				.claim("storagePath", storagePath)
 				.claim("purpose", "direct-upload")

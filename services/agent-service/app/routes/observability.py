@@ -32,7 +32,7 @@ def _tenant_scope(principal: ActorPrincipal) -> str | None:
 
 
 def _owner_scope(principal: ActorPrincipal) -> str | None:
-    return principal.user_id if principal.auth_mode == "jwt" else None
+    return principal.resource_owner_id if principal.auth_mode == "jwt" else None
 
 
 @router.get("/metrics/summary", response_model=ChatMetricsSummary, summary="问答指标汇总（请求量/回答率/P95/token/成本/满意度）")

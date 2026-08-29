@@ -67,6 +67,24 @@ class LegacyStoreTenantIsolationTests(unittest.TestCase):
             1,
         )
 
+    def test_team_graph_aggregates_members_but_personal_scope_does_not(self) -> None:
+        ingest_document(
+            "a.md", "客户 A 的项目负责人是李四。",
+            tenant_id="tenant-a", owner_id="user-1",
+        )
+        ingest_document(
+            "b.md", "客户 B 的项目负责人是王五。",
+            tenant_id="tenant-a", owner_id="user-2",
+        )
+
+        team_names = {item.name for item in list_entities(tenant_id="tenant-a", owner_id=None)}
+        personal_names = {item.name for item in list_entities(tenant_id="tenant-a", owner_id="user-1")}
+        self.assertIn("客户A", team_names)
+        self.assertIn("客户B", team_names)
+        self.assertIn("客户A", personal_names)
+        self.assertNotIn("客户B", personal_names)
+        self.assertEqual(get_graph_overview(tenant_id="tenant-a", owner_id=None)["document_count"], 2)
+
     def test_legacy_global_graph_is_migrated_to_isolated_legacy_scope(self) -> None:
         database.init_db()
         with database.connect() as conn:

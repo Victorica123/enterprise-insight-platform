@@ -39,6 +39,7 @@ import { TicketsView } from "./features/TicketsView";
 import { AuthGate } from "./features/AuthGate";
 import { AnalysisWorkspace } from "./features/AnalysisWorkspace";
 import { EvidencePlayer, MediaWorkspace, type VideoEvidenceRequest } from "./features/MediaWorkspace";
+import { WorkspaceSwitcher } from "./features/WorkspaceSwitcher";
 import { logout as logoutWorkspace } from "./mediaApi";
 import { clearSession, loadSession, saveSession, type WorkspaceSession } from "./session";
 import { useMediaWorkspace } from "./hooks/useMediaWorkspace";
@@ -315,6 +316,19 @@ function App() {
 		window.location.hash = "/media";
 	}
 
+	function handleWorkspaceSwitched(nextSession: WorkspaceSession) {
+		saveSession(nextSession);
+		setSession(nextSession);
+		setDocuments([]);
+		setTicketList(null);
+		setPendingActions([]);
+		setToolCalls([]);
+		setChatResponse(null);
+		setSelectedAssetIds([]);
+		setVideoEvidence(null);
+		setError(null);
+	}
+
 	async function handleLogout() {
 		try { await logoutWorkspace(); } catch { /* local token is cleared even if a service is unavailable */ }
 		clearSession();
@@ -352,6 +366,7 @@ function App() {
 			<p>视频与文档证据 · Agent 分析 · 业务行动闭环</p>
         </div>
         <div className="role-controls">
+			<WorkspaceSwitcher session={session} onSwitched={handleWorkspaceSwitched} onError={setError} />
 			<div className="role-control"><span>{session.username}</span><strong>{session.role}</strong></div>
 			<button className="icon-button subtle" type="button" onClick={() => void handleLogout()} title="退出登录"><LogOut size={16} /></button>
         </div>
@@ -416,7 +431,7 @@ function App() {
 			selectedAssetCount: selectedAssetIds.length, handleOpenVideoEvidence,
 		}} />
 		) : activeTab === "analysis" ? (
-			<AnalysisWorkspace selectedAssetIds={selectedAssetIds} onPlayEvidence={handleOpenVideoEvidence} onError={setError} />
+			<AnalysisWorkspace key={session.tenantId} selectedAssetIds={selectedAssetIds} onPlayEvidence={handleOpenVideoEvidence} onError={setError} />
       ) : activeTab === "tickets" ? (
         <TicketsView {...{
           ticketList, pendingActions, toolMetrics, toolCalls, isLoadingTickets, approvingActionId,
@@ -424,7 +439,7 @@ function App() {
           permissionHint: ticketsPermissionHint,
         }} />
       ) : activeTab === "graph" ? (
-        <GraphView actorRole={actorRole} setError={setError} />
+        <GraphView key={session.tenantId} actorRole={actorRole} setError={setError} />
       ) : (
         <MonitorView metricsSummary={metricsSummary} onRefresh={refreshWorkspace} actorRole={actorRole} />
       )}

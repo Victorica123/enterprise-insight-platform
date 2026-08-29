@@ -40,6 +40,16 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 
 统一前端只保存注册/登录返回的 access token；调用两个后端都使用 Bearer JWT。前端的视频筛选通过 `/chat` 的 `asset_ids` 收窄范围，不能扩大 JWT 已限定的 tenant/owner 范围。
 
+团队 Workspace HTTP 契约由 `contracts/http/workspace-collaboration-v1.schema.json` 定义：
+
+- `GET /api/workspaces`：列出当前用户的全部个人/团队成员关系。
+- `POST /api/workspaces`：创建 team Workspace，当前用户成为 OWNER。
+- `GET /api/workspaces/{tenantId}/members`：列出同 Workspace 成员。
+- `POST /api/workspaces/{tenantId}/invitations`：OWNER/ADMIN 创建一次性短期邀请码。
+- `POST /api/workspaces/invitations/accept`：已登录用户消费邀请码并以 MEMBER 加入。
+- `PATCH /api/workspaces/{tenantId}/members/{userId}`：OWNER 调整非 OWNER 成员为 VIEWER/MEMBER/ADMIN。
+- `POST /api/workspaces/{tenantId}/switch`：服务端重新查询成员关系并签发该 active Workspace 的 V2 JWT。
+
 六阶段分析使用 `POST /analysis/sessions` 创建会话，`POST /analysis/sessions/{id}/confirm` 携带当前 `resume_token` 和结构化答案恢复。读取与恢复都按服务端 JWT 的 tenant/owner 定位；错误租户返回不存在，避免泄漏资源是否存在。
 
 PRD 发布契约：

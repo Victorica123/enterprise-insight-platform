@@ -116,6 +116,22 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(schema["properties"]["version"]["$ref"], "#/$defs/version")
 
+    def test_workspace_collaboration_schema_is_versioned_and_machine_readable(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "workspace-collaboration-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+
+        self.assertTrue(schema["$id"].endswith("/workspace-collaboration-v1.schema.json"))
+        self.assertEqual(schema["type"], "object")
+        self.assertEqual(
+            set(schema["$defs"]["workspaceRole"]["enum"]),
+            {"OWNER", "ADMIN", "MEMBER", "VIEWER"},
+        )
+        self.assertIn("invitation", schema["$defs"])
+        self.assertIn("activeSession", schema["$defs"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,6 +55,14 @@ public class WorkspaceMember {
 		return role;
 	}
 
+	public Instant getJoinedAt() {
+		return joinedAt;
+	}
+
+	public void setRole(WorkspaceRole role) {
+		this.role = role;
+	}
+
 	public enum WorkspaceRole {
 		OWNER("admin"),
 		ADMIN("admin"),

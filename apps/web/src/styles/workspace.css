@@ -1,0 +1,140 @@
+.workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 4px 5px 4px 10px;
+  color: var(--primary);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
+}
+
+.workspace-switcher select {
+  width: min(250px, 27vw);
+  min-height: 30px;
+  padding: 3px 26px 3px 7px;
+  border: 0;
+  background-color: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.workspace-active {
+  padding: 3px 7px;
+  border-radius: var(--radius-full);
+  color: var(--success-text);
+  background: var(--success-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.button.compact { min-height: 30px; padding: 4px 9px; font-size: 12px; }
+
+.workspace-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 17, 25, .62);
+  backdrop-filter: blur(4px);
+}
+
+.workspace-dialog {
+  width: min(900px, 100%);
+  max-height: min(850px, calc(100vh - 48px));
+  overflow: hidden;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+}
+
+.workspace-dialog > header {
+  position: static;
+  margin: 0;
+  padding: 18px 22px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-dialog > header > div { display: grid; gap: 4px; }
+.workspace-dialog h2, .workspace-dialog h3 { display: flex; align-items: center; gap: 7px; margin: 0; }
+.workspace-dialog h2 { font-size: 19px; }
+.workspace-dialog h3 { font-size: 14px; }
+.workspace-dialog p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+.workspace-dialog-body {
+  display: grid;
+  gap: 16px;
+  max-height: calc(100vh - 135px);
+  padding: 20px 22px 24px;
+  overflow-y: auto;
+}
+
+.workspace-current, .workspace-section-title, .workspace-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workspace-current {
+  padding: 14px 16px;
+  border: 1px solid var(--primary-border);
+  border-radius: 12px;
+  background: var(--primary-soft);
+}
+
+.workspace-current > div, .workspace-member > div { display: grid; gap: 3px; min-width: 0; }
+.workspace-current span, .workspace-member span { color: var(--muted); font-size: 12px; }
+.safe-chip { display: inline-flex; align-items: center; gap: 5px; color: var(--success-text) !important; white-space: nowrap; }
+
+.workspace-team-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.invitation-once {
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: 10px;
+  background: var(--warning-soft);
+}
+
+.invitation-once > div { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.invitation-once code { flex: 1; overflow-wrap: anywhere; color: var(--text); font-size: 12px; }
+
+.workspace-members { display: grid; gap: 7px; }
+.workspace-member { min-height: 50px; padding: 8px 10px; border-radius: 9px; background: var(--surface-2); }
+.workspace-member strong { overflow: hidden; text-overflow: ellipsis; }
+.workspace-member select { width: 125px; min-height: 34px; padding: 5px 25px 5px 8px; font-size: 12px; }
+.role-pill { padding: 4px 8px; border-radius: var(--radius-full); color: var(--primary) !important; background: var(--primary-soft); font-weight: 700; }
+
+.personal-boundary { display: flex; gap: 10px; padding: 15px 16px; color: var(--success-text); background: var(--success-soft); border-radius: 12px; }
+.personal-boundary p { color: inherit; opacity: .82; }
+
+.workspace-create-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.workspace-create-grid form { display: grid; align-content: start; gap: 8px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.workspace-create-grid form > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 4px; }
+.workspace-create-grid input { min-width: 0; }
+
+@media (max-width: 820px) {
+  .workspace-switcher select { width: min(205px, 48vw); }
+  .workspace-create-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .workspace-backdrop { padding: 0; }
+  .workspace-dialog { max-height: 100vh; height: 100vh; border-radius: 0; }
+  .workspace-dialog-body { max-height: calc(100vh - 80px); padding: 16px; }
+  .workspace-section-title { align-items: flex-start; }
+  .workspace-current { align-items: flex-start; flex-direction: column; }
+  .workspace-switcher select { width: 145px; }
+}

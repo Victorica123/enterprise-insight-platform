@@ -60,6 +60,14 @@ public class AuthService {
 		return response(user, workspace);
 	}
 
+	@Transactional(readOnly = true)
+	public AuthDtos.AuthResponse switchWorkspace(String userId, String tenantId) {
+		UserAccount user = userRepository.findById(userId)
+				.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+						org.springframework.http.HttpStatus.NOT_FOUND, "用户不存在"));
+		return response(user, workspaceService.requireContext(userId, tenantId));
+	}
+
 	private AuthDtos.AuthResponse response(UserAccount user, WorkspaceService.WorkspaceContext workspace) {
 		String token = jwtService.generateAccessToken(
 				user.getUserId(), user.getUsername(), workspace.tenantId(),

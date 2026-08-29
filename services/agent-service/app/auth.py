@@ -44,8 +44,13 @@ class ActorPrincipal:
     @property
     def retrieval_owner_id(self) -> str | None:
         # Imported V1 demo documents had no owner. Development mode deliberately
-        # keeps that offline corpus visible; JWT requests are always owner-scoped.
-        return None if self.auth_mode == "development" else self.user_id
+        # keeps that offline corpus visible. Team resources share the signed tenant
+        # boundary; personal resources additionally keep the owner boundary.
+        return None if self.auth_mode == "development" or self.workspace_type == "team" else self.user_id
+
+    @property
+    def resource_owner_id(self) -> str | None:
+        return self.retrieval_owner_id
 
 
 class JwtValidationError(ValueError):

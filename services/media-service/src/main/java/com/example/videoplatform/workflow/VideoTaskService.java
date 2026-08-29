@@ -40,9 +40,28 @@ public class VideoTaskService {
 	public VideoTask createTask(String owner, String fileName, String storagePath, String contentMd5) {
 		UserAccount account = lockOwner(owner);
 		assertWithinQuota(owner);
+		String tenantId = account.getPrimaryTenantId() == null ? "legacy" : account.getPrimaryTenantId();
+		return persistNewTask(owner, tenantId, fileName, storagePath, contentMd5);
+	}
+
+	@Transactional
+	public VideoTask createTaskInWorkspace(
+			String owner, String tenantId, String fileName, String storagePath) {
+		return createTaskInWorkspace(owner, tenantId, fileName, storagePath, null);
+	}
+
+	@Transactional
+	public VideoTask createTaskInWorkspace(
+			String owner, String tenantId, String fileName, String storagePath, String contentMd5) {
+		lockOwner(owner);
+		assertWithinQuota(owner);
+		return persistNewTask(owner, tenantId, fileName, storagePath, contentMd5);
+	}
+
+	private VideoTask persistNewTask(
+			String owner, String tenantId, String fileName, String storagePath, String contentMd5) {
 		String taskId = UUID.randomUUID().toString();
 		String videoId = UUID.randomUUID().toString();
-		String tenantId = account.getPrimaryTenantId() == null ? "legacy" : account.getPrimaryTenantId();
 		String traceId = MDC.get("traceId") == null ? taskId : MDC.get("traceId");
 		VideoTask task = new VideoTask(
 				taskId, videoId, tenantId, owner, fileName, storagePath, contentMd5, traceId);
@@ -103,6 +122,36 @@ public class VideoTaskService {
 	@Transactional(readOnly = true)
 	public List<VideoTask> listTasksByOwner(String owner) {
 		return taskRepository.findByOwnerOrderByCreatedAtDesc(owner);
+	}
+
+	@Transactional(readOnly = true)
+	public List<VideoTask> listTasksForWorkspace(
+			String tenantId, String userId, boolean teamWorkspace) {
+		return teamWorkspace
+				? taskRepository.findByTenantIdOrderByCreatedAtDesc(tenantId)
+				: taskRepository.findByTenantIdAndOwnerOrderByCreatedAtDesc(tenantId, userId);
+	}
+
+	@Transactional(readOnly = true)
+	public VideoTask requireTaskForWorkspace(
+			String taskId, String tenantId, String userId, boolean teamWorkspace) {
+		return (teamWorkspace
+				? taskRepository.findByTaskIdAndTenantId(taskId, tenantId)
+				: taskRepository.findByTaskIdAndTenantIdAndOwner(taskId, tenantId, userId))
+				.orElseThrow(() -> new IllegalArgumentException("任务不存在或无权限: " + taskId));
+	}
+
+	@Transactional
+	public VideoTask retryFailedTaskForWorkspace(
+			String taskId, String tenantId, String userId, boolean teamWorkspace) {
+		VideoTask task = requireTaskForWorkspace(taskId, tenantId, userId, teamWorkspace);
+		if (task.getStatus() != VideoTask.TaskStatus.FAILED) {
+			throw new IllegalArgumentException("只有失败任务可以重试: " + taskId);
+		}
+		assertCanCreateTask(userId);
+		task.setErrorMessage(null);
+		task.setStatus(VideoTask.TaskStatus.QUEUED);
+		return task;
 	}
 
 	@Transactional

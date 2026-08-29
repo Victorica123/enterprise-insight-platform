@@ -29,6 +29,11 @@ public class DirectUploadService {
 
 	public MediaDtos.DirectUploadInitResponse initDirectUpload(String owner,
 			MediaDtos.DirectUploadInitRequest request) {
+		return initDirectUpload(owner, "legacy", request);
+	}
+
+	public MediaDtos.DirectUploadInitResponse initDirectUpload(String owner, String tenantId,
+			MediaDtos.DirectUploadInitRequest request) {
 		videoTaskService.assertCanCreateTask(owner);
 		String safeName = MediaFileValidator.safeVideoFileName(request.fileName());
 		Duration expiresIn = Duration.ofSeconds(jwtService.getDirectUploadTokenSeconds());
@@ -38,16 +43,24 @@ public class DirectUploadService {
 		} catch (UnsupportedOperationException e) {
 			throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage(), e);
 		}
-		String token = jwtService.generateDirectUploadToken(owner, safeName, target.storagePath());
+		String token = jwtService.generateDirectUploadToken(owner, tenantId, safeName, target.storagePath());
 		return new MediaDtos.DirectUploadInitResponse(target.uploadUrl(), target.storagePath(), token,
 				target.expiresAt().toEpochMilli(), "PUT");
 	}
 
 	public MediaDtos.DirectUploadCompleteResponse completeDirectUpload(String owner,
 			MediaDtos.DirectUploadCompleteRequest request) {
+		return completeDirectUpload(owner, "legacy", request);
+	}
+
+	public MediaDtos.DirectUploadCompleteResponse completeDirectUpload(String owner, String tenantId,
+			MediaDtos.DirectUploadCompleteRequest request) {
 		Claims claims = parseDirectUploadToken(request.uploadToken());
 		if (!owner.equals(claims.getSubject())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "直传令牌不属于当前用户");
+		}
+		if (!tenantId.equals(claims.get("tenant_id", String.class))) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "直传令牌不属于当前工作区");
 		}
 		String fileName = claims.get("fileName", String.class);
 		String storagePath = claims.get("storagePath", String.class);
@@ -64,7 +77,9 @@ public class DirectUploadService {
 			return new MediaDtos.DirectUploadCompleteResponse(task.getTaskId(), task.getVideoId(),
 					task.getStoragePath(), task.getStatus().name());
 		}
-		VideoTask task = videoTaskService.createTask(owner, fileName, storagePath);
+		VideoTask task = "legacy".equals(tenantId)
+				? videoTaskService.createTask(owner, fileName, storagePath)
+				: videoTaskService.createTaskInWorkspace(owner, tenantId, fileName, storagePath);
 		workflowPublisher.publish(task.getTaskId());
 		return new MediaDtos.DirectUploadCompleteResponse(task.getTaskId(), task.getVideoId(),
 				task.getStoragePath(), task.getStatus().name());

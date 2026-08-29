@@ -16,14 +16,15 @@
 
 2026-08-29 已重新建立完整业务纵向链路的本地证据：
 
-- Agent Service 107/107 用例通过，覆盖六阶段等待/恢复、证据化 PRD、个人二次确认、团队职责分离、不可变版本、知识候选、行动审批、旧图谱迁移、备份恢复往返以及工单/观测/图谱的 tenant/owner 隔离。
+- Agent Service 112/112 用例通过，新增覆盖 team Workspace 下文档、视频证据、分析、图谱和工单的 tenant 共享，personal owner 隔离，VIEWER 只读以及受信 JWT 检索范围；原有六阶段、发布治理、备份恢复与 tenant/owner 负向用例保持通过。
 - 统一 React Web 完成 `tsc -b` 与 Vite 生产构建。
-- Media Service 在声明支持的 JDK 18 下全量 103/103 用例通过，包含 JWT/Workspace、真实注册上传、结构化事件、配额、重试、播放授权和媒体生命周期。
-- V6 黄金集的 keyword、embedding、hybrid 三种检索模式均达到 decision 98%、recall@3 97%、fact 97%；最终门禁 p95 分别为 12.2 ms、38.7 ms、41.6 ms，质量门禁通过。
-- `python scripts/local_acceptance.py` 在随机 localhost 端口通过全部 14 项检查，覆盖 Workspace 注册、统一 JWT/tenant、视频上传、mock 转写、事务 outbox、Agent 摄取与范围检索、时间戳来源、六阶段等待/恢复、证据化 PRD、个人二次发布确认、不可变版本、知识候选审批、行动项转工单审批、签名播放和 HTTP Range。
+- Media Service 在声明支持的 JDK 18 下全量 108/108 用例通过，新增覆盖团队创建、一次性邀请、角色调整、active Workspace 重签、跨成员媒体读取、个人隔离和 VIEWER 写入拒绝；原有结构化事件、配额、重试、播放授权和媒体生命周期保持通过。
+- V6 黄金集的 keyword、embedding、hybrid 三种检索模式均达到 decision 98%、recall@3 97%、fact 97%；本轮门禁 p95 分别为 15.0 ms、37.0 ms、47.3 ms，质量门禁通过。
+- `python scripts/local_acceptance.py` 在随机 localhost 端口通过全部 21 项检查：除原个人闭环外，新增双用户团队创建/邀请/切换、跨成员媒体与 Agent 检索、personal 隔离、团队四眼发布、知识/工单交付和 VIEWER 只读；全程仅使用本机临时 H2/SQLite/local 文件和 mock/local AI。
+- 真实浏览器在 1280×720 视口完成登录、团队创建、邀请生成和 Workspace 切换；测试捕获到 sticky header 的 containing block 导致 fixed 弹窗越界，改为通过 Portal 挂载到 `document.body` 后，弹窗完整位于视口内且切换成功。
 - 新增 HTTP JSON 契约和 `compose.local.yml` 已通过机器解析；当前主机未安装 Docker，因此这只是静态配置证据，不等于容器启动证据。
 
-JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生 64 个测试加载错误；这不是产品回归，也不是通过证据。全量质量结论来自受支持 JDK 18 的 103/103 结果。
+JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加载错误；这不是产品回归，也不是通过证据。全量质量结论来自受支持 JDK 18 的 108/108 结果。
 
 ## 合并门禁
 

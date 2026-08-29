@@ -10,7 +10,6 @@
 - Tests, gates and verified claims: `knowledge/QUALITY.md`
 - Local runtime, deployment and incidents: `knowledge/OPERATIONS.md`
 - Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
-- Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
 - Accepted architecture choices: `knowledge/decisions/`
 
 ## Verification levels
@@ -30,9 +29,8 @@ Use for cross-service contracts, unified authentication, end-to-end workflow, de
 - Media Service tests with the supported JDK documented by the repository.
 - Agent Service regression tests and relevant evaluation suites.
 - Web type check/build and focused UI tests.
-- Contract tests and a real JWT owner-isolation flow.
+- Contract tests plus real JWT personal-owner isolation and team cross-member sharing flows.
 - Lightweight end-to-end smoke; real middleware smoke when the change touches it.
-- For persistence changes, verify a backup archive checksum/SQLite quick-check and keep restore recoverable.
 - For persistence changes, verify a backup archive checksum/SQLite quick-check and keep restore recoverable.
 - Knowledge drift check.
 
@@ -44,6 +42,8 @@ Never reinterpret an unsupported local toolchain failure as an application regre
 - Consumers deduplicate by `event_id` and semantic resource version.
 - Breaking fields require a new version; additive optional fields can remain in the current version.
 - Events carry `tenant_id`, `owner_id`, `trace_id`, resource identity and occurred time.
+- Personal queries use tenant + owner scope; team queries use tenant scope while writes retain creator `owner_id` attribution.
+- Active Workspace changes require server-side membership lookup and JWT reissuance; never accept client-selected tenant or role as authority.
 - Sensitive storage locations and bearer/playback credentials never enter events or Agent evidence.
 
 ## Knowledge update ownership

@@ -20,9 +20,9 @@ from app.models import (
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
-def _graph_scope(principal: ActorPrincipal) -> dict[str, str]:
+def _graph_scope(principal: ActorPrincipal) -> dict[str, str | None]:
     if principal.auth_mode == "jwt":
-        return {"tenant_id": principal.tenant_id, "owner_id": principal.user_id}
+        return {"tenant_id": principal.tenant_id, "owner_id": principal.resource_owner_id}
     return {"tenant_id": "legacy", "owner_id": "legacy"}
 
 

@@ -8,6 +8,7 @@ React Web
   └─ /api/agent/*  -> Agent Service (FastAPI)
 
 Media Service
+  ├─ accounts / Workspace memberships / active-Workspace JWT issuance
   ├─ media metadata / processing tasks
   ├─ object storage / ffmpeg / transcription
   └─ transcript.ready.v1 -> Agent Service ingestion
@@ -26,6 +27,7 @@ Agent Service
 
 ### Media Service
 
+- 拥有账号、个人/团队 Workspace、成员关系、一次性邀请与 active Workspace JWT 重签。
 - 拥有媒体资产、上传会话、对象存储位置和处理任务。
 - 负责转码、抽音频、语音识别、重试、失败原因和媒体可用性。
 - 产出带稳定片段 ID、时间段、说话人和文本的转写版本。
@@ -43,7 +45,7 @@ Agent Service
 
 ### React Web
 
-- 一个登录态、一个导航体系和一个任务工作台。
+- 一个登录态、一个导航体系和一个任务工作台；提供创建/加入团队、成员管理与显式 Workspace 切换。
 - 不承担权限判定；只呈现服务端能力和可解释的失败状态。
 - 通过证据引用请求 Media Service 的授权播放地址并定位时间段。
 

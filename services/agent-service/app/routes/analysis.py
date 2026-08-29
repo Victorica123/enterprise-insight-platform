@@ -65,7 +65,9 @@ def get_analysis_sessions(
     limit: int = Query(default=50, ge=1, le=100),
     principal: ActorPrincipal = Depends(current_principal),
 ) -> list[AnalysisSessionResponse]:
-    return list_sessions(principal.tenant_id, principal.user_id, limit)
+    return list_sessions(
+        principal.tenant_id, principal.resource_owner_id, limit,
+    )
 
 
 @router.get("/publication-queue", response_model=list[AnalysisSessionResponse])
@@ -84,7 +86,11 @@ def get_analysis_session(
     session_id: str,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> AnalysisSessionResponse:
-    return _require_session(session_id, principal)
+    return (
+        _require_tenant_session(session_id, principal)
+        if principal.workspace_type == "team"
+        else _require_session(session_id, principal)
+    )
 
 
 @router.post("/sessions/{session_id}/confirm", response_model=AnalysisSessionResponse)
@@ -94,7 +100,11 @@ def confirm_analysis_session(
     principal: ActorPrincipal = Depends(current_principal),
 ) -> AnalysisSessionResponse:
     require_write_role(principal.role)
-    existing = _require_session(session_id, principal)
+    existing = (
+        _require_tenant_session(session_id, principal)
+        if principal.workspace_type == "team"
+        else _require_session(session_id, principal)
+    )
     if existing.status != "WAITING_CONFIRMATION":
         raise HTTPException(status_code=409, detail="Analysis session is not waiting for confirmation.")
     if not existing.resume_token or not secrets.compare_digest(existing.resume_token, request.resume_token):
@@ -150,7 +160,10 @@ def get_analysis_audit(
     session_id: str,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> list[AnalysisAuditEvent]:
-    _require_session(session_id, principal)
+    if principal.workspace_type == "team":
+        _require_tenant_session(session_id, principal)
+    else:
+        _require_session(session_id, principal)
     return list_audit_events(session_id, principal.tenant_id)
 
 
@@ -219,11 +232,17 @@ def create_action_item_ticket_draft(
     principal: ActorPrincipal = Depends(current_principal),
 ) -> ActionItemTicketDraftResponse:
     require_write_role(principal.role)
-    session = _require_session(session_id, principal)
+    session = (
+        _require_tenant_session(session_id, principal)
+        if principal.workspace_type == "team"
+        else _require_session(session_id, principal)
+    )
     if session.status != "PUBLISHED":
         raise HTTPException(status_code=409, detail="The PRD has not been published.")
     item = get_action_item(action_item_id, principal.tenant_id)
-    if item is None or item.session_id != session_id or item.owner_id != principal.user_id:
+    if item is None or item.session_id != session_id or (
+        principal.workspace_type != "team" and item.owner_id != principal.user_id
+    ):
         raise HTTPException(status_code=404, detail="Action item not found.")
     if item.status != "DRAFT":
         if item.pending_action_id:

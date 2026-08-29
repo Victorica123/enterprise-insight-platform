@@ -93,7 +93,7 @@ def process_uploaded_document(
 def get_documents(principal: ActorPrincipal = Depends(current_principal)) -> list[DocumentSummary]:
     if principal.auth_mode == "development":
         return list_documents()
-    return list_documents(tenant_id=principal.tenant_id, owner_id=principal.user_id)
+    return list_documents(tenant_id=principal.tenant_id, owner_id=principal.resource_owner_id)
 
 
 @router.delete("/documents/{document_id}", summary="删除文档（级联删除 chunk 与图谱）",
@@ -109,7 +109,7 @@ def remove_document(
         else delete_document(
             document_id,
             tenant_id=principal.tenant_id,
-            owner_id=principal.user_id,
+            owner_id=principal.resource_owner_id,
         )
     )
     if not deleted:

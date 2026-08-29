@@ -29,6 +29,11 @@ public class SingleUploadService {
 	}
 
 	public MediaDtos.SingleUploadResponse uploadSingleFile(String owner, MultipartFile file) {
+		return uploadSingleFile(owner, "legacy", file);
+	}
+
+	public MediaDtos.SingleUploadResponse uploadSingleFile(
+			String owner, String tenantId, MultipartFile file) {
 		MediaFileValidator.requireVideoFile(file);
 		videoTaskService.assertCanCreateTask(owner);
 		try {
@@ -39,7 +44,9 @@ public class SingleUploadService {
 			}
 			VideoTask task;
 			try {
-				task = videoTaskService.createTask(owner, safeName, stored);
+				task = "legacy".equals(tenantId)
+						? videoTaskService.createTask(owner, safeName, stored)
+						: videoTaskService.createTaskInWorkspace(owner, tenantId, safeName, stored);
 			} catch (RuntimeException exception) {
 				deleteRejectedUpload(stored);
 				throw exception;

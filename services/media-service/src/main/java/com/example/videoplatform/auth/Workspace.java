@@ -19,6 +19,10 @@ public class Workspace {
 	@Column(nullable = false, length = 64)
 	private String createdBy;
 
+	@jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+	@Column(length = 20)
+	private WorkspaceType workspaceType;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 
@@ -27,9 +31,14 @@ public class Workspace {
 	}
 
 	public Workspace(String tenantId, String name, String createdBy) {
+		this(tenantId, name, createdBy, WorkspaceType.PERSONAL);
+	}
+
+	public Workspace(String tenantId, String name, String createdBy, WorkspaceType workspaceType) {
 		this.tenantId = tenantId;
 		this.name = name;
 		this.createdBy = createdBy;
+		this.workspaceType = workspaceType;
 		this.createdAt = Instant.now();
 	}
 
@@ -45,7 +54,26 @@ public class Workspace {
 		return createdBy;
 	}
 
+	public WorkspaceType getWorkspaceType() {
+		return workspaceType == null ? WorkspaceType.PERSONAL : workspaceType;
+	}
+
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public enum WorkspaceType {
+		PERSONAL("personal"),
+		TEAM("team");
+
+		private final String claimValue;
+
+		WorkspaceType(String claimValue) {
+			this.claimValue = claimValue;
+		}
+
+		public String claimValue() {
+			return claimValue;
+		}
 	}
 }

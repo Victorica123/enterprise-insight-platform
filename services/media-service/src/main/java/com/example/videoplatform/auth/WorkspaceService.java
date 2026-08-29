@@ -22,7 +22,8 @@ public class WorkspaceService {
 			workspaceRepository.save(new Workspace(tenantId, personalWorkspaceName(user.getUsername()), user.getUserId()));
 			user.setPrimaryTenantId(tenantId);
 		} else if (!workspaceRepository.existsById(tenantId)) {
-			workspaceRepository.save(new Workspace(tenantId, personalWorkspaceName(user.getUsername()), user.getUserId()));
+			workspaceRepository.save(new Workspace(
+					tenantId, personalWorkspaceName(user.getUsername()), user.getUserId(), Workspace.WorkspaceType.PERSONAL));
 		}
 
 		String resolvedTenantId = tenantId;
@@ -30,6 +31,17 @@ public class WorkspaceService {
 				.orElseGet(() -> memberRepository.save(new WorkspaceMember(
 						UUID.randomUUID().toString(), resolvedTenantId, user.getUserId(), WorkspaceMember.WorkspaceRole.OWNER)));
 		return new WorkspaceContext(resolvedTenantId, member.getRole().jwtRole(), "personal");
+	}
+
+	public WorkspaceContext requireContext(String userId, String tenantId) {
+		Workspace workspace = workspaceRepository.findById(tenantId)
+				.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+						org.springframework.http.HttpStatus.NOT_FOUND, "工作区不存在"));
+		WorkspaceMember member = memberRepository.findByTenantIdAndUserId(tenantId, userId)
+				.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+						org.springframework.http.HttpStatus.NOT_FOUND, "工作区不存在"));
+		return new WorkspaceContext(
+				tenantId, member.getRole().jwtRole(), workspace.getWorkspaceType().claimValue());
 	}
 
 	private static String personalWorkspaceName(String username) {

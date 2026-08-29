@@ -540,13 +540,46 @@ def rebuild_graph(
     include_tickets: bool = True,
     *,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> dict[str, object]:
     """全量重建，并在单一事务中原子替换旧图。"""
     init_graph_store()
     started_at = perf_counter()
     with database.connect() as conn:
         conn.execute("begin immediate")
+        if owner_id is None:
+            owner_rows = conn.execute(
+                "select distinct owner_id from chunks where tenant_id = ?",
+                (tenant_id,),
+            ).fetchall()
+            owners = {str(row["owner_id"]) for row in owner_rows}
+            has_tickets = conn.execute(
+                "select name from sqlite_master where type = 'table' and name = 'tickets'"
+            ).fetchone()
+            if has_tickets:
+                owners.update(str(row["owner_id"]) for row in conn.execute(
+                    "select distinct owner_id from tickets where tenant_id = ?",
+                    (tenant_id,),
+                ).fetchall())
+            conn.execute("delete from graph_entities where tenant_id = ?", (tenant_id,))
+            conn.execute("delete from graph_relations where tenant_id = ?", (tenant_id,))
+            conn.execute("delete from graph_meta where tenant_id = ?", (tenant_id,))
+            for scope_owner in sorted(owners):
+                rows = conn.execute(
+                    """
+                    select document_id, filename, chunk_index, content from chunks
+                    where tenant_id = ? and owner_id = ?
+                    order by created_at asc, chunk_index asc
+                    """,
+                    (tenant_id, scope_owner),
+                ).fetchall()
+                _replace_graph(
+                    conn, rows, include_tickets=include_tickets,
+                    tenant_id=tenant_id, owner_id=scope_owner,
+                )
+            overview = get_graph_overview(conn=conn, tenant_id=tenant_id, owner_id=None)
+            overview["duration_ms"] = round((perf_counter() - started_at) * 1000, 2)
+            return overview
         rows = conn.execute(
             """
             select document_id, filename, chunk_index, content from chunks
@@ -756,7 +789,7 @@ def _get_meta(
     *,
     conn: sqlite3.Connection | None = None,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> str:
     if conn is None:
         with database.connect() as local_conn:
@@ -764,10 +797,16 @@ def _get_meta(
                 key, conn=local_conn,
                 tenant_id=tenant_id, owner_id=owner_id,
             )
-    row = conn.execute(
-        "select value from graph_meta where tenant_id = ? and owner_id = ? and key = ?",
-        (tenant_id, owner_id, key),
-    ).fetchone()
+    if owner_id is None:
+        row = conn.execute(
+            "select value from graph_meta where tenant_id = ? and key = ? order by value desc limit 1",
+            (tenant_id, key),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "select value from graph_meta where tenant_id = ? and owner_id = ? and key = ?",
+            (tenant_id, owner_id, key),
+        ).fetchone()
     return row["value"] if row else ""
 
 
@@ -779,7 +818,7 @@ def get_graph_overview(
     *,
     conn: sqlite3.Connection | None = None,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> dict[str, object]:
     init_graph_store()
     if conn is None:
@@ -787,32 +826,33 @@ def get_graph_overview(
             return get_graph_overview(
                 conn=local_conn, tenant_id=tenant_id, owner_id=owner_id,
             )
-    scope = (tenant_id, owner_id)
+    owner_clause = " and owner_id = ?" if owner_id is not None else ""
+    scope: tuple[object, ...] = (tenant_id, owner_id) if owner_id is not None else (tenant_id,)
     entity_count = int(conn.execute(
-        "select count(*) from graph_entities where tenant_id = ? and owner_id = ?", scope,
+        f"select count(*) from graph_entities where tenant_id = ?{owner_clause}", scope,
     ).fetchone()[0])
     relation_count = int(conn.execute(
-        "select count(*) from graph_relations where tenant_id = ? and owner_id = ?", scope,
+        f"select count(*) from graph_relations where tenant_id = ?{owner_clause}", scope,
     ).fetchone()[0])
     type_rows = conn.execute(
-        """
+        f"""
         select entity_type, count(*) as c from graph_entities
-        where tenant_id = ? and owner_id = ? group by entity_type
+        where tenant_id = ?{owner_clause} group by entity_type
         """,
         scope,
     ).fetchall()
     relation_rows = conn.execute(
-        """
+        f"""
         select relation_type, count(*) as c from graph_relations
-        where tenant_id = ? and owner_id = ? group by relation_type
+        where tenant_id = ?{owner_clause} group by relation_type
         """,
         scope,
     ).fetchall()
     document_count = int(
         conn.execute(
-            """
+            f"""
             select count(distinct document_id) from graph_relations
-            where tenant_id = ? and owner_id = ? and filename != 'tickets'
+            where tenant_id = ?{owner_clause} and filename != 'tickets'
             """,
             scope,
         ).fetchone()[0]
@@ -835,11 +875,14 @@ def list_entities(
     limit: int = 100,
     *,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> list[GraphEntity]:
     init_graph_store()
-    clauses: list[str] = ["tenant_id = ?", "owner_id = ?"]
-    params: list[object] = [tenant_id, owner_id]
+    clauses: list[str] = ["tenant_id = ?"]
+    params: list[object] = [tenant_id]
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     if entity_type:
         clauses.append("entity_type = ?")
         params.append(entity_type)
@@ -847,20 +890,26 @@ def list_entities(
         clauses.append("name like ?")
         params.append(f"%{keyword}%")
     where = f" where {' and '.join(clauses)}" if clauses else ""
-    params.append(max(1, min(limit, 500)))
     with database.connect() as conn:
         rows = conn.execute(
-            f"select * from graph_entities{where} order by mention_count desc, name asc limit ?", params
+            f"select * from graph_entities{where} order by mention_count desc, name asc", params
         ).fetchall()
-    return [
-        GraphEntity(
-            name=row["name"],
-            entity_type=row["entity_type"],
-            mention_count=int(row["mention_count"]),
-            document_ids=json.loads(row["document_ids"] or "[]"),
-        )
-        for row in rows
-    ]
+    merged: dict[tuple[str, str], GraphEntity] = {}
+    for row in rows:
+        key = (row["name"], row["entity_type"])
+        documents = json.loads(row["document_ids"] or "[]")
+        if key not in merged:
+            merged[key] = GraphEntity(
+                name=row["name"], entity_type=row["entity_type"],
+                mention_count=int(row["mention_count"]), document_ids=documents,
+            )
+        else:
+            current = merged[key]
+            current.mention_count += int(row["mention_count"])
+            current.document_ids = list(dict.fromkeys([*current.document_ids, *documents]))
+    return sorted(
+        merged.values(), key=lambda item: (-item.mention_count, item.name),
+    )[:max(1, min(limit, 500))]
 
 
 def list_relations(
@@ -869,11 +918,14 @@ def list_relations(
     limit: int = 200,
     *,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> list[GraphRelation]:
     init_graph_store()
-    clauses: list[str] = ["tenant_id = ?", "owner_id = ?"]
-    params: list[object] = [tenant_id, owner_id]
+    clauses: list[str] = ["tenant_id = ?"]
+    params: list[object] = [tenant_id]
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     if entity:
         clauses.append("(source_name = ? or target_name = ?)")
         params.extend([entity, entity])
@@ -895,7 +947,7 @@ def find_paths(
     max_depth: int = 3,
     *,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> list[list[GraphPathStep]]:
     """无向 BFS 找两个实体之间的关系链（返回带方向标注的路径）。"""
     init_graph_store()
@@ -932,7 +984,7 @@ def get_entity_neighborhood(
     limit: int = 24,
     *,
     tenant_id: str = "legacy",
-    owner_id: str = "legacy",
+    owner_id: str | None = "legacy",
 ) -> list[GraphRelation]:
     """取一组实体周边 depth 跳内的关系，供 Graph Agent 组装上下文。"""
     init_graph_store()
@@ -963,16 +1015,25 @@ def get_entity_neighborhood(
 
 
 def _build_adjacency(
-    *, tenant_id: str = "legacy", owner_id: str = "legacy",
+    *, tenant_id: str = "legacy", owner_id: str | None = "legacy",
 ) -> dict[str, list[tuple[str, str, bool]]]:
     with database.connect() as conn:
-        rows = conn.execute(
-            """
-            select source_name, relation_type, target_name from graph_relations
-            where tenant_id = ? and owner_id = ?
-            """,
-            (tenant_id, owner_id),
-        ).fetchall()
+        if owner_id is None:
+            rows = conn.execute(
+                """
+                select source_name, relation_type, target_name from graph_relations
+                where tenant_id = ?
+                """,
+                (tenant_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                select source_name, relation_type, target_name from graph_relations
+                where tenant_id = ? and owner_id = ?
+                """,
+                (tenant_id, owner_id),
+            ).fetchall()
     adjacency: dict[str, list[tuple[str, str, bool]]] = {}
     for row in rows:
         adjacency.setdefault(row["source_name"], []).append((row["target_name"], row["relation_type"], True))
