@@ -38,10 +38,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 						&& !tokenBlacklist.isRevoked(claims.getId())) {
 					// principal 用不可变的 userId（与 owner/findByUserId 全链路语义一致），
 					// 避免 username/userId 不一致导致真实登录用户上传报“用户不存在”
-					String userId = claims.get("userId", String.class);
-					String principal = (userId == null || userId.isBlank()) ? claims.getSubject() : userId;
+					String principal = claims.getSubject();
+					String role = claims.get("role", String.class);
+					String authority = role == null || role.isBlank() ? "ROLE_USER" : "ROLE_" + role.toUpperCase();
 					UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-							principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+							principal, null, List.of(new SimpleGrantedAuthority(authority)));
 					auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 					SecurityContextHolder.getContext().setAuthentication(auth);
 				}

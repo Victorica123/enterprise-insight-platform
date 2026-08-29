@@ -69,6 +69,7 @@ class RealJwtUploadFlowTests {
 		JsonNode auth = registerAndReturn("flow-user");
 		String token = auth.path("token").asText();
 		String userId = auth.path("userId").asText();
+		String tenantId = auth.path("tenantId").asText();
 
 		// 2. 真实 JWT 过 Bearer 上传（真实过滤器 + 真实存储 + 真实配额校验）
 		MockMultipartFile file = new MockMultipartFile(
@@ -89,6 +90,7 @@ class RealJwtUploadFlowTests {
 
 		// 4. 关键断言：owner 必须是注册返回的 userId（身份语义回归即失败）
 		assertThat(completed.get().path("owner").asText()).isEqualTo(userId);
+		assertThat(completed.get().path("tenantId").asText()).isEqualTo(tenantId);
 		assertThat(completed.get().path("status").asText()).isEqualTo("COMPLETED");
 		assertThat(completed.get().path("transcript").asText()).isNotBlank();
 	}

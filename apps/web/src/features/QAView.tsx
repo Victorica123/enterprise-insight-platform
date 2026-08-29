@@ -2,7 +2,7 @@ import React from "react";
 import {
   Activity, AlertCircle, BarChart3, Bot, CheckCircle2, ClipboardList, Coins, Copy,
   FileText, Gauge, Loader2, RefreshCw, Send, ThumbsDown, ThumbsUp, Trash2,
-  Upload, Workflow, X,
+  Upload, Video, Workflow, X,
 } from "lucide-react";
 import {
   type ActorRole, type AnswerMode, type ChatMetricsSummary, type ChatResponse,
@@ -13,6 +13,7 @@ import {
   MetricItem, StatusItem, UsageBars, formatCoverage, formatDate, formatDecimal,
   formatMilliseconds, formatPercent,
 } from "./common";
+import { formatTimestamp } from "./MediaWorkspace";
 import "../styles/qa.css";
 
 export function QAView(props: {
@@ -37,6 +38,8 @@ export function QAView(props: {
   actorRole: ActorRole;
   answerFeedback: "up" | "down" | null;
   isSendingFeedback: boolean;
+	selectedAssetCount: number;
+	handleOpenVideoEvidence: (assetId: string, startMs: number) => void;
   setSelectedFile: (f: File | null) => void;
   setQuestion: (q: string) => void;
   setAnswerMode: (m: AnswerMode) => void;
@@ -187,6 +190,7 @@ export function QAView(props: {
       <section className="chat-area">
         <div className="card">
           <form className="chat-form" onSubmit={p.handleAsk}>
+			{p.selectedAssetCount > 0 ? <div className="video-scope-note"><Video size={15} />当前限定分析 {p.selectedAssetCount} 个视频；文档仍按当前工作区检索。</div> : null}
             <div className="chat-controls">
               <div className="select-group">
                 <label>
@@ -424,10 +428,15 @@ export function QAView(props: {
                 <header>
                   <strong>来源 {index + 1}</strong>
                   <span>
-                    {source.filename} · chunk {source.chunk_index} · score {source.score}
+					{source.source_type === "video" ? "视频证据" : "文档证据"} · {source.filename} · score {source.score}
                   </span>
                 </header>
                 <p>{source.content}</p>
+				{source.source_type === "video" && source.asset_id && source.start_ms != null ? (
+					<button className="evidence-jump" type="button" onClick={() => p.handleOpenVideoEvidence(source.asset_id!, source.start_ms!)}>
+						<Video size={14} />播放 {formatTimestamp(source.start_ms)}–{formatTimestamp(source.end_ms ?? source.start_ms)}
+					</button>
+				) : null}
               </article>
             ))
           )}

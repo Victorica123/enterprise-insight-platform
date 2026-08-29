@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import math
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -8,7 +9,10 @@ from typing import Iterable, Iterator
 from app.embeddings import build_embedding, embed_real, embedding_to_json
 
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "knowledge_base.sqlite3"
+DB_PATH = Path(os.getenv(
+    "AGENT_DATABASE_PATH",
+    str(Path(__file__).resolve().parents[1] / "data" / "knowledge_base.sqlite3"),
+))
 
 _INITIALIZED_DB_PATH: Path | None = None
 

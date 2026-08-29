@@ -92,6 +92,7 @@ def render() -> str:
     python_test = files_under("services/agent-service/tests", (".py",))
     web_source = files_under("apps/web/src", (".ts", ".tsx", ".css"))
     contracts = contract_paths()
+    local_acceptance = (ROOT / "scripts" / "local_acceptance.py").exists()
     java_test_methods = count_pattern(java_test, r"@Test\b")
     python_test_functions = count_pattern(python_test, r"^\s*(?:async\s+)?def\s+test_")
     media_routes = count_pattern(java_main, r"@(Get|Post|Put|Patch|Delete|Request)Mapping\b")
@@ -108,6 +109,7 @@ def render() -> str:
         f"- Agent Service: {len(python_main)} application Python files; {len(python_test)} test files; {python_test_functions} pytest test functions.",
         f"- React Web: {len(web_source)} TypeScript/TSX/CSS source files.",
         f"- Machine-readable contracts: {len(contracts)} files.",
+        f"- Local localhost-only acceptance runner: {'present' if local_acceptance else 'missing'}.",
         "",
         "## Detected primary dependencies",
         "",

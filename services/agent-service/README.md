@@ -28,15 +28,15 @@ uvicorn app.main:app --reload --port 8000
 ## 测试
 
 ```bash
-LLM_ROUTER_ENABLED=0 python -m pytest tests -q    # 87 个回归测试
-python ../scripts/evaluate_v2.py                  # V2~V6 离线评测门禁
+python -m unittest discover -s tests -q           # 100 个回归测试
+python ../../quality/agent-evals/evaluate_v6.py   # 离线黄金集门禁
 ```
 
 ## 模块地图
 
 | 模块 | 职责 |
 | --- | --- |
-| `routes/` | HTTP 端点（chat / documents / tickets / graph / observability / embeddings） |
+| `routes/` | HTTP 端点（chat / documents / analysis / tickets / graph / observability / embeddings） |
 | `agentic_rag.py` | Agentic 编排：Router → Planner → Retriever → Graph → Tool → Reviewer，trace 全程记录 |
 | `rag.py` | 标准 RAG、证据门控（分数/意图覆盖/主题锚点）、引用审核 |
 | `retrievers.py` | keyword / embedding / hybrid（RRF 融合）三种检索 |
@@ -46,6 +46,7 @@ python ../scripts/evaluate_v2.py                  # V2~V6 离线评测门禁
 | `llm_router.py` / `llm_client.py` | LLM 路由/规划/工具选择（规则版降级）；共享超时/重试/预算的客户端 |
 | `slot_extraction.py` | 工具槽位抽取（标题/优先级/工单 ID/目标状态，模糊即拒绝） |
 | `logging_config.py` | JSON 结构化日志 |
+| `analysis_pipeline.py` | 六阶段确定性编排、事实缺口检查与证据化 PRD 草稿 |
+| `analysis_store.py` | tenant/owner 隔离的会话检查点、恢复令牌和 PRD 草稿持久化 |
 
-鉴权约定：所有端点接受 `X-User-Role`（viewer/operator/admin，默认 viewer）；
-写操作与审计数据端点要求 operator+；`X-User-Id` 用于审批职责分离。策略集中在 `app/auth.py`。
+鉴权约定：生产使用与 Media Service 共同信任的 Bearer JWT，并在检索前应用 tenant/owner/asset 范围；自报身份头只在显式 development 模式可用。策略集中在 `app/auth.py`。

@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import {
-  AlertCircle, Bot, BrainCircuit, ClipboardList, LineChart, Network, ShieldCheck, UserCircle2, X,
+  AlertCircle, Bot, BrainCircuit, ClipboardList, FileCheck2, LineChart, LogOut, Network, Video, X,
 } from "lucide-react";
 
 import {
@@ -36,6 +36,12 @@ import { GraphView } from "./features/GraphView";
 import { MonitorView } from "./features/MonitorView";
 import { QAView } from "./features/QAView";
 import { TicketsView } from "./features/TicketsView";
+import { AuthGate } from "./features/AuthGate";
+import { AnalysisWorkspace } from "./features/AnalysisWorkspace";
+import { EvidencePlayer, MediaWorkspace, type VideoEvidenceRequest } from "./features/MediaWorkspace";
+import { logout as logoutWorkspace } from "./mediaApi";
+import { clearSession, loadSession, saveSession, type WorkspaceSession } from "./session";
+import { useMediaWorkspace } from "./hooks/useMediaWorkspace";
 import {
   ApiFailureDialog,
   type ApiFailureNotice,
@@ -45,6 +51,7 @@ import {
 import "./styles/base.css";
 
 function App() {
+	const [session, setSession] = React.useState<WorkspaceSession | null>(loadSession);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [documents, setDocuments] = React.useState<Awaited<ReturnType<typeof listDocuments>>>([]);
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
@@ -52,14 +59,8 @@ function App() {
   const [answerMode, setAnswerMode] = React.useState<AnswerMode>("auto");
   const [retrieverMode, setRetrieverMode] = React.useState<RetrieverMode>("keyword");
   const [workflowMode, setWorkflowMode] = React.useState<WorkflowMode>("agentic");
-  const [actorRole, setActorRole] = React.useState<ActorRole>("operator");
-  // 职责分离演示用身份标识：匿名时不启用"发起人不能自批"；换不同 ID 可演示四眼审批
-  const [actorUser, setActorUser] = React.useState<string>(
-    () => window.localStorage.getItem("ea.actorUser") ?? "anonymous",
-  );
-  React.useEffect(() => {
-    window.localStorage.setItem("ea.actorUser", actorUser);
-  }, [actorUser]);
+	const actorRole: ActorRole = session?.role ?? "viewer";
+	const actorUser = session?.userId ?? "anonymous";
   const [embeddingStatus, setEmbeddingStatus] = React.useState<EmbeddingStatus | null>(null);
   const [systemStatus, setSystemStatus] = React.useState<SystemStatus | null>(null);
   const [metricsSummary, setMetricsSummary] = React.useState<ChatMetricsSummary | null>(null);
@@ -74,14 +75,15 @@ function App() {
 
   // V3: ticket & approval state
   // hash 深链路由：#/qa #/tickets #/graph #/monitor 可直达对应面板（支持回退/分享链接）
-  const readTabFromHash = (): "qa" | "tickets" | "graph" | "monitor" => {
+	type WorkspaceTab = "media" | "qa" | "analysis" | "tickets" | "graph" | "monitor";
+  const readTabFromHash = (): WorkspaceTab => {
     const tab = window.location.hash.replace(/^#\/?/, "");
-    return (["qa", "tickets", "graph", "monitor"] as const).includes(tab as never)
-      ? (tab as "qa" | "tickets" | "graph" | "monitor")
-      : "qa";
+		return (["media", "qa", "analysis", "tickets", "graph", "monitor"] as const).includes(tab as never)
+			? (tab as WorkspaceTab)
+			: "media";
   };
-  const [activeTab, setActiveTab] = React.useState<"qa" | "tickets" | "graph" | "monitor">(readTabFromHash);
-  const switchTab = React.useCallback((tab: "qa" | "tickets" | "graph" | "monitor") => {
+	const [activeTab, setActiveTab] = React.useState<WorkspaceTab>(readTabFromHash);
+  const switchTab = React.useCallback((tab: WorkspaceTab) => {
     window.location.hash = `/${tab}`;
     setActiveTab(tab);
   }, []);
@@ -100,6 +102,11 @@ function App() {
   // V5: answer feedback state
   const [answerFeedback, setAnswerFeedback] = React.useState<"up" | "down" | null>(null);
   const [isSendingFeedback, setIsSendingFeedback] = React.useState(false);
+	const [videoEvidence, setVideoEvidence] = React.useState<VideoEvidenceRequest | null>(null);
+	const {
+		tasks: mediaTasks, loading: isLoadingMedia, selectedAssetIds,
+		setSelectedAssetIds, refresh: refreshMedia,
+	} = useMediaWorkspace(session, setError);
 
   const refreshWorkspace = React.useCallback(async () => {
     setIsLoadingDocuments(true);
@@ -147,9 +154,10 @@ function App() {
   }, [actorRole]);
 
   React.useEffect(() => {
+		if (!session) return;
     void refreshWorkspace();
     void refreshTickets();
-  }, [refreshWorkspace, refreshTickets]);
+  }, [session, refreshWorkspace, refreshTickets]);
 
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -184,7 +192,9 @@ function App() {
     setApiFailureNotice(null);
     setAnswerFeedback(null);
     try {
-      const response = await askQuestion(question.trim(), answerMode, retrieverMode, workflowMode, actorRole, actorUser);
+		const response = await askQuestion(
+			question.trim(), answerMode, retrieverMode, workflowMode, actorRole, actorUser, selectedAssetIds,
+		);
       setChatResponse(response);
       const failedApiStep = response.trace.find(
         (step) => step.name === "answer" && ["api_failed", "local_fallback"].includes(step.status),
@@ -299,6 +309,30 @@ function App() {
     }
   }
 
+	function handleAuthenticated(nextSession: WorkspaceSession) {
+		saveSession(nextSession);
+		setSession(nextSession);
+		window.location.hash = "/media";
+	}
+
+	async function handleLogout() {
+		try { await logoutWorkspace(); } catch { /* local token is cleared even if a service is unavailable */ }
+		clearSession();
+		setSession(null);
+		setChatResponse(null);
+	}
+
+	function handleOpenVideoEvidence(assetId: string, startMs: number) {
+		const task = mediaTasks.find((candidate) => candidate.videoId === assetId);
+		if (!task) {
+			setError("该视频证据不在当前工作区任务列表中，无法签发播放令牌。");
+			return;
+		}
+		setVideoEvidence({ taskId: task.taskId, fileName: task.fileName, startMs });
+	}
+
+	if (!session) return <AuthGate onAuthenticated={handleAuthenticated} />;
+
   const statusTag: Record<string, string> = {
     draft: "草稿", pending: "待处理", open: "打开",
     in_progress: "处理中", resolved: "已解决", closed: "已关闭",
@@ -315,28 +349,11 @@ function App() {
             <BrainCircuit size={28} />
             Enterprise AI Workflow Assistant
           </h1>
-          <p>V5 · 知识问答 + 工单审批 + 关系图谱 + 运行监控</p>
+			<p>视频与文档证据 · Agent 分析 · 业务行动闭环</p>
         </div>
         <div className="role-controls">
-          <label className="role-control" title="用户标识：职责分离时发起人不能自批，换 ID 可演示四眼审批">
-            <UserCircle2 size={16} />
-            <span>用户</span>
-            <input
-              value={actorUser}
-              onChange={(event) => setActorUser(event.target.value.trim().toLowerCase() || "anonymous")}
-              size={8}
-              aria-label="用户标识"
-            />
-          </label>
-          <label className="role-control">
-            <ShieldCheck size={16} />
-            <span>演示角色</span>
-            <select value={actorRole} onChange={(event) => setActorRole(event.target.value as ActorRole)}>
-              <option value="viewer">viewer</option>
-              <option value="operator">operator</option>
-              <option value="admin">admin</option>
-            </select>
-          </label>
+			<div className="role-control"><span>{session.username}</span><strong>{session.role}</strong></div>
+			<button className="icon-button subtle" type="button" onClick={() => void handleLogout()} title="退出登录"><LogOut size={16} /></button>
         </div>
       </header>
 
@@ -355,10 +372,19 @@ function App() {
       ) : null}
 
       <nav className="tab-nav">
+		<button className={"tab-button" + (activeTab === "media" ? " active" : "")}
+			onClick={() => switchTab("media")}>
+			<Video size={18} /><span>视频证据</span>
+			{selectedAssetIds.length > 0 ? <span className="badge">{selectedAssetIds.length}</span> : null}
+		</button>
         <button className={"tab-button" + (activeTab === "qa" ? " active" : "")}
           onClick={() => switchTab("qa")}>
           <Bot size={18} /><span>知识问答</span>
         </button>
+		<button className={"tab-button" + (activeTab === "analysis" ? " active" : "")}
+			onClick={() => switchTab("analysis")}>
+			<FileCheck2 size={18} /><span>需求分析</span>
+		</button>
         <button className={"tab-button" + (activeTab === "tickets" ? " active" : "")}
           onClick={() => { switchTab("tickets"); void refreshTickets(); }}>
           <ClipboardList size={18} /><span>工单管理</span>
@@ -374,7 +400,11 @@ function App() {
         </button>
       </nav>
 
-      {activeTab === "qa" ? (
+		{activeTab === "media" ? (
+			<MediaWorkspace tasks={mediaTasks} loading={isLoadingMedia} selectedAssetIds={selectedAssetIds}
+				onSelectionChange={setSelectedAssetIds} onRefresh={refreshMedia} onError={setError}
+				onPlay={setVideoEvidence} />
+		) : activeTab === "qa" ? (
         <QAView {...{
           fileInputRef, documents, selectedFile, question, answerMode, retrieverMode, workflowMode,
           embeddingStatus, systemStatus, metricsSummary, chatResponse, isLoadingDocuments,
@@ -383,7 +413,10 @@ function App() {
           setQuestion, setAnswerMode, setRetrieverMode,
           setWorkflowMode, handleUpload, handleAsk, handleDeleteDocument, handleRebuildEmbeddings,
           handleCopyAnswer, handleApprove, handleAnswerFeedback, setChatResponse, setError,
-        }} />
+			selectedAssetCount: selectedAssetIds.length, handleOpenVideoEvidence,
+		}} />
+		) : activeTab === "analysis" ? (
+			<AnalysisWorkspace selectedAssetIds={selectedAssetIds} onPlayEvidence={handleOpenVideoEvidence} onError={setError} />
       ) : activeTab === "tickets" ? (
         <TicketsView {...{
           ticketList, pendingActions, toolMetrics, toolCalls, isLoadingTickets, approvingActionId,
@@ -395,6 +428,7 @@ function App() {
       ) : (
         <MonitorView metricsSummary={metricsSummary} onRefresh={refreshWorkspace} actorRole={actorRole} />
       )}
+		<EvidencePlayer request={videoEvidence} onClose={() => setVideoEvidence(null)} />
     </main>
   );
 }

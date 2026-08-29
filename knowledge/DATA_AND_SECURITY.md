@@ -4,6 +4,7 @@
 
 - 浏览器只提交受信身份提供方签发的 JWT；两个后端使用相同的 issuer、audience 和签名信任配置。
 - `sub` 映射用户身份，`tenant_id` 是强制租户声明，角色/权限来自受信声明或服务端授权表。
+- 注册会创建独立 Workspace 和 OWNER 成员关系；`tenant_id` 是 Workspace ID，不等同于 user ID。老账号在首次登录时幂等补建。
 - 生产路径禁止使用客户端自报的 `X-Role`、`X-User` 等头部获得权限。
 - Agent Service 的兼容身份头仅存在于显式 `development` 模式；`APP_ENV=production` 搭配非 JWT 模式会拒绝启动。
 - 服务间调用使用独立的服务身份，同时保留原用户的 tenant/owner 上下文；不能把服务身份当成最终资源所有者。

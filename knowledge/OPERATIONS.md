@@ -6,7 +6,25 @@
 - Agent Service：Python 版本与依赖以 `services/agent-service` 的运行文件为准。
 - Web：Node.js 版本与依赖以 `apps/web/package.json` 和锁文件为准。
 
-根目录后续提供统一启动编排；在此之前，各服务的局部 README 可作为迁移期启动参考，但不得被视为统一生产手册。
+核心验收必须可使用 H2、SQLite、本地媒体目录、mock 转写/摘要和 localhost HTTP 完成；外部模型、Redis、RocketMQ、S3 与正式域名属于独立的真实集成验证，不阻塞本地功能验收。
+
+根目录提供可重复的本地纵向验收：
+
+```powershell
+python scripts/local_acceptance.py
+```
+
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；完成注册、上传、outbox 投递、检索、时间戳证据、六阶段等待/恢复、证据化 PRD 草稿与 Range 播放后关闭进程。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+
+统一 Web 本地启动：
+
+```powershell
+cd apps/web
+npm ci
+npm run dev
+```
+
+默认连接 `127.0.0.1:8081` 的 Media Service 与 `127.0.0.1:8000` 的 Agent Service；可分别用 `VITE_MEDIA_API_BASE_URL`、`VITE_API_BASE_URL` 覆盖。
 
 ## 配置原则
 
@@ -30,5 +48,4 @@
 
 ## 当前运行缺口
 
-统一 compose、数据库迁移编排、真实中间件 smoke、备份恢复演练、SLO 和生产发布手册仍待首条纵向链路稳定后补齐。
-
+统一 compose、数据库迁移编排、真实中间件 smoke、备份恢复演练、SLO 和生产发布手册仍待补齐；当前 CI 与 localhost smoke 只声明本地轻量链路，不冒充生产基础设施验证。

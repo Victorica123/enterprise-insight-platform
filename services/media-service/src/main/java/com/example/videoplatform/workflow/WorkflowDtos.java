@@ -12,6 +12,7 @@ public final class WorkflowDtos {
 	public record TaskView(
 			String taskId,
 			String videoId,
+			String tenantId,
 			String owner,
 			String fileName,
 			String transcript,
@@ -29,6 +30,7 @@ public final class WorkflowDtos {
 			return new TaskView(
 					task.getTaskId(),
 					task.getVideoId(),
+					task.getTenantId(),
 					task.getOwner(),
 					task.getFileName(),
 					task.getTranscript(),

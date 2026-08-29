@@ -16,6 +16,7 @@ from app.config import get_default_answer_mode, get_llm_settings, get_retriever_
 from app.database import get_embedding_stats, init_db
 from app.embeddings import warm_up_embeddings
 from app.graph_store import init_graph_store
+from app.analysis_store import init_analysis_store
 from app.llm import is_llm_configured
 from app.logging_config import setup_logging
 from app.models import SystemStatus
@@ -27,6 +28,7 @@ from app.routes.graph import router as graph_router
 from app.routes.internal_media import router as internal_media_router
 from app.routes.observability import router as observability_router
 from app.routes.tickets import router as tickets_router
+from app.routes.analysis import router as analysis_router
 from app.status_service import build_embedding_status
 from app.tools import init_tools
 
@@ -45,6 +47,7 @@ async def lifespan(_: FastAPI):
     init_db()
     init_tools()
     init_graph_store()
+    init_analysis_store()
     # A3: 启动时预加载真实 embedding 模型（不可用时为空操作），
     # 避免第一个 /chat 请求承担秒级模型加载延迟。
     warm_up_embeddings()
@@ -61,6 +64,7 @@ TAG_METADATA = [
     {"name": "graph", "description": "关系图谱：概览、实体、关系、关系链查询与重建。重建需 operator+。"},
     {"name": "embeddings", "description": "Embedding 覆盖率查询与全量重建。重建需 operator+。"},
     {"name": "internal-media", "description": "Media Service 专用的版本化证据摄取接口。"},
+    {"name": "analysis", "description": "六阶段证据分析、人工补充与可评审 PRD 草稿。"},
 ]
 
 app = FastAPI(
@@ -97,6 +101,7 @@ for feature_router in (
     graph_router,
     tickets_router,
     internal_media_router,
+    analysis_router,
 ):
     app.include_router(feature_router)
 

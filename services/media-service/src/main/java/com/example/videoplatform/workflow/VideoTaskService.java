@@ -1,8 +1,11 @@
 package com.example.videoplatform.workflow;
 
+import com.example.videoplatform.auth.UserAccount;
 import com.example.videoplatform.auth.UserAccountRepository;
 import com.example.videoplatform.config.AppProperties;
+import com.example.videoplatform.integration.TranscriptEventOutboxService;
 import com.example.videoplatform.transcript.TranscriptResult;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,12 +21,14 @@ public class VideoTaskService {
 	private final VideoTaskRepository taskRepository;
 	private final UserAccountRepository userAccountRepository;
 	private final AppProperties appProperties;
+	private final TranscriptEventOutboxService transcriptOutboxService;
 
 	public VideoTaskService(VideoTaskRepository taskRepository, UserAccountRepository userAccountRepository,
-			AppProperties appProperties) {
+			AppProperties appProperties, TranscriptEventOutboxService transcriptOutboxService) {
 		this.taskRepository = taskRepository;
 		this.userAccountRepository = userAccountRepository;
 		this.appProperties = appProperties;
+		this.transcriptOutboxService = transcriptOutboxService;
 	}
 
 	@Transactional
@@ -33,10 +38,14 @@ public class VideoTaskService {
 
 	@Transactional
 	public VideoTask createTask(String owner, String fileName, String storagePath, String contentMd5) {
-		assertCanCreateTask(owner);
+		UserAccount account = lockOwner(owner);
+		assertWithinQuota(owner);
 		String taskId = UUID.randomUUID().toString();
 		String videoId = UUID.randomUUID().toString();
-		VideoTask task = new VideoTask(taskId, videoId, owner, fileName, storagePath, contentMd5);
+		String tenantId = account.getPrimaryTenantId() == null ? "legacy" : account.getPrimaryTenantId();
+		String traceId = MDC.get("traceId") == null ? taskId : MDC.get("traceId");
+		VideoTask task = new VideoTask(
+				taskId, videoId, tenantId, owner, fileName, storagePath, contentMd5, traceId);
 		return taskRepository.save(task);
 	}
 
@@ -45,11 +54,15 @@ public class VideoTaskService {
 	 */
 	@Transactional
 	public void assertCanCreateTask(String owner) {
+		lockOwner(owner);
+		assertWithinQuota(owner);
+	}
+
+	private void assertWithinQuota(String owner) {
 		int limit = appProperties.getQuota().getMaxActiveTasksPerUser();
 		if (limit <= 0) {
 			return;
 		}
-		lockOwner(owner);
 		long activeCount = countActiveTasks(owner);
 		if (activeCount >= limit) {
 			throw new ActiveTaskLimitExceededException(limit, activeCount);
@@ -134,6 +147,7 @@ public class VideoTaskService {
 		VideoTask task = requireManagedTask(taskId);
 		task.setSummary(summary);
 		task.setStatus(VideoTask.TaskStatus.COMPLETED);
+		transcriptOutboxService.enqueue(task);
 	}
 
 	/** 短事务：标记任务失败并保存（已截断的）错误信息。 */
@@ -156,8 +170,8 @@ public class VideoTaskService {
 				VideoTask.TaskStatus.SUMMARIZING));
 	}
 
-	private void lockOwner(String owner) {
-		userAccountRepository.findByUserId(owner)
+	private UserAccount lockOwner(String owner) {
+		return userAccountRepository.findByUserId(owner)
 				.orElseThrow(() -> new IllegalArgumentException("用户不存在: " + owner));
 	}
 
@@ -180,6 +194,7 @@ public class VideoTaskService {
 		task.setTranscriptResult(transcript);
 		task.setSummary(summary);
 		task.setStatus(VideoTask.TaskStatus.COMPLETED);
+		transcriptOutboxService.enqueue(task);
 	}
 
 	/**
@@ -194,6 +209,7 @@ public class VideoTaskService {
 				task.setTranscriptResult(transcript);
 				task.setSummary(summary);
 				task.setStatus(VideoTask.TaskStatus.COMPLETED);
+				transcriptOutboxService.enqueue(task);
 				affected++;
 			}
 		}

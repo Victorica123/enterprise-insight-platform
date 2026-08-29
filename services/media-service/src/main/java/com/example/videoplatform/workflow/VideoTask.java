@@ -17,6 +17,7 @@ import java.time.Instant;
 // - (contentMd5)：去重/单飞 fan-out findByContentMd5
 @Table(name = "video_task", indexes = {
 		@Index(name = "idx_video_task_owner_created", columnList = "owner, createdAt"),
+		@Index(name = "idx_video_task_tenant_owner_created", columnList = "tenantId, owner, createdAt"),
 		@Index(name = "idx_video_task_status_updated", columnList = "status, updatedAt"),
 		@Index(name = "idx_video_task_content_md5", columnList = "contentMd5")
 })
@@ -28,6 +29,10 @@ public class VideoTask {
 	private String videoId;
 
 	private String owner;
+
+	private String tenantId;
+
+	private String traceId;
 
 	private String fileName;
 
@@ -71,9 +76,16 @@ public class VideoTask {
 
 	public VideoTask(String taskId, String videoId, String owner, String fileName, String storagePath,
 			String contentMd5) {
+		this(taskId, videoId, "legacy", owner, fileName, storagePath, contentMd5, taskId);
+	}
+
+	public VideoTask(String taskId, String videoId, String tenantId, String owner, String fileName,
+			String storagePath, String contentMd5, String traceId) {
 		this.taskId = taskId;
 		this.videoId = videoId;
+		this.tenantId = tenantId;
 		this.owner = owner;
+		this.traceId = traceId;
 		this.fileName = fileName;
 		this.storagePath = storagePath;
 		this.contentMd5 = contentMd5;
@@ -92,6 +104,14 @@ public class VideoTask {
 
 	public String getOwner() {
 		return owner;
+	}
+
+	public String getTenantId() {
+		return tenantId == null || tenantId.isBlank() ? "legacy" : tenantId;
+	}
+
+	public String getTraceId() {
+		return traceId == null || traceId.isBlank() ? taskId : traceId;
 	}
 
 	public String getFileName() {

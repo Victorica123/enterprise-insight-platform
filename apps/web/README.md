@@ -1,6 +1,6 @@
 # Web 前端（React + Vite）
 
-React 19 + TypeScript + Vite。四个功能面板：知识问答、工单管理（含审批）、关系图谱（SVG 可视化）、运行监控（指标/成本/日志回放）。
+React 19 + TypeScript + Vite。统一承载真实登录、视频证据、知识问答、六阶段需求分析/PRD 草稿、工单、关系图谱与运行监控。
 
 完整快速开始见[仓库根 README](../../README.md)。
 
@@ -8,14 +8,15 @@ React 19 + TypeScript + Vite。四个功能面板：知识问答、工单管理�
 
 ```bash
 cd apps/web
-npm install
+npm ci
 npm run dev        # http://127.0.0.1:5173
 ```
 
-后端默认地址 `http://127.0.0.1:8000`，可通过 `.env`（Vite 环境变量）覆盖：
+Agent 与 Media 默认地址分别为 `http://127.0.0.1:8000`、`http://127.0.0.1:8081`，可通过 Vite 环境变量覆盖：
 
 ```bash
 echo "VITE_API_BASE_URL=http://127.0.0.1:8000" > .env
+echo "VITE_MEDIA_API_BASE_URL=http://127.0.0.1:8081" >> .env
 ```
 
 ## 构建与检查
@@ -29,9 +30,15 @@ npm run preview    # 本地预览生产构建
 
 ```text
 src/
-  main.tsx            应用装配、全局状态与顶栏（角色/用户切换）
-  api.ts              全部 API 调用与类型定义（含 X-User-Role / X-User-Id 头）
+  main.tsx            应用装配、真实 Workspace 会话与统一导航
+  api.ts              Agent 通用 API 与 Bearer 注入
+  mediaApi.ts         Media/Auth/播放 API
+  analysisApi.ts      六阶段分析与 PRD 类型/API
+  hooks/              媒体任务轮询等跨视图状态
   features/
+	AuthGate.tsx       登录/注册个人 Workspace
+	MediaWorkspace.tsx 视频上传、范围选择与证据跳播
+	AnalysisWorkspace.tsx 六阶段分析、等待恢复和 PRD 草稿
     QAView.tsx        知识问答面板（上传/提问/证据/trace/反馈）
     TicketsView.tsx   工单与审批面板（待审批队列、四眼审批演示）
     GraphView.tsx     关系图谱面板（分层 SVG、关系链查询）
@@ -39,5 +46,4 @@ src/
     common.tsx        共享 UI（指标卡、错误提示等）
 ```
 
-顶栏「演示角色」切换 viewer/operator/admin 体验权限差异；「用户」输入框切换身份，
-同一身份发起的写操作不能由自己审批（职责分离演示）。
+顶栏展示 JWT 中的真实用户与角色，不再提供可伪造的角色/用户切换。正式审批规则由服务端 Workspace 策略决定。

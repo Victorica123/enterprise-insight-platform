@@ -2,6 +2,7 @@ package com.example.videoplatform.auth;
 
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -33,6 +34,25 @@ class JwtSecurityIntegrationTests {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private JwtService jwtService;
+
+	@Test
+	void registrationCreatesPersonalWorkspaceAndUnifiedAccessClaims() throws Exception {
+		String response = register("workspace-user-" + System.nanoTime());
+		var data = objectMapper.readTree(response).path("data");
+		String tenantId = data.path("tenantId").asText();
+		String userId = data.path("userId").asText();
+		var claims = jwtService.parse(data.path("token").asText());
+
+		assertThat(tenantId).isNotBlank();
+		assertThat(data.path("role").asText()).isEqualTo("admin");
+		assertThat(claims.getSubject()).isEqualTo(userId);
+		assertThat(claims.get("tenant_id", String.class)).isEqualTo(tenantId);
+		assertThat(claims.get("role", String.class)).isEqualTo("admin");
+		assertThat(claims.get("token_use", String.class)).isEqualTo("access");
+	}
 
 	@Test
 	void bearerTokenAuthenticatesProtectedWorkflowRequest() throws Exception {
@@ -110,7 +130,12 @@ class JwtSecurityIntegrationTests {
 	}
 
 	private String registerAndReturnToken(String username) throws Exception {
-		String response = mockMvc.perform(post("/api/auth/register")
+		String response = register(username);
+		return objectMapper.readTree(response).path("data").path("token").asText();
+	}
+
+	private String register(String username) throws Exception {
+		return mockMvc.perform(post("/api/auth/register")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{"username":"%s","password":"secret123"}
@@ -120,6 +145,5 @@ class JwtSecurityIntegrationTests {
 				.andReturn()
 				.getResponse()
 				.getContentAsString();
-		return objectMapper.readTree(response).path("data").path("token").asText();
 	}
 }

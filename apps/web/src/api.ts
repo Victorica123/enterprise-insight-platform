@@ -1,3 +1,5 @@
+import { accessToken } from "./session";
+
 export type AnswerMode = "auto" | "local" | "api";
 export type RetrieverMode = "keyword" | "embedding" | "hybrid";
 export type WorkflowMode = "standard" | "agentic";
@@ -41,12 +43,18 @@ export type SystemStatus = {
 };
 
 export type Source = {
+	 source_type: "document" | "video";
   document_id: string;
   filename: string;
   chunk_index: number;
   score: number;
   content: string;
   title?: string;
+	asset_id?: string | null;
+	segment_id?: string | null;
+	start_ms?: number | null;
+	end_ms?: number | null;
+	speaker?: string | null;
 };
 
 export type ToolCallRecord = {
@@ -207,7 +215,7 @@ export type ToolCallLog = {
   created_at: string;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export async function listDocuments(): Promise<DocumentSummary[]> {
   const response = await safeFetch(`${API_BASE_URL}/documents`);
@@ -276,6 +284,7 @@ export async function askQuestion(
   workflowMode: WorkflowMode,
   actorRole: ActorRole = "operator",
   actorUser = "anonymous",
+	assetIds: string[] = [],
 ): Promise<ChatResponse> {
   const response = await safeFetch(`${API_BASE_URL}/chat`, {
     method: "POST",
@@ -289,6 +298,7 @@ export async function askQuestion(
       answer_mode: answerMode,
       retriever_mode: retrieverMode,
       workflow_mode: workflowMode,
+			asset_ids: assetIds,
     }),
   });
 
@@ -523,9 +533,16 @@ export async function submitFeedback(
   return parseJsonResponse<FeedbackResult>(response);
 }
 
+export async function agentRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return parseJsonResponse<T>(await safeFetch(`${API_BASE_URL}${path}`, init));
+}
+
 async function safeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+	const headers = new Headers(init?.headers);
+	const token = accessToken();
+	if (token) headers.set("Authorization", `Bearer ${token}`);
   try {
-    return await fetch(input, init);
+		return await fetch(input, { ...init, headers });
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(

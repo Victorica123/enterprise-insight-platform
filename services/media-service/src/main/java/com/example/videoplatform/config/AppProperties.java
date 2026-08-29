@@ -14,6 +14,7 @@ public class AppProperties {
 	private final Transcript transcript = new Transcript();
 	private final Summary summary = new Summary();
 	private final Security security = new Security();
+	private final Integration integration = new Integration();
 
 	public Jwt getJwt() {
 		return jwt;
@@ -45,6 +46,57 @@ public class AppProperties {
 
 	public Security getSecurity() {
 		return security;
+	}
+
+	public Integration getIntegration() {
+		return integration;
+	}
+
+	public static class Integration {
+		private final Agent agent = new Agent();
+
+		public Agent getAgent() {
+			return agent;
+		}
+
+		public static class Agent extends Feature {
+			private String baseUrl = "http://127.0.0.1:8000";
+			private String serviceToken;
+			private long dispatchIntervalMs = 2_000;
+			private int maxAttempts = 10;
+
+			public String getBaseUrl() {
+				return baseUrl;
+			}
+
+			public void setBaseUrl(String baseUrl) {
+				this.baseUrl = baseUrl;
+			}
+
+			public String getServiceToken() {
+				return serviceToken;
+			}
+
+			public void setServiceToken(String serviceToken) {
+				this.serviceToken = serviceToken;
+			}
+
+			public long getDispatchIntervalMs() {
+				return dispatchIntervalMs;
+			}
+
+			public void setDispatchIntervalMs(long dispatchIntervalMs) {
+				this.dispatchIntervalMs = dispatchIntervalMs;
+			}
+
+			public int getMaxAttempts() {
+				return maxAttempts;
+			}
+
+			public void setMaxAttempts(int maxAttempts) {
+				this.maxAttempts = maxAttempts;
+			}
+		}
 	}
 
 	/** 认证相关防护配置。 */
@@ -81,6 +133,8 @@ public class AppProperties {
 	public static class Jwt {
 		private String secret;
 		private long expirationSeconds;
+		private String issuer = "enterprise-insight";
+		private String audience = "enterprise-insight-api";
 
 		public String getSecret() {
 			return secret;
@@ -96,6 +150,22 @@ public class AppProperties {
 
 		public void setExpirationSeconds(long expirationSeconds) {
 			this.expirationSeconds = expirationSeconds;
+		}
+
+		public String getIssuer() {
+			return issuer;
+		}
+
+		public void setIssuer(String issuer) {
+			this.issuer = issuer;
+		}
+
+		public String getAudience() {
+			return audience;
+		}
+
+		public void setAudience(String audience) {
+			this.audience = audience;
 		}
 	}
 

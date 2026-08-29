@@ -22,6 +22,9 @@ public class UserAccount {
 
 	private String passwordHash;
 
+	@Column(length = 64)
+	private String primaryTenantId;
+
 	protected UserAccount() {
 		// JPA requires no-arg constructor
 	}
@@ -42,5 +45,13 @@ public class UserAccount {
 
 	public String getPasswordHash() {
 		return passwordHash;
+	}
+
+	public String getPrimaryTenantId() {
+		return primaryTenantId;
+	}
+
+	public void setPrimaryTenantId(String primaryTenantId) {
+		this.primaryTenantId = primaryTenantId;
 	}
 }

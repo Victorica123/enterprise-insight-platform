@@ -85,12 +85,21 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET:01234567890123456789012345678901}
     expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
+    issuer: ${APP_JWT_ISSUER:enterprise-insight}
+    audience: ${APP_JWT_AUDIENCE:enterprise-insight-api}
   security:
     # 登录防爆破：滑动窗口按用户名计数；Redis 可用时用 ZSET+Lua 保证多实例原子性，
     # 不可用时降级为进程内窗口（单实例语义），见 LoginRateLimiter 两个实现。
     login-rate-limit:
       max-attempts: ${APP_LOGIN_MAX_ATTEMPTS:5}
       window-seconds: ${APP_LOGIN_WINDOW_SECONDS:300}
+  integration:
+    agent:
+      enabled: ${APP_AGENT_INTEGRATION_ENABLED:false}
+      base-url: ${AGENT_SERVICE_BASE_URL:http://127.0.0.1:8000}
+      service-token: ${MEDIA_INGEST_SERVICE_TOKEN:}
+      dispatch-interval-ms: ${APP_AGENT_DISPATCH_INTERVAL_MS:2000}
+      max-attempts: ${APP_AGENT_DISPATCH_MAX_ATTEMPTS:10}
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
     type: ${APP_STORAGE_TYPE:local}
@@ -151,6 +160,11 @@ spring:
   docker:
     compose:
       enabled: false
+  autoconfigure:
+    exclude:
+      - org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
   datasource:
     url: jdbc:h2:mem:videoplatform;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
@@ -171,3 +185,9 @@ app:
     enabled: false
   mq:
     enabled: false
+
+# H2 本地验收不依赖 Redis；禁用 Redis health contributor，避免业务已可用但总健康状态误报 DOWN。
+management:
+  health:
+    redis:
+      enabled: false

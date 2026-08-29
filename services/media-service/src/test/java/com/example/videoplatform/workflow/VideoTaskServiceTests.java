@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import com.example.videoplatform.auth.UserAccount;
 import com.example.videoplatform.auth.UserAccountRepository;
 import com.example.videoplatform.config.AppProperties;
+import com.example.videoplatform.integration.TranscriptEventOutboxService;
+import com.example.videoplatform.transcript.TranscriptResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +23,10 @@ class VideoTaskServiceTests {
 	private final VideoTaskRepository taskRepository = org.mockito.Mockito.mock(VideoTaskRepository.class);
 	private final UserAccountRepository userAccountRepository = org.mockito.Mockito.mock(UserAccountRepository.class);
 	private final AppProperties appProperties = new AppProperties();
-	private final VideoTaskService service = new VideoTaskService(taskRepository, userAccountRepository, appProperties);
+	private final TranscriptEventOutboxService transcriptOutboxService =
+			org.mockito.Mockito.mock(TranscriptEventOutboxService.class);
+	private final VideoTaskService service = new VideoTaskService(
+			taskRepository, userAccountRepository, appProperties, transcriptOutboxService);
 
 	@Test
 	void createTaskRejectsWhenActiveTaskLimitIsReached() {
@@ -91,6 +96,18 @@ class VideoTaskServiceTests {
 				.hasMessageContaining("只有失败任务可以重试");
 
 		assertThat(queued.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
+	}
+
+	@Test
+	void completingTaskAtomicallyEnqueuesTranscriptEvent() {
+		VideoTask task = task("task-completed", VideoTask.TaskStatus.SUMMARIZING);
+		task.setTranscriptResult(TranscriptResult.fromPlainText("timestamped evidence"));
+		when(taskRepository.findById("task-completed")).thenReturn(Optional.of(task));
+
+		service.completeSummary("task-completed", "summary");
+
+		assertThat(task.getStatus()).isEqualTo(VideoTask.TaskStatus.COMPLETED);
+		verify(transcriptOutboxService).enqueue(task);
 	}
 
 	@Test

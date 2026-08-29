@@ -40,12 +40,18 @@ public class JwtService {
 		}
 	}
 
-	public String generateToken(String userId, String username) {
+	public String generateAccessToken(String userId, String username, String tenantId, String role) {
 		Instant now = Instant.now();
 		return Jwts.builder()
-				.subject(username)
+				.issuer(appProperties.getJwt().getIssuer())
+				.audience().add(appProperties.getJwt().getAudience()).and()
+				.subject(userId)
 				.id(java.util.UUID.randomUUID().toString()) // jti：登出黑名单的粒度
 				.claim("userId", userId)
+				.claim("username", username)
+				.claim("tenant_id", tenantId)
+				.claim("role", role)
+				.claim("token_use", "access")
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusSeconds(appProperties.getJwt().getExpirationSeconds())))
 				.signWith(secretKey())
@@ -60,6 +66,8 @@ public class JwtService {
 	public String generatePlaybackToken(String taskId, String username) {
 		Instant now = Instant.now();
 		return Jwts.builder()
+				.issuer(appProperties.getJwt().getIssuer())
+				.audience().add(appProperties.getJwt().getAudience()).and()
 				.subject(username)
 				.claim("taskId", taskId)
 				.claim("purpose", "playback")
@@ -72,6 +80,8 @@ public class JwtService {
 	public String generateDirectUploadToken(String username, String fileName, String storagePath) {
 		Instant now = Instant.now();
 		return Jwts.builder()
+				.issuer(appProperties.getJwt().getIssuer())
+				.audience().add(appProperties.getJwt().getAudience()).and()
 				.subject(username)
 				.claim("fileName", fileName)
 				.claim("storagePath", storagePath)
@@ -91,7 +101,13 @@ public class JwtService {
 	}
 
 	public Claims parse(String token) {
-		return Jwts.parser().verifyWith(secretKey()).build().parseSignedClaims(token).getPayload();
+		return Jwts.parser()
+				.requireIssuer(appProperties.getJwt().getIssuer())
+				.requireAudience(appProperties.getJwt().getAudience())
+				.verifyWith(secretKey())
+				.build()
+				.parseSignedClaims(token)
+				.getPayload();
 	}
 
 	private SecretKey secretKey() {

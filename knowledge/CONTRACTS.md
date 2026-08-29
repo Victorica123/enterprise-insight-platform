@@ -21,6 +21,8 @@
 
 消费者按 `event_id` 去重，并按 `asset_id + transcript_version` 保证语义幂等。重复投递应返回成功；同一版本内容冲突应拒绝并告警。
 
+生产者在媒体任务完成的同一数据库事务写 outbox，成功收到 Agent 的 2xx 后标记 SENT；409 视为不可自动覆盖的契约冲突，其余网络/服务错误按上限退避重试。事件不直接携带媒体存储路径。
+
 ## 证据引用
 
 Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引用至少包含：
@@ -35,6 +37,10 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 引用中不包含永久公开 URL。前端使用资产身份向 Media Service 申请短期播放授权。
 
 统一访问令牌声明由 `contracts/identity/jwt-claims-v1.schema.json` 定义。Agent 的生产模式校验 HS256 算法、签名、issuer、audience、时间窗口、`token_use=access`、tenant、subject、role 与 jti；开发兼容身份头不会在 production 模式启动。
+
+统一前端只保存注册/登录返回的 access token；调用两个后端都使用 Bearer JWT。前端的视频筛选通过 `/chat` 的 `asset_ids` 收窄范围，不能扩大 JWT 已限定的 tenant/owner 范围。
+
+六阶段分析使用 `POST /analysis/sessions` 创建会话，`POST /analysis/sessions/{id}/confirm` 携带当前 `resume_token` 和结构化答案恢复。读取与恢复都按服务端 JWT 的 tenant/owner 定位；错误租户返回不存在，避免泄漏资源是否存在。PRD 当前只返回 `publication_status=DRAFT`。
 
 ## 版本策略
 

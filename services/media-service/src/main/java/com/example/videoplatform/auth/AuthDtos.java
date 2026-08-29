@@ -19,6 +19,6 @@ public final class AuthDtos {
 			@NotBlank @Size(max = 72) String password) {
 	}
 
-	public record AuthResponse(String userId, String username, String token) {
+	public record AuthResponse(String userId, String username, String tenantId, String role, String token) {
 	}
 }
