@@ -14,7 +14,17 @@
 python scripts/local_acceptance.py
 ```
 
-脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；完成注册、上传、outbox 投递、检索、时间戳证据、六阶段等待/恢复、证据化 PRD、个人二次发布确认、审计查询与 Range 播放后关闭进程。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；完成注册、上传、outbox 投递、检索、时间戳证据、六阶段等待/恢复、证据化 PRD、个人二次发布确认、不可变版本、知识候选审批、行动项转工单审批与 Range 播放后关闭进程。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+
+需要持久数据和统一浏览器入口时使用根目录 Compose：
+
+```powershell
+./scripts/start_local.ps1 -Build
+# 浏览 http://127.0.0.1:8080
+./scripts/stop_local.ps1
+```
+
+Web 只绑定 `127.0.0.1`，nginx 同源代理 `/agent` 与 `/media`；H2、SQLite 和媒体文件保存在已忽略的 `runtime/`。完整步骤见 `docs/LOCAL_RELEASE_RUNBOOK.md`。
 
 统一 Web 本地启动：
 
@@ -45,7 +55,10 @@ npm run dev
 - 转写事件可重放，Agent 消费必须幂等。
 - Agent 会话从持久化检查点恢复。
 - 发布 PRD、知识合并和外部写操作使用幂等键及审计记录。
+- 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
 
-## 当前运行缺口
+## 当前运行状态与缺口
 
-统一 compose、数据库迁移编排、真实中间件 smoke、备份恢复演练、SLO 和生产发布手册仍待补齐；当前 CI 与 localhost smoke 只声明本地轻量链路，不冒充生产基础设施验证。
+统一 localhost Compose、启动/停止脚本、备份校验恢复工具、本地发布手册和本地质量目标已提供。无容器验收链路已实际通过；当前主机没有 Docker，因此 Compose 本轮只完成静态配置校验，不能声明容器运行已验证。
+
+真实 Redis、RocketMQ、MySQL、S3、外部模型与正式身份提供方 smoke，生产数据库迁移编排、灾备演练、监控告警接入和生产 SLO 批准仍待目标环境与业务决策。`docs/SLO.md` 中的生产数值只是候选项，不是已经兑现的服务承诺。

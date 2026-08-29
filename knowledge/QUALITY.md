@@ -14,14 +14,16 @@
 - React 应用在整合前可完成 TypeScript/Vite 生产构建。
 - Media Service 声明支持 JDK 17/18；JDK 25 下 Mockito inline/ByteBuddy 失败属于不支持工具链，不能作为服务回归结论，也不能当作通过。
 
-2026-08-29 已重新建立首条纵向链路的本地证据：
+2026-08-29 已重新建立完整业务纵向链路的本地证据：
 
-- Agent Service 102/102 用例通过，新增六阶段等待/恢复、证据化 PRD、个人二次确认、团队职责分离与分析会话租户隔离回归。
+- Agent Service 107/107 用例通过，覆盖六阶段等待/恢复、证据化 PRD、个人二次确认、团队职责分离、不可变版本、知识候选、行动审批、旧图谱迁移、备份恢复往返以及工单/观测/图谱的 tenant/owner 隔离。
 - 统一 React Web 完成 `tsc -b` 与 Vite 生产构建。
-- Media Service 生产与测试源码完成 Maven 编译；JWT/Workspace、真实注册上传、结构化事件契约定向测试通过。
-- `python scripts/local_acceptance.py` 在随机 localhost 端口通过，覆盖 Workspace 注册、统一 JWT/tenant、视频上传、mock 转写、事务 outbox、Agent 摄取与范围检索、时间戳来源、六阶段等待/恢复、证据化 PRD、个人二次发布确认、审计查询、签名播放和 HTTP Range。
+- Media Service 在声明支持的 JDK 18 下全量 103/103 用例通过，包含 JWT/Workspace、真实注册上传、结构化事件、配额、重试、播放授权和媒体生命周期。
+- V6 黄金集的 keyword、embedding、hybrid 三种检索模式均达到 decision 98%、recall@3 97%、fact 97%；最终门禁 p95 分别为 12.2 ms、38.7 ms、41.6 ms，质量门禁通过。
+- `python scripts/local_acceptance.py` 在随机 localhost 端口通过全部 14 项检查，覆盖 Workspace 注册、统一 JWT/tenant、视频上传、mock 转写、事务 outbox、Agent 摄取与范围检索、时间戳来源、六阶段等待/恢复、证据化 PRD、个人二次发布确认、不可变版本、知识候选审批、行动项转工单审批、签名播放和 HTTP Range。
+- 新增 HTTP JSON 契约和 `compose.local.yml` 已通过机器解析；当前主机未安装 Docker，因此这只是静态配置证据，不等于容器启动证据。
 
-当前 Media Service 的结构化转写新增测试在本机 JDK 25 下可定向运行通过，生产与测试源码均已完成 Maven 编译；全量 Media 回归仍需按声明的 JDK 17/18 执行，不能用当前 JDK 25 的 Mockito/ByteBuddy 兼容性结果替代。
+JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生 64 个测试加载错误；这不是产品回归，也不是通过证据。全量质量结论来自受支持 JDK 18 的 103/103 结果。
 
 ## 合并门禁
 
@@ -32,7 +34,7 @@
 - `python scripts/update_knowledge.py --check` 通过。
 - 无法运行的验证必须说明环境原因、影响边界和替代证据。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent 102 用例 + V6 黄金集、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 黄金集、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

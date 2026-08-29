@@ -9,6 +9,8 @@
 - Agent nodes, prompts, evidence and evaluations: `knowledge/AGENT_ENGINEERING.md`
 - Tests, gates and verified claims: `knowledge/QUALITY.md`
 - Local runtime, deployment and incidents: `knowledge/OPERATIONS.md`
+- Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
+- Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
 - Accepted architecture choices: `knowledge/decisions/`
 
 ## Verification levels
@@ -30,6 +32,8 @@ Use for cross-service contracts, unified authentication, end-to-end workflow, de
 - Web type check/build and focused UI tests.
 - Contract tests and a real JWT owner-isolation flow.
 - Lightweight end-to-end smoke; real middleware smoke when the change touches it.
+- For persistence changes, verify a backup archive checksum/SQLite quick-check and keep restore recoverable.
+- For persistence changes, verify a backup archive checksum/SQLite quick-check and keep restore recoverable.
 - Knowledge drift check.
 
 Never reinterpret an unsupported local toolchain failure as an application regression. Record both the supported runtime and the observed failure.

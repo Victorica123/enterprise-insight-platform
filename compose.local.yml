@@ -1,0 +1,76 @@
+name: enterprise-insight-local
+
+services:
+  agent:
+    build: ./services/agent-service
+    environment:
+      AGENT_AUTH_MODE: jwt
+      APP_ENV: development
+      SHARED_JWT_SECRET: ${LOCAL_JWT_SECRET:-01234567890123456789012345678901}
+      APP_JWT_ISSUER: enterprise-insight
+      APP_JWT_AUDIENCE: enterprise-insight-api
+      MEDIA_INGEST_SERVICE_TOKEN: ${LOCAL_MEDIA_SERVICE_TOKEN:-local-media-agent-token}
+      AGENT_DATABASE_PATH: /app/data/knowledge_base.sqlite3
+      DEFAULT_ANSWER_MODE: local
+      RETRIEVER_MODE: keyword
+      EMBEDDING_MODEL: ""
+      RERANKER_MODEL: ""
+    volumes:
+      - ./runtime/agent:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  media:
+    build: ./services/media-service
+    command: ["--spring.profiles.active=h2"]
+    environment:
+      APP_JWT_SECRET: ${LOCAL_JWT_SECRET:-01234567890123456789012345678901}
+      APP_JWT_ISSUER: enterprise-insight
+      APP_JWT_AUDIENCE: enterprise-insight-api
+      APP_AGENT_INTEGRATION_ENABLED: "true"
+      AGENT_SERVICE_BASE_URL: http://agent:8000
+      MEDIA_INGEST_SERVICE_TOKEN: ${LOCAL_MEDIA_SERVICE_TOKEN:-local-media-agent-token}
+      APP_AGENT_DISPATCH_INTERVAL_MS: "300"
+      APP_STORAGE_BASE_PATH: /app/storage
+      APP_TRANSCRIPT_ENABLED: "false"
+      APP_SUMMARY_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/media;MODE=MySQL
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: ""
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    volumes:
+      - ./runtime/media/db:/app/data
+      - ./runtime/media/storage:/app/storage
+    depends_on:
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_BASE_URL: /agent
+        VITE_MEDIA_API_BASE_URL: /media
+    ports:
+      - "127.0.0.1:${LOCAL_WEB_PORT:-8080}:80"
+    depends_on:
+      agent:
+        condition: service_healthy
+      media:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped

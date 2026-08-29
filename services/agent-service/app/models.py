@@ -189,6 +189,8 @@ class TicketResponse(BaseModel):
     status: str
     priority: str
     assignee: str
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
     source_document_ids: list[str] = Field(default_factory=list)
     risk_level: str = ""
     created_at: str = ""
@@ -220,6 +222,9 @@ class PendingActionResponse(BaseModel):
     action_type: str
     payload: dict
     status: str
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
+    workspace_type: Literal["personal", "team"] = "personal"
     requested_by: str = "operator"
     requested_by_user: str = "anonymous"
     resolved_by: str = ""
@@ -253,6 +258,9 @@ class ToolCallLogResponse(BaseModel):
     requires_approval: bool
     status: str
     actor_role: str
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
+    actor_user: str = "anonymous"
     input: dict = Field(default_factory=dict)
     result: dict = Field(default_factory=dict)
     error_message: str = ""
@@ -339,6 +347,8 @@ class GraphPathQueryResponse(BaseModel):
 
 class ChatLogResponse(BaseModel):
     log_id: int
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
     question: str
     workflow_mode: str
     answer_mode: str

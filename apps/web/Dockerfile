@@ -4,9 +4,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# 容器内同源部署：API 请求走 nginx /api 反代（本地开发默认 127.0.0.1:8000 不受影响）
-ARG VITE_API_BASE_URL=/api
+# 容器内同源部署：Agent 与 Media 使用独立前缀，统一由 nginx 反代。
+ARG VITE_API_BASE_URL=/agent
+ARG VITE_MEDIA_API_BASE_URL=/media
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_MEDIA_API_BASE_URL=$VITE_MEDIA_API_BASE_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine

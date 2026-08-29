@@ -17,6 +17,7 @@ from app.database import get_embedding_stats, init_db
 from app.embeddings import warm_up_embeddings
 from app.graph_store import init_graph_store
 from app.analysis_store import init_analysis_store
+from app.publication_artifacts import init_publication_artifact_store
 from app.llm import is_llm_configured
 from app.logging_config import setup_logging
 from app.models import SystemStatus
@@ -48,6 +49,7 @@ async def lifespan(_: FastAPI):
     init_tools()
     init_graph_store()
     init_analysis_store()
+    init_publication_artifact_store()
     # A3: 启动时预加载真实 embedding 模型（不可用时为空操作），
     # 避免第一个 /chat 请求承担秒级模型加载延迟。
     warm_up_embeddings()

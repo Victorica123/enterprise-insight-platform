@@ -13,6 +13,7 @@ from app.graph_store import (
     get_entity_neighborhood,
     list_entities,
 )
+from app.retrievers import RetrievalScope
 
 
 RELATION_INTENT_KEYWORDS = [
@@ -43,11 +44,20 @@ def question_wants_graph(question: str, intent: str) -> bool:
     return intent in {"risk", "causal", "fact"}
 
 
-def match_question_entities(question: str, limit: int = 4) -> list[str]:
+def match_question_entities(
+    question: str,
+    limit: int = 4,
+    *,
+    scope: RetrievalScope | None = None,
+) -> list[str]:
     """把问题文本和已知实体名做双向包含匹配。"""
     compact = question.replace(" ", "")
     matched: list[str] = []
-    for entity in list_entities(limit=300):
+    for entity in list_entities(
+        limit=300,
+        tenant_id=scope.tenant_id if scope else "legacy",
+        owner_id=(scope.owner_id or "legacy") if scope else "legacy",
+    ):
         name = entity.name
         stripped = name.replace("客户", "")
         if name in compact or (len(stripped) >= 1 and f"客户{stripped}" in compact) or (
@@ -60,16 +70,27 @@ def match_question_entities(question: str, limit: int = 4) -> list[str]:
     return matched
 
 
-def lookup_graph(question: str, intent: str) -> GraphLookup:
+def lookup_graph(
+    question: str,
+    intent: str,
+    *,
+    scope: RetrievalScope | None = None,
+) -> GraphLookup:
     lookup = GraphLookup()
     if not question_wants_graph(question, intent):
         return lookup
 
-    lookup.matched_entities = match_question_entities(question)
+    lookup.matched_entities = match_question_entities(question, scope=scope)
     if not lookup.matched_entities:
         return lookup
 
-    lookup.relations = get_entity_neighborhood(lookup.matched_entities, depth=2, limit=24)
+    lookup.relations = get_entity_neighborhood(
+        lookup.matched_entities,
+        depth=2,
+        limit=24,
+        tenant_id=scope.tenant_id if scope else "legacy",
+        owner_id=(scope.owner_id or "legacy") if scope else "legacy",
+    )
     if not lookup.relations:
         return lookup
 

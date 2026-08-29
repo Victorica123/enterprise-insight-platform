@@ -98,48 +98,115 @@ def init_graph_store() -> None:
         return
     database.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with database.connect() as conn:
-        conn.execute(
-            """
-            create table if not exists graph_entities (
-                entity_id text primary key,
-                name text not null,
-                entity_type text not null,
-                mention_count integer not null default 1,
-                document_ids text not null default '[]',
-                created_at text not null,
-                unique(name, entity_type)
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists graph_relations (
-                relation_id text primary key,
-                source_name text not null,
-                source_type text not null,
-                relation_type text not null,
-                target_name text not null,
-                target_type text not null,
-                evidence text not null default '',
-                document_id text not null default '',
-                filename text not null default '',
-                chunk_index integer not null default 0,
-                created_at text not null,
-                unique(source_name, relation_type, target_name, document_id, chunk_index)
-            )
-            """
-        )
-        conn.execute("create index if not exists idx_graph_relations_source on graph_relations(source_name)")
-        conn.execute("create index if not exists idx_graph_relations_target on graph_relations(target_name)")
-        conn.execute(
-            """
-            create table if not exists graph_meta (
-                key text primary key,
-                value text not null default ''
-            )
-            """
-        )
+        _ensure_scoped_graph_schema(conn)
     _INITIALIZED_DB_PATH = current_path
+
+
+def _ensure_scoped_graph_schema(conn: sqlite3.Connection) -> None:
+    """Migrate the V4 global graph to tenant/owner composite identities once."""
+    entity_exists = conn.execute(
+        "select 1 from sqlite_master where type = 'table' and name = 'graph_entities'"
+    ).fetchone()
+    if entity_exists and not _has_column(conn, "graph_entities", "tenant_id"):
+        conn.execute("alter table graph_entities rename to graph_entities_legacy")
+        conn.execute("alter table graph_relations rename to graph_relations_legacy")
+        conn.execute("alter table graph_meta rename to graph_meta_legacy")
+
+    conn.execute(
+        """
+        create table if not exists graph_entities (
+            entity_id text primary key,
+            tenant_id text not null default 'legacy',
+            owner_id text not null default 'legacy',
+            name text not null,
+            entity_type text not null,
+            mention_count integer not null default 1,
+            document_ids text not null default '[]',
+            created_at text not null,
+            unique(tenant_id, owner_id, name, entity_type)
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists graph_relations (
+            relation_id text primary key,
+            tenant_id text not null default 'legacy',
+            owner_id text not null default 'legacy',
+            source_name text not null,
+            source_type text not null,
+            relation_type text not null,
+            target_name text not null,
+            target_type text not null,
+            evidence text not null default '',
+            document_id text not null default '',
+            filename text not null default '',
+            chunk_index integer not null default 0,
+            created_at text not null,
+            unique(tenant_id, owner_id, source_name, relation_type, target_name, document_id, chunk_index)
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists graph_meta (
+            tenant_id text not null default 'legacy',
+            owner_id text not null default 'legacy',
+            key text not null,
+            value text not null default '',
+            primary key (tenant_id, owner_id, key)
+        )
+        """
+    )
+    legacy_exists = conn.execute(
+        "select 1 from sqlite_master where type = 'table' and name = 'graph_entities_legacy'"
+    ).fetchone()
+    if legacy_exists:
+        conn.execute(
+            """
+            insert or ignore into graph_entities (
+                entity_id, tenant_id, owner_id, name, entity_type,
+                mention_count, document_ids, created_at
+            )
+            select entity_id, 'legacy', 'legacy', name, entity_type,
+                   mention_count, document_ids, created_at
+            from graph_entities_legacy
+            """
+        )
+        conn.execute(
+            """
+            insert or ignore into graph_relations (
+                relation_id, tenant_id, owner_id, source_name, source_type, relation_type,
+                target_name, target_type, evidence, document_id, filename, chunk_index, created_at
+            )
+            select relation_id, 'legacy', 'legacy', source_name, source_type, relation_type,
+                   target_name, target_type, evidence, document_id, filename, chunk_index, created_at
+            from graph_relations_legacy
+            """
+        )
+        conn.execute(
+            """
+            insert or ignore into graph_meta (tenant_id, owner_id, key, value)
+            select 'legacy', 'legacy', key, value from graph_meta_legacy
+            """
+        )
+        conn.execute("drop table graph_entities_legacy")
+        conn.execute("drop table graph_relations_legacy")
+        conn.execute("drop table graph_meta_legacy")
+
+    conn.execute(
+        "create index if not exists idx_graph_entities_scope on graph_entities(tenant_id, owner_id, entity_type)"
+    )
+    conn.execute(
+        "create index if not exists idx_graph_relations_source on graph_relations(tenant_id, owner_id, source_name)"
+    )
+    conn.execute(
+        "create index if not exists idx_graph_relations_target on graph_relations(tenant_id, owner_id, target_name)"
+    )
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(row["name"] == column for row in conn.execute(f"pragma table_info({table})"))
 
 
 def _now() -> str:
@@ -343,35 +410,47 @@ def _persist(
     relations: list[GraphRelation],
     *,
     conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
 ) -> None:
     if not entities and not relations:
         return
     if conn is not None:
-        _persist_rows(conn, entities, relations)
+        _persist_rows(conn, entities, relations, tenant_id=tenant_id, owner_id=owner_id)
         return
     with database.connect() as local_conn:
-        _persist_rows(local_conn, entities, relations)
+        _persist_rows(local_conn, entities, relations, tenant_id=tenant_id, owner_id=owner_id)
 
 
 def _persist_rows(
     conn: sqlite3.Connection,
     entities: list[GraphEntity],
     relations: list[GraphRelation],
+    *,
+    tenant_id: str,
+    owner_id: str,
 ) -> None:
     now = _now()
     for entity in entities:
         row = conn.execute(
-            "select entity_id, mention_count, document_ids from graph_entities where name = ? and entity_type = ?",
-            (entity.name, entity.entity_type),
+            """
+            select entity_id, mention_count, document_ids from graph_entities
+            where tenant_id = ? and owner_id = ? and name = ? and entity_type = ?
+            """,
+            (tenant_id, owner_id, entity.name, entity.entity_type),
         ).fetchone()
         if row is None:
             conn.execute(
                 """
-                insert into graph_entities (entity_id, name, entity_type, mention_count, document_ids, created_at)
-                values (?, ?, ?, ?, ?, ?)
+                insert into graph_entities (
+                    entity_id, tenant_id, owner_id, name, entity_type,
+                    mention_count, document_ids, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(uuid.uuid4()),
+                    tenant_id,
+                    owner_id,
                     entity.name,
                     entity.entity_type,
                     entity.mention_count,
@@ -390,12 +469,14 @@ def _persist_rows(
         conn.execute(
             """
             insert or ignore into graph_relations (
-                relation_id, source_name, source_type, relation_type,
+                relation_id, tenant_id, owner_id, source_name, source_type, relation_type,
                 target_name, target_type, evidence, document_id, filename, chunk_index, created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(uuid.uuid4()),
+                tenant_id,
+                owner_id,
                 relation.source_name,
                 relation.source_type,
                 relation.relation_type,
@@ -425,7 +506,10 @@ def index_document_graph(
 
 def _index_document_graph_rows(conn: sqlite3.Connection, document_id: str) -> dict[str, int]:
     rows = conn.execute(
-        "select document_id, filename, chunk_index, content from chunks where document_id = ?",
+        """
+        select document_id, filename, chunk_index, content, tenant_id, owner_id
+        from chunks where document_id = ?
+        """,
         (document_id,),
     ).fetchall()
     all_entities: list[GraphEntity] = []
@@ -439,22 +523,43 @@ def _index_document_graph_rows(conn: sqlite3.Connection, document_id: str) -> di
         )
         all_entities.extend(entities)
         all_relations.extend(relations)
-    _persist(all_entities, all_relations, conn=conn)
-    _set_meta("last_built_at", _now(), conn=conn)
+    tenant_id = rows[0]["tenant_id"] if rows else "legacy"
+    owner_id = rows[0]["owner_id"] if rows else "legacy"
+    _persist(
+        all_entities, all_relations, conn=conn,
+        tenant_id=tenant_id, owner_id=owner_id,
+    )
+    _set_meta(
+        "last_built_at", _now(), conn=conn,
+        tenant_id=tenant_id, owner_id=owner_id,
+    )
     return {"entities": len(all_entities), "relations": len(all_relations)}
 
 
-def rebuild_graph(include_tickets: bool = True) -> dict[str, object]:
+def rebuild_graph(
+    include_tickets: bool = True,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> dict[str, object]:
     """全量重建，并在单一事务中原子替换旧图。"""
     init_graph_store()
     started_at = perf_counter()
     with database.connect() as conn:
         conn.execute("begin immediate")
         rows = conn.execute(
-            "select document_id, filename, chunk_index, content from chunks order by created_at asc, chunk_index asc"
+            """
+            select document_id, filename, chunk_index, content from chunks
+            where tenant_id = ? and owner_id = ?
+            order by created_at asc, chunk_index asc
+            """,
+            (tenant_id, owner_id),
         ).fetchall()
-        _replace_graph(conn, rows, include_tickets=include_tickets)
-        overview = get_graph_overview(conn=conn)
+        _replace_graph(
+            conn, rows, include_tickets=include_tickets,
+            tenant_id=tenant_id, owner_id=owner_id,
+        )
+        overview = get_graph_overview(conn=conn, tenant_id=tenant_id, owner_id=owner_id)
     overview["duration_ms"] = round((perf_counter() - started_at) * 1000, 2)
     return overview
 
@@ -464,6 +569,8 @@ def _replace_graph(
     rows: list[sqlite3.Row],
     *,
     include_tickets: bool,
+    tenant_id: str,
+    owner_id: str,
 ) -> None:
     all_entities: list[GraphEntity] = []
     all_relations: list[GraphRelation] = []
@@ -476,28 +583,58 @@ def _replace_graph(
         )
         all_entities.extend(entities)
         all_relations.extend(relations)
-    conn.execute("delete from graph_entities")
-    conn.execute("delete from graph_relations")
-    _persist(all_entities, all_relations, conn=conn)
+    conn.execute(
+        "delete from graph_entities where tenant_id = ? and owner_id = ?",
+        (tenant_id, owner_id),
+    )
+    conn.execute(
+        "delete from graph_relations where tenant_id = ? and owner_id = ?",
+        (tenant_id, owner_id),
+    )
+    _persist(
+        all_entities, all_relations, conn=conn,
+        tenant_id=tenant_id, owner_id=owner_id,
+    )
     if include_tickets:
-        _sync_tickets_into_graph(conn=conn)
-    _set_meta("last_built_at", _now(), conn=conn)
+        _sync_tickets_into_graph(conn=conn, tenant_id=tenant_id, owner_id=owner_id)
+    _set_meta(
+        "last_built_at", _now(), conn=conn,
+        tenant_id=tenant_id, owner_id=owner_id,
+    )
 
 
-def _sync_tickets_into_graph(*, conn: sqlite3.Connection | None = None) -> None:
+def _sync_tickets_into_graph(
+    *,
+    conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> None:
     """把工单与知识实体连边，演示跨来源关系。"""
     if conn is None:
         with database.connect() as local_conn:
-            _sync_tickets_into_graph(conn=local_conn)
+            _sync_tickets_into_graph(
+                conn=local_conn, tenant_id=tenant_id, owner_id=owner_id,
+            )
         return
     has_tickets = conn.execute(
         "select name from sqlite_master where type = 'table' and name = 'tickets'"
     ).fetchone()
     if not has_tickets:
         return
-    tickets = conn.execute("select ticket_id, title, description, status from tickets").fetchall()
+    tickets = conn.execute(
+        """
+        select ticket_id, title, description, status from tickets
+        where tenant_id = ? and owner_id = ?
+        """,
+        (tenant_id, owner_id),
+    ).fetchall()
     known = conn.execute(
-        "select name, entity_type from graph_entities where entity_type in ('customer', 'project', 'person')"
+        """
+        select name, entity_type from graph_entities
+        where tenant_id = ? and owner_id = ?
+          and entity_type in ('customer', 'project', 'person')
+        """,
+        (tenant_id, owner_id),
     ).fetchall()
     for ticket in tickets:
         title = normalize_name(ticket["title"])[:30]
@@ -520,52 +657,117 @@ def _sync_tickets_into_graph(*, conn: sqlite3.Connection | None = None) -> None:
             for row in known
             if row["name"] in text or row["name"].replace("客户", "") in text
         ]
-        _persist([entity], relations, conn=conn)
+        _persist(
+            [entity], relations, conn=conn,
+            tenant_id=tenant_id, owner_id=owner_id,
+        )
 
 
-def delete_document_and_rebuild(document_id: str) -> bool:
+def delete_document_and_rebuild(
+    document_id: str,
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> bool:
     """Atomically delete a document and replace the derived graph."""
     init_graph_store()
     with database.connect() as conn:
         conn.execute("begin immediate")
-        existing = conn.execute("select id from documents where id = ?", (document_id,)).fetchone()
+        clauses = ["id = ?"]
+        params: list[object] = [document_id]
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        if owner_id is not None:
+            clauses.append("owner_id = ?")
+            params.append(owner_id)
+        existing = conn.execute(
+            f"select id, tenant_id, owner_id from documents where {' and '.join(clauses)}",
+            params,
+        ).fetchone()
         if existing is None:
             return False
+        scope_tenant = existing["tenant_id"]
+        scope_owner = existing["owner_id"]
         conn.execute("delete from chunks where document_id = ?", (document_id,))
         conn.execute("delete from documents where id = ?", (document_id,))
         database.bump_content_revision(conn)
         rows = conn.execute(
-            "select document_id, filename, chunk_index, content from chunks order by created_at asc, chunk_index asc"
+            """
+            select document_id, filename, chunk_index, content from chunks
+            where tenant_id = ? and owner_id = ?
+            order by created_at asc, chunk_index asc
+            """,
+            (scope_tenant, scope_owner),
         ).fetchall()
-        _replace_graph(conn, rows, include_tickets=True)
+        _replace_graph(
+            conn, rows, include_tickets=True,
+            tenant_id=scope_tenant, owner_id=scope_owner,
+        )
     return True
 
 
-def remove_document_graph(document_id: str) -> None:
+def remove_document_graph(
+    document_id: str,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> None:
     """删除文档后重建图（学习版数据量小，重建成本可忽略）。"""
     init_graph_store()
     with database.connect() as conn:
-        existing = conn.execute("select count(*) as c from graph_relations").fetchone()
+        existing = conn.execute(
+            """
+            select count(*) as c from graph_relations
+            where tenant_id = ? and owner_id = ?
+            """,
+            (tenant_id, owner_id),
+        ).fetchone()
     if existing and existing["c"]:
-        rebuild_graph()
+        rebuild_graph(tenant_id=tenant_id, owner_id=owner_id)
 
 
-def _set_meta(key: str, value: str, *, conn: sqlite3.Connection | None = None) -> None:
+def _set_meta(
+    key: str,
+    value: str,
+    *,
+    conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> None:
     if conn is None:
         with database.connect() as local_conn:
-            _set_meta(key, value, conn=local_conn)
+            _set_meta(
+                key, value, conn=local_conn,
+                tenant_id=tenant_id, owner_id=owner_id,
+            )
         return
     conn.execute(
-        "insert into graph_meta (key, value) values (?, ?) on conflict(key) do update set value = excluded.value",
-        (key, value),
+        """
+        insert into graph_meta (tenant_id, owner_id, key, value) values (?, ?, ?, ?)
+        on conflict(tenant_id, owner_id, key) do update set value = excluded.value
+        """,
+        (tenant_id, owner_id, key, value),
     )
 
 
-def _get_meta(key: str, *, conn: sqlite3.Connection | None = None) -> str:
+def _get_meta(
+    key: str,
+    *,
+    conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> str:
     if conn is None:
         with database.connect() as local_conn:
-            return _get_meta(key, conn=local_conn)
-    row = conn.execute("select value from graph_meta where key = ?", (key,)).fetchone()
+            return _get_meta(
+                key, conn=local_conn,
+                tenant_id=tenant_id, owner_id=owner_id,
+            )
+    row = conn.execute(
+        "select value from graph_meta where tenant_id = ? and owner_id = ? and key = ?",
+        (tenant_id, owner_id, key),
+    ).fetchone()
     return row["value"] if row else ""
 
 
@@ -573,22 +775,46 @@ def _get_meta(key: str, *, conn: sqlite3.Connection | None = None) -> str:
 # 查询
 # ---------------------------------------------------------------------------
 
-def get_graph_overview(*, conn: sqlite3.Connection | None = None) -> dict[str, object]:
+def get_graph_overview(
+    *,
+    conn: sqlite3.Connection | None = None,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> dict[str, object]:
     init_graph_store()
     if conn is None:
         with database.connect() as local_conn:
-            return get_graph_overview(conn=local_conn)
-    entity_count = int(conn.execute("select count(*) from graph_entities").fetchone()[0])
-    relation_count = int(conn.execute("select count(*) from graph_relations").fetchone()[0])
+            return get_graph_overview(
+                conn=local_conn, tenant_id=tenant_id, owner_id=owner_id,
+            )
+    scope = (tenant_id, owner_id)
+    entity_count = int(conn.execute(
+        "select count(*) from graph_entities where tenant_id = ? and owner_id = ?", scope,
+    ).fetchone()[0])
+    relation_count = int(conn.execute(
+        "select count(*) from graph_relations where tenant_id = ? and owner_id = ?", scope,
+    ).fetchone()[0])
     type_rows = conn.execute(
-        "select entity_type, count(*) as c from graph_entities group by entity_type"
+        """
+        select entity_type, count(*) as c from graph_entities
+        where tenant_id = ? and owner_id = ? group by entity_type
+        """,
+        scope,
     ).fetchall()
     relation_rows = conn.execute(
-        "select relation_type, count(*) as c from graph_relations group by relation_type"
+        """
+        select relation_type, count(*) as c from graph_relations
+        where tenant_id = ? and owner_id = ? group by relation_type
+        """,
+        scope,
     ).fetchall()
     document_count = int(
         conn.execute(
-            "select count(distinct document_id) from graph_relations where filename != 'tickets'"
+            """
+            select count(distinct document_id) from graph_relations
+            where tenant_id = ? and owner_id = ? and filename != 'tickets'
+            """,
+            scope,
         ).fetchone()[0]
     )
     return {
@@ -597,14 +823,23 @@ def get_graph_overview(*, conn: sqlite3.Connection | None = None) -> dict[str, o
         "document_count": document_count,
         "entity_types": {row["entity_type"]: row["c"] for row in type_rows},
         "relation_types": {row["relation_type"]: row["c"] for row in relation_rows},
-        "built_at": _get_meta("last_built_at", conn=conn),
+        "built_at": _get_meta(
+            "last_built_at", conn=conn, tenant_id=tenant_id, owner_id=owner_id,
+        ),
     }
 
 
-def list_entities(entity_type: str = "", keyword: str = "", limit: int = 100) -> list[GraphEntity]:
+def list_entities(
+    entity_type: str = "",
+    keyword: str = "",
+    limit: int = 100,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> list[GraphEntity]:
     init_graph_store()
-    clauses: list[str] = []
-    params: list[object] = []
+    clauses: list[str] = ["tenant_id = ?", "owner_id = ?"]
+    params: list[object] = [tenant_id, owner_id]
     if entity_type:
         clauses.append("entity_type = ?")
         params.append(entity_type)
@@ -628,10 +863,17 @@ def list_entities(entity_type: str = "", keyword: str = "", limit: int = 100) ->
     ]
 
 
-def list_relations(entity: str = "", relation_type: str = "", limit: int = 200) -> list[GraphRelation]:
+def list_relations(
+    entity: str = "",
+    relation_type: str = "",
+    limit: int = 200,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> list[GraphRelation]:
     init_graph_store()
-    clauses: list[str] = []
-    params: list[object] = []
+    clauses: list[str] = ["tenant_id = ?", "owner_id = ?"]
+    params: list[object] = [tenant_id, owner_id]
     if entity:
         clauses.append("(source_name = ? or target_name = ?)")
         params.extend([entity, entity])
@@ -647,11 +889,18 @@ def list_relations(entity: str = "", relation_type: str = "", limit: int = 200) 
     return [_row_to_relation(row) for row in rows]
 
 
-def find_paths(source: str, target: str, max_depth: int = 3) -> list[list[GraphPathStep]]:
+def find_paths(
+    source: str,
+    target: str,
+    max_depth: int = 3,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> list[list[GraphPathStep]]:
     """无向 BFS 找两个实体之间的关系链（返回带方向标注的路径）。"""
     init_graph_store()
     max_depth = max(1, min(max_depth, MAX_PATH_DEPTH))
-    adjacency = _build_adjacency()
+    adjacency = _build_adjacency(tenant_id=tenant_id, owner_id=owner_id)
     if source not in adjacency or target not in adjacency:
         return []
 
@@ -677,7 +926,14 @@ def find_paths(source: str, target: str, max_depth: int = 3) -> list[list[GraphP
     return paths
 
 
-def get_entity_neighborhood(names: list[str], depth: int = 2, limit: int = 24) -> list[GraphRelation]:
+def get_entity_neighborhood(
+    names: list[str],
+    depth: int = 2,
+    limit: int = 24,
+    *,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+) -> list[GraphRelation]:
     """取一组实体周边 depth 跳内的关系，供 Graph Agent 组装上下文。"""
     init_graph_store()
     depth = max(1, min(depth, MAX_PATH_DEPTH))
@@ -693,7 +949,10 @@ def get_entity_neighborhood(names: list[str], depth: int = 2, limit: int = 24) -
         visited.update(batch)
         next_frontier: set[str] = set()
         for name in batch:
-            for relation in list_relations(entity=name, limit=50):
+            for relation in list_relations(
+                entity=name, limit=50,
+                tenant_id=tenant_id, owner_id=owner_id,
+            ):
                 key = (relation.source_name, relation.relation_type, relation.target_name)
                 if key not in seen_relations:
                     seen_relations[key] = relation
@@ -703,9 +962,17 @@ def get_entity_neighborhood(names: list[str], depth: int = 2, limit: int = 24) -
     return list(seen_relations.values())[:limit]
 
 
-def _build_adjacency() -> dict[str, list[tuple[str, str, bool]]]:
+def _build_adjacency(
+    *, tenant_id: str = "legacy", owner_id: str = "legacy",
+) -> dict[str, list[tuple[str, str, bool]]]:
     with database.connect() as conn:
-        rows = conn.execute("select source_name, relation_type, target_name from graph_relations").fetchall()
+        rows = conn.execute(
+            """
+            select source_name, relation_type, target_name from graph_relations
+            where tenant_id = ? and owner_id = ?
+            """,
+            (tenant_id, owner_id),
+        ).fetchall()
     adjacency: dict[str, list[tuple[str, str, bool]]] = {}
     for row in rows:
         adjacency.setdefault(row["source_name"], []).append((row["target_name"], row["relation_type"], True))

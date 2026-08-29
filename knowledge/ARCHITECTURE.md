@@ -15,7 +15,8 @@ Media Service
 Agent Service
   ├─ evidence segments / indexes / retrieval
   ├─ analysis sessions / confirmation checkpoints
-  ├─ PRD drafts / publication approvals / immutable audit
+  ├─ PRD drafts / publication approvals / immutable versions
+  ├─ knowledge candidates / action-item drafts / tool approvals
   └─ evidence-backed answers and evaluations
 ```
 
@@ -36,6 +37,7 @@ Agent Service
 - 幂等接收媒体证据，进行切分、索引和检索。
 - 拥有对话、分析会话、知识、PRD、审批和行动项。
 - 对模型输出执行结构验证、证据校验、权限检查和审批门禁。
+- 在 PRD 发布 CAS 与审计的同一事务写入内容哈希版本、知识候选和行动项草稿。
 - 视频引用只持有媒体逻辑身份和时间范围，播放授权仍由 Media Service 颁发。
 - 摄取同时按 `event_id` 和 `tenant_id + asset_id + transcript_version` 两级去重；相同键内容冲突返回 409 并保留旧事实。
 
@@ -50,6 +52,7 @@ Agent Service
 - 媒体任务状态：排队、处理中、完成、失败，可重试。
 - Agent 分析状态：运行、等待确认、草稿就绪、待发布审批、已发布、失败，可恢复。
 - 发布状态采用服务端 compare-and-set：`DRAFT_READY → PUBLISH_PENDING → PUBLISHED`，状态变更与审计事件在同一 SQLite 事务提交，避免并发重复批准。
+- 发布版本按 canonical JSON 的 SHA-256 标识且不可覆盖；知识候选使用独立 CAS 决策，行动项通过幂等工具草稿进入审批，并把终态与真实 `ticket_id` 投影回交付物。
 - 跨服务投递采用版本化事件、`event_id` 幂等和可重放设计。
 - Media 在任务完成事务内写入 `integration_event_outbox`，本地调度器通过 HTTP/1.1 投递；瞬时失败指数退避，契约冲突进入 DEAD，Agent 端继续执行事件级与语义级双重幂等。
 - 外部基础设施的 light/mock 模式仅用于开发；生产声明必须由真实集成 smoke 支撑。

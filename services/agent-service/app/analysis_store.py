@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app import database
-from app.analysis_models import AnalysisAuditEvent, AnalysisSessionResponse
+from app.analysis_models import AnalysisAuditEvent, AnalysisSessionResponse, PublicationDeliverables
+from app.publication_artifacts import (
+    init_publication_artifact_store,
+    persist_publication_deliverables,
+)
 
 
 def init_analysis_store() -> None:
@@ -158,9 +162,12 @@ def transition_session(
     *,
     expected_status: str,
     audit_event: AnalysisAuditEvent,
+    publication_deliverables: PublicationDeliverables | None = None,
 ) -> bool:
     """Compare-and-set a publication transition and append its audit event atomically."""
     init_analysis_store()
+    if publication_deliverables is not None:
+        init_publication_artifact_store()
     payload = session.model_dump(mode="json")
     with database.connect() as conn:
         cursor = conn.execute(
@@ -197,6 +204,8 @@ def transition_session(
                 json.dumps(event["details"], ensure_ascii=False), event["created_at"],
             ),
         )
+        if publication_deliverables is not None:
+            persist_publication_deliverables(conn, publication_deliverables)
     return True
 
 

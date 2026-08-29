@@ -12,7 +12,7 @@
 | 身份、租户、权限、隐私、审批 | [DATA_AND_SECURITY.md](DATA_AND_SECURITY.md) |
 | Agent 阶段、证据、评测、自进化 | [AGENT_ENGINEERING.md](AGENT_ENGINEERING.md) |
 | 测试分层、质量门禁、已验证事实 | [QUALITY.md](QUALITY.md) |
-| 本地启动、配置、部署、故障恢复 | [OPERATIONS.md](OPERATIONS.md) |
+| 本地启动、配置、部署、故障恢复 | [OPERATIONS.md](OPERATIONS.md)、[本地发布手册](../docs/LOCAL_RELEASE_RUNBOOK.md) 与 [SLO](../docs/SLO.md) |
 | 已批准且不可静默推翻的选择 | [decisions/](decisions/) |
 | 从代码生成的实时结构快照 | [generated/CURRENT_STATE.md](generated/CURRENT_STATE.md) |
 
@@ -29,4 +29,3 @@ python scripts/update_knowledge.py --check
 ```
 
 - `generated/CURRENT_STATE.md` 禁止手改。
-

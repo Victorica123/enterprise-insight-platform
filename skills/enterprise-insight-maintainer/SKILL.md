@@ -24,6 +24,8 @@ Keep this repository a coherent product rather than two demos placed side by sid
 - A shared authenticated identity and `tenant_id`/`owner_id` boundary applies end to end. Never reintroduce self-declared role headers as a production path.
 - Every material conclusion must retain evidence. Video evidence includes asset identity and a playable time range.
 - Model output is untrusted. Deterministic validation, authorization, idempotency and approval protect side effects.
+- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; derived action items enter the controlled tool approval queue.
+- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; derived action items enter the controlled tool approval queue.
 - Media processing state and Agent analysis state are separate lifecycles, aggregated only for presentation.
 
 ## Grill the user at real decision points
@@ -56,6 +58,8 @@ python scripts/update_knowledge.py --check
 
 - CI must run the same `--check` command so stale generated knowledge fails the build.
 - Update the relevant human-maintained knowledge page whenever behavior, boundaries, security, operations or acceptance criteria change. The generator cannot infer semantic intent.
+- For local-release changes, keep `compose.local.yml`, `docs/LOCAL_RELEASE_RUNBOOK.md`, backup/restore tooling and `scripts/local_acceptance.py` aligned.
+- For local-release changes, keep `compose.local.yml`, `docs/LOCAL_RELEASE_RUNBOOK.md`, backup/restore tooling and `scripts/local_acceptance.py` aligned.
 
 ## Finish every task
 

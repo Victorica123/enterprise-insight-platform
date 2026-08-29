@@ -188,15 +188,6 @@ def require_operator_role(role: str) -> None:
         raise HTTPException(status_code=403, detail="Operator permission is required.")
 
 
-def require_tenant_safe_feature(principal: ActorPrincipal, feature: str) -> None:
-    """Keep legacy global stores closed in JWT mode until their tenant migration lands."""
-    if principal.auth_mode == "jwt":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"{feature} is temporarily unavailable while tenant-scoped storage is being migrated.",
-        )
-
-
 def normalize_actor_user(raw_user: str) -> str:
     user = raw_user.strip().lower()
     return user or "anonymous"

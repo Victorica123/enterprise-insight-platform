@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -66,6 +68,7 @@ class ApiContractTests(unittest.TestCase):
             retriever_mode="hybrid",
             actor_role="viewer",
             actor_user="anonymous",
+            workspace_type="personal",
         )
         metric_recorder.assert_called_once()
 
@@ -97,6 +100,21 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("total_requests", payload)
         self.assertIn("p95_latency_ms", payload)
         self.assertIn("citation_ready_rate", payload)
+
+    def test_publication_deliverables_schema_is_versioned_and_machine_readable(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "publication-deliverables-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+
+        self.assertTrue(schema["$id"].endswith("/publication-deliverables-v1.schema.json"))
+        self.assertEqual(schema["type"], "object")
+        self.assertEqual(
+            set(schema["required"]),
+            {"version", "knowledge_candidates", "action_items"},
+        )
+        self.assertEqual(schema["properties"]["version"]["$ref"], "#/$defs/version")
 
 
 if __name__ == "__main__":

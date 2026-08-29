@@ -11,12 +11,13 @@
 
 阶段是可观测的业务节点，不等同于必须绑定某个 Agent 框架。每一阶段接受结构化状态并产生可校验输出。
 
-当前实现位于独立的 `analysis_pipeline`、`analysis_store` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。分析会话按 tenant/owner 持久化；事实不足时返回结构化问题和一次性更新的恢复令牌，补充后从收敛点继续并生成带证据与假设标记的 DRAFT PRD。
+当前实现位于独立的 `analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。分析会话按 tenant/owner 持久化；事实不足时返回结构化问题和一次性更新的恢复令牌，补充后从收敛点继续并生成带证据与假设标记的 DRAFT PRD。
 
 ## 证据策略
 
 - 关键结论必须绑定至少一个可访问证据，或明确标记为假设/建议。
 - 视频证据引用稳定资产与片段身份、开始/结束时间、说话人和摘录。
+- 发布后的 PRD 以规范 JSON 的 SHA-256 固化为不可变版本；派生知识候选和行动项保留原 requirement 与证据引用，不能脱离来源重新生成事实。
 - 检索结果在进入模型前完成权限过滤；模型不能扩张检索范围。
 - 最终答案校验引用存在、归属正确、时间范围有效，并拒绝伪造引用。
 
@@ -24,18 +25,19 @@
 
 分析会话需要持久化检查点。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`，记录结构化问题、原因和恢复令牌；用户或授权专家补充后从检查点继续，不从头重跑。
 
-当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY → PUBLISH_PENDING → PUBLISHED`。发布逻辑独立放在 `publication_service.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 OWNER 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 token、compare-and-set 状态转换和同事务审计。
+当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY → PUBLISH_PENDING → PUBLISHED`。发布逻辑独立放在 `publication_service.py`，交付物投影放在 `publication_artifacts.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 OWNER 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 token、compare-and-set 状态转换，并在同一事务内写入审计、不可变版本和初始交付物。
 
 ## 受控工具
 
 - 工具参数使用 schema 验证，调用前重复鉴权。
 - 读工具和写工具分级；有业务副作用的写工具进入审批。
 - 重试只用于幂等调用；每次调用保留 trace、输入摘要、批准者和结果。
+- PRD 行动项转工单复用 `create_ticket` 受控工具；生成 pending action 不等于工单已创建，只有审批执行后才产生工单。终态会回写为 `TICKET_CREATED/REJECTED/FAILED`，成功时记录真实 `ticket_id`，重复进入请求保持幂等。
 
 ## 自进化闭环
 
 - 坏案例：失败答案进入回归数据，记录期望、实际、证据和失败分类。
 - 根因：区分摄取、检索、权限、提示、模型、验证和工具错误。
 - 改进：优先修复确定性系统问题，再调整提示或模型路由。
-- 知识：已确认 PRD 事实与现有知识做差异检查，生成候选，由人审批后发布。
+- 知识：发布 PRD 生成保留证据的候选；候选经过独立人工决定后才成为可发布知识状态，不把 PRD 审批等同于知识审批。
 - 门禁：任何影响 Agent 行为的变更必须有对应评测案例，不能仅凭演示判断提升。

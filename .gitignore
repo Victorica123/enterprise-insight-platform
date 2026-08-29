@@ -16,4 +16,6 @@ target/
 tmp/
 data/
 storage/
+runtime/
+backups/
 *.sqlite3

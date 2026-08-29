@@ -28,6 +28,8 @@ class Ticket:
     status: str
     priority: str
     assignee: str
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
     source_document_ids: list[str] = field(default_factory=list)
     risk_level: str = ""
     created_at: str = ""
@@ -41,6 +43,8 @@ class Ticket:
             "status": self.status,
             "priority": self.priority,
             "assignee": self.assignee,
+            "tenant_id": self.tenant_id,
+            "owner_id": self.owner_id,
             "source_document_ids": self.source_document_ids,
             "risk_level": self.risk_level,
             "created_at": self.created_at,
@@ -54,6 +58,9 @@ class PendingAction:
     action_type: str
     payload: dict
     status: str
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
+    workspace_type: str = "personal"
     requested_by: str = "operator"
     requested_by_user: str = "anonymous"
     resolved_by: str = ""
@@ -73,6 +80,9 @@ class PendingAction:
             "action_type": self.action_type,
             "payload": self.payload,
             "status": self.status,
+            "tenant_id": self.tenant_id,
+            "owner_id": self.owner_id,
+            "workspace_type": self.workspace_type,
             "requested_by": self.requested_by,
             "requested_by_user": self.requested_by_user,
             "resolved_by": self.resolved_by,
@@ -109,7 +119,12 @@ def init_ticket_store() -> None:
             )
             """
         )
+        database.ensure_column(conn, "tickets", "tenant_id", "text not null default 'legacy'")
+        database.ensure_column(conn, "tickets", "owner_id", "text not null default 'legacy'")
         conn.execute("create index if not exists idx_tickets_status on tickets(status)")
+        conn.execute(
+            "create index if not exists idx_tickets_scope on tickets(tenant_id, owner_id, created_at)"
+        )
         conn.execute(
             """
             create table if not exists pending_actions (
@@ -123,6 +138,9 @@ def init_ticket_store() -> None:
             """
         )
         pending_columns = {
+            "tenant_id": "text not null default 'legacy'",
+            "owner_id": "text not null default 'legacy'",
+            "workspace_type": "text not null default 'personal'",
             "requested_by": "text not null default 'operator'",
             "requested_by_user": "text not null default 'anonymous'",
             "resolved_by": "text not null default ''",
@@ -138,6 +156,10 @@ def init_ticket_store() -> None:
             database.ensure_column(conn, "pending_actions", column, definition)
         conn.execute("create index if not exists idx_pending_actions_status on pending_actions(status)")
         conn.execute("create index if not exists idx_pending_actions_key on pending_actions(idempotency_key)")
+        conn.execute(
+            "create index if not exists idx_pending_actions_scope "
+            "on pending_actions(tenant_id, status, created_at)"
+        )
         conn.execute(
             """
             create table if not exists tool_call_logs (
@@ -159,6 +181,16 @@ def init_ticket_store() -> None:
         )
         conn.execute("create index if not exists idx_tool_logs_created on tool_call_logs(created_at)")
         conn.execute("create index if not exists idx_tool_logs_status on tool_call_logs(status)")
+        for column, definition in {
+            "tenant_id": "text not null default 'legacy'",
+            "owner_id": "text not null default 'legacy'",
+            "actor_user": "text not null default 'anonymous'",
+        }.items():
+            database.ensure_column(conn, "tool_call_logs", column, definition)
+        conn.execute(
+            "create index if not exists idx_tool_logs_scope "
+            "on tool_call_logs(tenant_id, created_at)"
+        )
     _INITIALIZED_DB_PATH = current_path
 
 
@@ -178,6 +210,8 @@ def create_ticket(
     assignee: str = "",
     source_document_ids: list[str] | None = None,
     risk_level: str = "",
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
 ) -> Ticket:
     init_ticket_store()
     now = format_time(utc_now())
@@ -188,6 +222,8 @@ def create_ticket(
         status=status,
         priority=priority,
         assignee=assignee.strip(),
+        tenant_id=tenant_id,
+        owner_id=owner_id,
         source_document_ids=source_document_ids or [],
         risk_level=risk_level.strip(),
         created_at=now,
@@ -198,8 +234,8 @@ def create_ticket(
             """
             insert into tickets (
                 ticket_id, title, description, status, priority, assignee,
-                source_document_ids, risk_level, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_document_ids, risk_level, tenant_id, owner_id, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticket.ticket_id,
@@ -210,6 +246,8 @@ def create_ticket(
                 ticket.assignee,
                 json.dumps(ticket.source_document_ids, ensure_ascii=False),
                 ticket.risk_level,
+                ticket.tenant_id,
+                ticket.owner_id,
                 now,
                 now,
             ),
@@ -222,10 +260,18 @@ def list_tickets(
     priority: str | None = None,
     keyword: str = "",
     limit: int = 100,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
 ) -> list[Ticket]:
     init_ticket_store()
     clauses: list[str] = []
     params: list[object] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     if status:
         clauses.append("status = ?")
         params.append(status)
@@ -245,40 +291,81 @@ def list_tickets(
     return [_row_to_ticket(row) for row in rows]
 
 
-def get_ticket(ticket_id: str) -> Ticket | None:
+def get_ticket(
+    ticket_id: str, *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> Ticket | None:
     init_ticket_store()
+    clauses = ["ticket_id = ?"]
+    params: list[object] = [ticket_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     with database.connect() as conn:
-        row = conn.execute("select * from tickets where ticket_id = ?", (ticket_id,)).fetchone()
+        row = conn.execute(
+            f"select * from tickets where {' and '.join(clauses)}", params,
+        ).fetchone()
     return _row_to_ticket(row) if row else None
 
 
-def update_ticket_status(ticket_id: str, new_status: str, assignee: str | None = None) -> Ticket | None:
+def update_ticket_status(
+    ticket_id: str, new_status: str, assignee: str | None = None,
+    *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> Ticket | None:
     init_ticket_store()
     now = format_time(utc_now())
+    clauses = ["ticket_id = ?"]
+    scope_params: list[object] = [ticket_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        scope_params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        scope_params.append(owner_id)
+    where = " and ".join(clauses)
     with database.connect() as conn:
         if assignee is None:
             cursor = conn.execute(
-                "update tickets set status = ?, updated_at = ? where ticket_id = ?",
-                (new_status, now, ticket_id),
+                f"update tickets set status = ?, updated_at = ? where {where}",
+                [new_status, now, *scope_params],
             )
         else:
             cursor = conn.execute(
-                "update tickets set status = ?, assignee = ?, updated_at = ? where ticket_id = ?",
-                (new_status, assignee.strip(), now, ticket_id),
+                f"update tickets set status = ?, assignee = ?, updated_at = ? where {where}",
+                [new_status, assignee.strip(), now, *scope_params],
             )
         if cursor.rowcount != 1:
             return None
-    return get_ticket(ticket_id)
+    return get_ticket(ticket_id, tenant_id=tenant_id, owner_id=owner_id)
 
 
-def delete_ticket(ticket_id: str) -> bool:
+def delete_ticket(
+    ticket_id: str, *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> bool:
     init_ticket_store()
+    clauses = ["ticket_id = ?"]
+    params: list[object] = [ticket_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     with database.connect() as conn:
-        return conn.execute("delete from tickets where ticket_id = ?", (ticket_id,)).rowcount == 1
+        return conn.execute(
+            f"delete from tickets where {' and '.join(clauses)}", params,
+        ).rowcount == 1
 
 
-def build_idempotency_key(action_type: str, payload: dict) -> str:
-    raw = json.dumps({"action_type": action_type, "payload": payload}, ensure_ascii=False, sort_keys=True)
+def build_idempotency_key(
+    action_type: str, payload: dict, tenant_id: str = "legacy", owner_id: str = "legacy",
+) -> str:
+    raw = json.dumps(
+        {"tenant_id": tenant_id, "owner_id": owner_id, "action_type": action_type, "payload": payload},
+        ensure_ascii=False, sort_keys=True,
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -291,10 +378,13 @@ def create_pending_action(
     ttl_seconds: int = 900,
     idempotency_key: str = "",
     requested_by_user: str = "anonymous",
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+    workspace_type: str = "personal",
 ) -> tuple[PendingAction, bool]:
     """Create a draft, or reuse an equivalent unresolved draft."""
     init_ticket_store()
-    key = idempotency_key or build_idempotency_key(action_type, payload)
+    key = idempotency_key or build_idempotency_key(action_type, payload, tenant_id, owner_id)
     now_value = utc_now()
     now = format_time(now_value)
     expires_at = format_time(now_value + timedelta(seconds=ttl_seconds))
@@ -303,10 +393,11 @@ def create_pending_action(
         existing = conn.execute(
             """
             select * from pending_actions
-            where idempotency_key = ? and status in ('pending', 'executing')
+            where tenant_id = ? and owner_id = ? and idempotency_key = ?
+              and status in ('pending', 'executing')
             order by created_at desc limit 1
             """,
-            (key,),
+            (tenant_id, owner_id, key),
         ).fetchone()
         if existing and (
             existing["status"] == "executing" or not _is_expired(existing["expires_at"], now_value)
@@ -329,14 +420,18 @@ def create_pending_action(
         conn.execute(
             """
             insert into pending_actions (
-                action_id, action_type, payload, status, requested_by, requested_by_user,
+                action_id, action_type, payload, status, tenant_id, owner_id, workspace_type,
+                requested_by, requested_by_user,
                 tool_call_id, idempotency_key, created_at, expires_at
-            ) values (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 action_id,
                 action_type,
                 json.dumps(payload, ensure_ascii=False),
+                tenant_id,
+                owner_id,
+                workspace_type,
                 requested_by,
                 requested_by_user,
                 tool_call_id,
@@ -351,34 +446,50 @@ def create_pending_action(
     return action, False
 
 
-def get_pending_action(action_id: str, *, conn: sqlite3.Connection | None = None) -> PendingAction | None:
+def get_pending_action(
+    action_id: str, *, conn: sqlite3.Connection | None = None,
+    tenant_id: str | None = None,
+) -> PendingAction | None:
+    clauses = ["action_id = ?"]
+    params: list[object] = [action_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    query = f"select * from pending_actions where {' and '.join(clauses)}"
     if conn is not None:
-        row = conn.execute("select * from pending_actions where action_id = ?", (action_id,)).fetchone()
+        row = conn.execute(query, params).fetchone()
         return _row_to_action(row) if row else None
     init_ticket_store()
     with database.connect() as local_conn:
-        row = local_conn.execute("select * from pending_actions where action_id = ?", (action_id,)).fetchone()
+        row = local_conn.execute(query, params).fetchone()
     return _row_to_action(row) if row else None
 
 
-def list_pending_actions(status: str | None = "pending", limit: int = 100) -> list[PendingAction]:
+def list_pending_actions(
+    status: str | None = "pending", limit: int = 100, *, tenant_id: str | None = None,
+) -> list[PendingAction]:
     init_ticket_store()
-    expire_pending_actions()
+    expire_pending_actions(tenant_id=tenant_id)
+    clauses: list[str] = []
+    params: list[object] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    where = f" where {' and '.join(clauses)}" if clauses else ""
+    params.append(max(1, min(limit, 200)))
     with database.connect() as conn:
-        if status:
-            rows = conn.execute(
-                "select * from pending_actions where status = ? order by created_at desc limit ?",
-                (status, max(1, min(limit, 200))),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "select * from pending_actions order by created_at desc limit ?",
-                (max(1, min(limit, 200)),),
-            ).fetchall()
+        rows = conn.execute(
+            f"select * from pending_actions{where} order by created_at desc limit ?", params,
+        ).fetchall()
     return [_row_to_action(row) for row in rows]
 
 
-def claim_pending_action(action_id: str, resolved_by: str) -> tuple[PendingAction | None, bool]:
+def claim_pending_action(
+    action_id: str, resolved_by: str, *, tenant_id: str | None = None,
+) -> tuple[PendingAction | None, bool]:
     """Atomically move a pending action to executing.
 
     The boolean is the ownership result. Returning an ``executing`` row alone
@@ -390,12 +501,12 @@ def claim_pending_action(action_id: str, resolved_by: str) -> tuple[PendingActio
     now = format_time(now_value)
     with database.connect() as conn:
         conn.execute("begin immediate")
-        row = conn.execute("select * from pending_actions where action_id = ?", (action_id,)).fetchone()
+        row = get_pending_action(action_id, conn=conn, tenant_id=tenant_id)
         if row is None:
             return None, False
-        if row["status"] != "pending":
-            return _row_to_action(row), False
-        if _is_expired(row["expires_at"], now_value):
+        if row.status != "pending":
+            return row, False
+        if _is_expired(row.expires_at, now_value):
             conn.execute(
                 """
                 update pending_actions
@@ -404,7 +515,7 @@ def claim_pending_action(action_id: str, resolved_by: str) -> tuple[PendingActio
                 """,
                 (resolved_by, now, action_id),
             )
-            return get_pending_action(action_id, conn=conn), False
+            return get_pending_action(action_id, conn=conn, tenant_id=tenant_id), False
         cursor = conn.execute(
             """
             update pending_actions
@@ -414,20 +525,22 @@ def claim_pending_action(action_id: str, resolved_by: str) -> tuple[PendingActio
             (resolved_by, action_id),
         )
         if cursor.rowcount != 1:
-            return get_pending_action(action_id, conn=conn), False
-        return get_pending_action(action_id, conn=conn), True
+            return get_pending_action(action_id, conn=conn, tenant_id=tenant_id), False
+        return get_pending_action(action_id, conn=conn, tenant_id=tenant_id), True
 
 
-def reject_pending_action(action_id: str, resolved_by: str) -> PendingAction | None:
+def reject_pending_action(
+    action_id: str, resolved_by: str, *, tenant_id: str | None = None,
+) -> PendingAction | None:
     init_ticket_store()
     now_value = utc_now()
     now = format_time(now_value)
     with database.connect() as conn:
         conn.execute("begin immediate")
-        row = conn.execute("select * from pending_actions where action_id = ?", (action_id,)).fetchone()
-        if row is None or row["status"] != "pending":
-            return _row_to_action(row) if row else None
-        status = "expired" if _is_expired(row["expires_at"], now_value) else "rejected"
+        row = get_pending_action(action_id, conn=conn, tenant_id=tenant_id)
+        if row is None or row.status != "pending":
+            return row
+        status = "expired" if _is_expired(row.expires_at, now_value) else "rejected"
         conn.execute(
             """
             update pending_actions set status = ?, resolved_by = ?, resolved_at = ?
@@ -435,7 +548,7 @@ def reject_pending_action(action_id: str, resolved_by: str) -> PendingAction | N
             """,
             (status, resolved_by, now, action_id),
         )
-        return get_pending_action(action_id, conn=conn)
+        return get_pending_action(action_id, conn=conn, tenant_id=tenant_id)
 
 
 def complete_pending_action(
@@ -445,6 +558,7 @@ def complete_pending_action(
     result: dict,
     error_message: str,
     duration_ms: float,
+    tenant_id: str | None = None,
 ) -> PendingAction | None:
     init_ticket_store()
     status = "succeeded" if succeeded else "failed"
@@ -465,7 +579,7 @@ def complete_pending_action(
                 action_id,
             ),
         )
-    return get_pending_action(action_id)
+    return get_pending_action(action_id, tenant_id=tenant_id)
 
 
 def record_tool_call(
@@ -479,6 +593,9 @@ def record_tool_call(
     result: dict | None = None,
     error_message: str = "",
     duration_ms: float = 0.0,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+    actor_user: str = "anonymous",
 ) -> str:
     init_ticket_store()
     call_id = str(uuid.uuid4())
@@ -488,8 +605,9 @@ def record_tool_call(
             """
             insert into tool_call_logs (
                 call_id, tool_name, operation, requires_approval, status, actor_role,
-                input_json, result_json, error_message, duration_ms, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tenant_id, owner_id, actor_user, input_json, result_json,
+                error_message, duration_ms, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 call_id,
@@ -498,6 +616,9 @@ def record_tool_call(
                 int(requires_approval),
                 status,
                 actor_role,
+                tenant_id,
+                owner_id,
+                actor_user,
                 json.dumps(input_payload, ensure_ascii=False),
                 json.dumps(result or {}, ensure_ascii=False),
                 error_message[:500],
@@ -540,12 +661,16 @@ def update_tool_call(
         )
 
 
-def list_tool_call_logs(limit: int = 50) -> list[dict[str, object]]:
+def list_tool_call_logs(
+    limit: int = 50, *, tenant_id: str | None = None,
+) -> list[dict[str, object]]:
     init_ticket_store()
+    where = " where tenant_id = ?" if tenant_id is not None else ""
+    params: list[object] = [tenant_id] if tenant_id is not None else []
+    params.append(max(1, min(limit, 200)))
     with database.connect() as conn:
         rows = conn.execute(
-            "select * from tool_call_logs order by created_at desc limit ?",
-            (max(1, min(limit, 200)),),
+            f"select * from tool_call_logs{where} order by created_at desc limit ?", params,
         ).fetchall()
     return [
         {
@@ -556,6 +681,9 @@ def list_tool_call_logs(limit: int = 50) -> list[dict[str, object]]:
             "requires_approval": bool(row["requires_approval"]),
             "status": row["status"],
             "actor_role": row["actor_role"],
+            "tenant_id": row["tenant_id"],
+            "owner_id": row["owner_id"],
+            "actor_user": row["actor_user"],
             "input": _load_json(row["input_json"]),
             "result": _load_json(row["result_json"]),
             "error_message": row["error_message"],
@@ -566,14 +694,19 @@ def list_tool_call_logs(limit: int = 50) -> list[dict[str, object]]:
     ]
 
 
-def get_tool_metrics_summary() -> dict[str, object]:
+def get_tool_metrics_summary(*, tenant_id: str | None = None) -> dict[str, object]:
     init_ticket_store()
-    expire_pending_actions()
+    expire_pending_actions(tenant_id=tenant_id)
+    where = " where tenant_id = ?" if tenant_id is not None else ""
+    params = [tenant_id] if tenant_id is not None else []
     with database.connect() as conn:
         logs = conn.execute(
-            "select tool_name, status, duration_ms from tool_call_logs order by created_at"
+            f"select tool_name, status, duration_ms from tool_call_logs{where} order by created_at",
+            params,
         ).fetchall()
-        actions = conn.execute("select status, execution_count from pending_actions").fetchall()
+        actions = conn.execute(
+            f"select status, execution_count from pending_actions{where}", params,
+        ).fetchall()
     statuses = _count_by(logs, "status")
     terminal = sum(statuses.get(item, 0) for item in ("succeeded", "failed"))
     decisions = sum(1 for row in actions if row["status"] in {"succeeded", "failed", "rejected"})
@@ -596,12 +729,27 @@ def get_tool_metrics_summary() -> dict[str, object]:
     }
 
 
-def get_ticket_summary() -> dict[str, object]:
+def get_ticket_summary(
+    *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> dict[str, object]:
     init_ticket_store()
+    clauses: list[str] = []
+    params: list[object] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
+    where = f" where {' and '.join(clauses)}" if clauses else ""
     with database.connect() as conn:
-        total = int(conn.execute("select count(*) from tickets").fetchone()[0])
-        status_rows = conn.execute("select status, count(*) as count from tickets group by status").fetchall()
-        priority_rows = conn.execute("select priority, count(*) as count from tickets group by priority").fetchall()
+        total = int(conn.execute(f"select count(*) from tickets{where}", params).fetchone()[0])
+        status_rows = conn.execute(
+            f"select status, count(*) as count from tickets{where} group by status", params,
+        ).fetchall()
+        priority_rows = conn.execute(
+            f"select priority, count(*) as count from tickets{where} group by priority", params,
+        ).fetchall()
     return {
         "total_tickets": total,
         "by_status": {row["status"]: row["count"] for row in status_rows},
@@ -609,17 +757,22 @@ def get_ticket_summary() -> dict[str, object]:
     }
 
 
-def expire_pending_actions() -> int:
+def expire_pending_actions(*, tenant_id: str | None = None) -> int:
     """Move stale drafts out of the actionable queue and keep audit status aligned."""
     init_ticket_store()
     now = format_time(utc_now())
     with database.connect() as conn:
+        tenant_clause = " and tenant_id = ?" if tenant_id is not None else ""
+        params: list[object] = [now]
+        if tenant_id is not None:
+            params.append(tenant_id)
         rows = conn.execute(
-            """
+            f"""
             select action_id, tool_call_id from pending_actions
             where status = 'pending' and expires_at != '' and expires_at <= ?
+            {tenant_clause}
             """,
-            (now,),
+            params,
         ).fetchall()
         if not rows:
             return 0
@@ -648,6 +801,8 @@ def _row_to_ticket(row: sqlite3.Row) -> Ticket:
         status=row["status"],
         priority=row["priority"],
         assignee=row["assignee"],
+        tenant_id=row["tenant_id"],
+        owner_id=row["owner_id"],
         source_document_ids=_load_json(row["source_document_ids"], fallback=[]),
         risk_level=row["risk_level"],
         created_at=row["created_at"],
@@ -661,6 +816,9 @@ def _row_to_action(row: sqlite3.Row) -> PendingAction:
         action_type=row["action_type"],
         payload=_load_json(row["payload"]),
         status=row["status"],
+        tenant_id=row["tenant_id"],
+        owner_id=row["owner_id"],
+        workspace_type=row["workspace_type"],
         requested_by=row["requested_by"],
         requested_by_user=row["requested_by_user"] if "requested_by_user" in row.keys() else "anonymous",
         resolved_by=row["resolved_by"],

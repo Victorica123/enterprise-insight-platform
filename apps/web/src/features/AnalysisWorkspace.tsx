@@ -1,9 +1,10 @@
 import React from "react";
-import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Play, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, BookCheck, CheckCircle2, FileCheck2, ListTodo, Loader2, Play, Send, ShieldCheck, Sparkles } from "lucide-react";
 import {
-  type AnalysisAuditEvent, type AnalysisSession, approvePrdPublication,
-  confirmAnalysisSession, createAnalysisSession, listAnalysisAudit,
-  listAnalysisSessions, listPublicationQueue, requestPrdPublication,
+  type AnalysisAuditEvent, type AnalysisSession, type PublicationDeliverables,
+  approvePrdPublication, confirmAnalysisSession, createActionTicketDraft,
+  createAnalysisSession, decideKnowledgeCandidate, getPublicationDeliverables,
+  listAnalysisAudit, listAnalysisSessions, listPublicationQueue, requestPrdPublication,
 } from "../analysisApi";
 import { loadSession } from "../session";
 import { formatTimestamp } from "./MediaWorkspace";
@@ -25,6 +26,7 @@ export function AnalysisWorkspace(props: {
   const [active, setActive] = React.useState<AnalysisSession | null>(null);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [audit, setAudit] = React.useState<AnalysisAuditEvent[]>([]);
+  const [deliverables, setDeliverables] = React.useState<PublicationDeliverables | null>(null);
   const [busy, setBusy] = React.useState(false);
   const viewer = loadSession();
 
@@ -44,6 +46,13 @@ export function AnalysisWorkspace(props: {
     if (!active || active.owner_id !== viewer?.userId) { setAudit([]); return; }
     void listAnalysisAudit(active.session_id).then(setAudit).catch((caught) => props.onError(getErrorMessage(caught)));
   }, [active?.session_id, active?.owner_id, props.onError, viewer?.userId]);
+
+  React.useEffect(() => {
+    if (!active || active.status !== "PUBLISHED") { setDeliverables(null); return; }
+    void getPublicationDeliverables(active.session_id)
+      .then(setDeliverables)
+      .catch((caught) => props.onError(getErrorMessage(caught)));
+  }, [active?.session_id, active?.status, props.onError]);
 
   async function create(event: React.FormEvent) {
     event.preventDefault(); setBusy(true);
@@ -93,6 +102,34 @@ export function AnalysisWorkspace(props: {
     finally { setBusy(false); }
   }
 
+  async function decideCandidate(candidateId: string, approved: boolean) {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const updated = await decideKnowledgeCandidate(active.session_id, candidateId, approved);
+      setDeliverables((current) => current ? {
+        ...current,
+        knowledge_candidates: current.knowledge_candidates.map((item) =>
+          item.candidate_id === updated.candidate_id ? updated : item),
+      } : current);
+    } catch (caught) { props.onError(getErrorMessage(caught)); }
+    finally { setBusy(false); }
+  }
+
+  async function draftActionTicket(actionItemId: string) {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const updated = await createActionTicketDraft(active.session_id, actionItemId);
+      setDeliverables((current) => current ? {
+        ...current,
+        action_items: current.action_items.map((item) =>
+          item.action_item_id === updated.action_item.action_item_id ? updated.action_item : item),
+      } : current);
+    } catch (caught) { props.onError(getErrorMessage(caught)); }
+    finally { setBusy(false); }
+  }
+
   return <div className="analysis-layout">
     <aside className="analysis-sidebar">
       <section className="card">
@@ -130,6 +167,18 @@ export function AnalysisWorkspace(props: {
           <h3>需求与验收</h3>{active.prd.requirements.map((requirement) => <article key={requirement.requirement_id}><strong>{requirement.requirement_id} · {requirement.title}</strong><p>{requirement.description}</p><ul>{requirement.acceptance_criteria.map((item) => <li key={item}>验收：{item}</li>)}{requirement.assumptions.map((item) => <li className="assumption" key={item}>假设：{item}</li>)}</ul></article>)}
           <PublicationControls active={active} viewerId={viewer?.userId ?? ""} busy={busy} onRequest={requestPublication} onApprove={approvePublication} />
           {audit.length ? <div className="publication-audit"><strong><ShieldCheck size={14} />发布审计</strong>{audit.map((event) => <span key={event.event_id}>{event.action === "PUBLICATION_REQUESTED" ? "申请发布" : "批准发布"} · {event.actor_id} · {formatDate(event.created_at)}</span>)}</div> : null}
+        </section> : null}
+        {deliverables ? <section className="card publication-deliverables">
+          <header><div><span className="eyebrow">PUBLISHED DELIVERY</span><h2><FileCheck2 size={19} />发布交付物</h2></div><code>v{deliverables.version.version_number} · {deliverables.version.content_sha256.slice(0, 12)}</code></header>
+          <p>PRD 已保存为不可变快照。知识与行动项仍保留人工决策门，不会直接写入生产知识或创建工单。</p>
+          <div className="delivery-grid">
+            <div><h3><BookCheck size={16} />知识候选</h3>{deliverables.knowledge_candidates.map((candidate) => {
+              const canDecide = candidate.status === "PENDING" && viewer?.role !== "viewer"
+                && (viewer?.workspaceType === "personal" ? candidate.owner_id === viewer?.userId : candidate.created_by !== viewer?.userId);
+              return <article key={candidate.candidate_id}><strong>{candidate.requirement_id}</strong><p>{candidate.statement}</p><span className="task-status">{candidate.status}</span>{canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准知识</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}</article>;
+            })}</div>
+            <div><h3><ListTodo size={16} />行动项草稿</h3>{deliverables.action_items.map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><p>{item.description}</p><span className="task-status">{item.status}</span>{item.ticket_id ? <p className="mono">工单 {item.ticket_id}</p> : null}{item.status === "DRAFT" && item.owner_id === viewer?.userId ? <div className="delivery-actions"><button disabled={busy} onClick={() => void draftActionTicket(item.action_item_id)}>进入工单审批</button></div> : null}</article>)}</div>
+          </div>
         </section> : null}
       </>}
     </section>

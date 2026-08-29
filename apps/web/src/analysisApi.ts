@@ -76,6 +76,52 @@ export type AnalysisSession = {
   updated_at: string;
 };
 
+export type KnowledgeCandidate = {
+  candidate_id: string;
+  session_id: string;
+  version_id: string;
+  owner_id: string;
+  requirement_id: string;
+  statement: string;
+  evidence: AnalysisEvidence[];
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  created_by: string;
+  created_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+};
+
+export type ActionItemDraft = {
+  action_item_id: string;
+  session_id: string;
+  version_id: string;
+  owner_id: string;
+  requirement_id: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "critical";
+  evidence: AnalysisEvidence[];
+  status: "DRAFT" | "TICKET_PENDING_APPROVAL" | "TICKET_CREATED" | "TICKET_REJECTED" | "TICKET_FAILED";
+  pending_action_id: string | null;
+  ticket_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublicationDeliverables = {
+  version: {
+    version_id: string;
+    session_id: string;
+    version_number: number;
+    content_sha256: string;
+    prd: PrdDraft;
+    published_by: string;
+    published_at: string;
+  };
+  knowledge_candidates: KnowledgeCandidate[];
+  action_items: ActionItemDraft[];
+};
+
 export function listAnalysisSessions(): Promise<AnalysisSession[]> {
   return agentRequest<AnalysisSession[]>("/analysis/sessions");
 }
@@ -119,4 +165,28 @@ export function approvePrdPublication(
 
 export function listAnalysisAudit(sessionId: string): Promise<AnalysisAuditEvent[]> {
   return agentRequest<AnalysisAuditEvent[]>(`/analysis/sessions/${sessionId}/audit`);
+}
+
+export function getPublicationDeliverables(sessionId: string): Promise<PublicationDeliverables> {
+  return agentRequest<PublicationDeliverables>(`/analysis/sessions/${sessionId}/deliverables`);
+}
+
+export function decideKnowledgeCandidate(
+  sessionId: string, candidateId: string, approved: boolean,
+): Promise<KnowledgeCandidate> {
+  return agentRequest<KnowledgeCandidate>(
+    `/analysis/sessions/${sessionId}/knowledge-candidates/${candidateId}/decision`,
+    {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved }),
+    },
+  );
+}
+
+export function createActionTicketDraft(
+  sessionId: string, actionItemId: string,
+): Promise<{ action_item: ActionItemDraft; pending_action_id: string }> {
+  return agentRequest<{ action_item: ActionItemDraft; pending_action_id: string }>(`/analysis/sessions/${sessionId}/action-items/${actionItemId}/ticket-draft`, {
+    method: "POST",
+  });
 }

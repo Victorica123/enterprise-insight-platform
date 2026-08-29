@@ -99,8 +99,10 @@ def delete_document(
     owner_id: str | None = None,
     rebuild_graph: bool = True,
 ) -> bool:
-    if rebuild_graph and tenant_id is None and owner_id is None:
-        return delete_document_and_rebuild(document_id)
+    if rebuild_graph:
+        return delete_document_and_rebuild(
+            document_id, tenant_id=tenant_id, owner_id=owner_id,
+        )
     return database.delete_document(document_id, tenant_id=tenant_id, owner_id=owner_id)
 
 

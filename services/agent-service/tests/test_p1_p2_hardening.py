@@ -110,13 +110,13 @@ class ConcurrentApprovalTests(unittest.TestCase):
         executions = 0
         lock = threading.Lock()
 
-        def slow_handler(**payload):
+        def slow_handler(context, payload):
             nonlocal executions
             with lock:
                 executions += 1
             entered.set()
             time.sleep(0.15)
-            return original_handler(**payload)
+            return original_handler(context, payload)
 
         draft = execute_tool(
             "create_ticket",

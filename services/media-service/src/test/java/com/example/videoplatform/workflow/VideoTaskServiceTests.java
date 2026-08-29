@@ -78,6 +78,10 @@ class VideoTaskServiceTests {
 		VideoTask failed = task("task-failed", VideoTask.TaskStatus.FAILED);
 		failed.setErrorMessage("ffmpeg failed");
 		when(taskRepository.findByTaskIdAndOwner("task-failed", "user-1")).thenReturn(Optional.of(failed));
+		when(userAccountRepository.findByUserId("user-1"))
+				.thenReturn(Optional.of(new UserAccount("user-1", "alice", "hash")));
+		when(taskRepository.countByOwnerAndStatusIn(eq("user-1"), org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(0L);
 
 		VideoTask result = service.retryFailedTask("task-failed", "user-1");
 

@@ -5,9 +5,9 @@
 ## Workspace inventory
 
 - Media Service: 78 production Java files; 25 test files; 103 `@Test` methods.
-- Agent Service: 39 application Python files; 16 test files; 102 pytest test functions.
+- Agent Service: 40 application Python files; 18 test files; 107 pytest test functions.
 - React Web: 21 TypeScript/TSX/CSS source files.
-- Machine-readable contracts: 4 files.
+- Machine-readable contracts: 5 files.
 - Local localhost-only acceptance runner: present.
 
 ## Detected primary dependencies
@@ -19,12 +19,13 @@
 ## HTTP surface approximation
 
 - Media mapping annotations: 22
-- Agent route decorators: 35
+- Agent route decorators: 38
 
 ## Versioned contracts
 
 - `contracts/events/transcript-ready-v1.schema.json`
 - `contracts/http/evidence-source-v1.schema.json`
+- `contracts/http/publication-deliverables-v1.schema.json`
 - `contracts/identity/jwt-claims-v1.schema.json`
 - `contracts/identity/jwt-claims-v2.schema.json`
 

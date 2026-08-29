@@ -6,8 +6,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.analysis_models import (
-    AnalysisAuditEvent, AnalysisConfirmationRequest, AnalysisCreateRequest,
-    AnalysisSessionResponse, PublicationApprovalRequest,
+    ActionItemTicketDraftResponse, AnalysisAuditEvent, AnalysisConfirmationRequest,
+    AnalysisCreateRequest, AnalysisSessionResponse, KnowledgeCandidate,
+    KnowledgeCandidateDecisionRequest, PublicationApprovalRequest,
+    PublicationDeliverables,
 )
 from app.analysis_pipeline import run_six_stage_analysis
 from app.analysis_store import (
@@ -18,7 +20,14 @@ from app.auth import ActorPrincipal, current_principal, require_write_role
 from app.publication_service import (
     PublicationRuleError, approve_publication, request_publication,
 )
+from app.publication_artifacts import (
+    decide_knowledge_candidate,
+    get_action_item,
+    get_publication_deliverables,
+    mark_action_ticket_pending,
+)
 from app.retrievers import RetrievalScope, load_chunks
+from app.tools import execute_tool
 
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -143,6 +152,122 @@ def get_analysis_audit(
 ) -> list[AnalysisAuditEvent]:
     _require_session(session_id, principal)
     return list_audit_events(session_id, principal.tenant_id)
+
+
+@router.get(
+    "/sessions/{session_id}/deliverables",
+    response_model=PublicationDeliverables,
+)
+def get_published_deliverables(
+    session_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> PublicationDeliverables:
+    session = (
+        _require_tenant_session(session_id, principal)
+        if principal.workspace_type == "team"
+        else _require_session(session_id, principal)
+    )
+    if session.status != "PUBLISHED":
+        raise HTTPException(status_code=409, detail="The PRD has not been published.")
+    deliverables = get_publication_deliverables(session_id, principal.tenant_id)
+    if deliverables is None:
+        raise HTTPException(status_code=404, detail="Published deliverables not found.")
+    return deliverables
+
+
+@router.post(
+    "/sessions/{session_id}/knowledge-candidates/{candidate_id}/decision",
+    response_model=KnowledgeCandidate,
+)
+def decide_published_knowledge_candidate(
+    session_id: str,
+    candidate_id: str,
+    request: KnowledgeCandidateDecisionRequest,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> KnowledgeCandidate:
+    require_write_role(principal.role)
+    session = _require_tenant_session(session_id, principal)
+    if session.status != "PUBLISHED":
+        raise HTTPException(status_code=409, detail="The PRD has not been published.")
+    if principal.workspace_type == "personal":
+        if principal.user_id != session.owner_id or principal.role != "admin":
+            raise HTTPException(status_code=403, detail="Only the personal workspace owner can decide knowledge candidates.")
+    elif principal.user_id == session.owner_id:
+        raise HTTPException(status_code=403, detail="Team knowledge publication requires a different reviewer.")
+    bundle = get_publication_deliverables(session_id, principal.tenant_id)
+    if bundle is None or not any(item.candidate_id == candidate_id for item in bundle.knowledge_candidates):
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
+    decided = decide_knowledge_candidate(
+        candidate_id,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        approved=request.approved,
+        decided_at=utc_now(),
+    )
+    if decided is None:
+        raise HTTPException(status_code=409, detail="Knowledge candidate was already decided.")
+    return decided
+
+
+@router.post(
+    "/sessions/{session_id}/action-items/{action_item_id}/ticket-draft",
+    response_model=ActionItemTicketDraftResponse,
+)
+def create_action_item_ticket_draft(
+    session_id: str,
+    action_item_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> ActionItemTicketDraftResponse:
+    require_write_role(principal.role)
+    session = _require_session(session_id, principal)
+    if session.status != "PUBLISHED":
+        raise HTTPException(status_code=409, detail="The PRD has not been published.")
+    item = get_action_item(action_item_id, principal.tenant_id)
+    if item is None or item.session_id != session_id or item.owner_id != principal.user_id:
+        raise HTTPException(status_code=404, detail="Action item not found.")
+    if item.status != "DRAFT":
+        if item.pending_action_id:
+            return ActionItemTicketDraftResponse(
+                action_item=item, pending_action_id=item.pending_action_id,
+            )
+        raise HTTPException(status_code=409, detail="Action item cannot enter ticket approval.")
+    result = execute_tool(
+        "create_ticket",
+        {
+            "title": item.title,
+            "description": item.description,
+            "priority": item.priority,
+            "source_document_ids": list(dict.fromkeys(
+                evidence.document_id for evidence in item.evidence
+            )),
+        },
+        actor_role=principal.role,
+        actor_user=principal.actor_user,
+        tenant_id=principal.tenant_id,
+        owner_id=principal.user_id,
+        workspace_type=principal.workspace_type,
+    )
+    if not result.success or not result.pending_action_id:
+        raise HTTPException(
+            status_code=400,
+            detail=result.result.get("error", "Ticket draft could not be created."),
+        )
+    updated = mark_action_ticket_pending(
+        action_item_id,
+        tenant_id=principal.tenant_id,
+        pending_action_id=result.pending_action_id,
+        updated_at=utc_now(),
+    )
+    if updated is None:
+        current = get_action_item(action_item_id, principal.tenant_id)
+        if current is not None and current.pending_action_id:
+            return ActionItemTicketDraftResponse(
+                action_item=current, pending_action_id=current.pending_action_id,
+            )
+        raise HTTPException(status_code=409, detail="Action item was changed by another request.")
+    return ActionItemTicketDraftResponse(
+        action_item=updated, pending_action_id=result.pending_action_id,
+    )
 
 
 def _require_session(session_id: str, principal: ActorPrincipal) -> AnalysisSessionResponse:

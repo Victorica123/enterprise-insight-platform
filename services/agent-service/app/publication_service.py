@@ -11,6 +11,7 @@ from app.analysis_models import (
 )
 from app.analysis_store import transition_session, utc_now
 from app.auth import ActorPrincipal, WRITE_ROLES
+from app.publication_artifacts import build_publication_deliverables
 
 
 class PublicationRuleError(Exception):
@@ -112,6 +113,14 @@ def approve_publication(
         },
         created_at=now,
     )
-    if not transition_session(session, expected_status="PUBLISH_PENDING", audit_event=event):
+    deliverables = build_publication_deliverables(
+        session, published_by=principal.user_id, published_at=now,
+    )
+    if not transition_session(
+        session,
+        expected_status="PUBLISH_PENDING",
+        audit_event=event,
+        publication_deliverables=deliverables,
+    ):
         raise PublicationRuleError(409, "The PRD was already decided by another request.")
     return session

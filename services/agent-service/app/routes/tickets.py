@@ -4,7 +4,6 @@ from app.auth import (
     ActorPrincipal,
     current_principal,
     require_operator_role,
-    require_tenant_safe_feature,
     require_write_role,
 )
 from app.models import (
@@ -31,6 +30,23 @@ from app.tools import execute_tool, resolve_tool_action
 router = APIRouter(tags=["tickets"])
 
 
+def _private_scope(principal: ActorPrincipal) -> tuple[str | None, str | None]:
+    """Scope by server principal; default development fixtures resolve to legacy/legacy."""
+    return principal.tenant_id, principal.user_id
+
+
+def _tenant_scope(principal: ActorPrincipal) -> str | None:
+    return principal.tenant_id
+
+
+def _tool_scope(principal: ActorPrincipal) -> dict[str, str]:
+    return {
+        "tenant_id": principal.tenant_id,
+        "owner_id": principal.user_id,
+        "workspace_type": principal.workspace_type,
+    }
+
+
 @router.get("/tickets", response_model=TicketListResponse, summary="工单列表（状态/优先级/关键词过滤）")
 def get_tickets(
     status: str | None = None,
@@ -38,12 +54,15 @@ def get_tickets(
     keyword: str = "",
     principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketListResponse:
-    require_tenant_safe_feature(principal, "Tickets")
-    tickets = list_tickets(status=status, priority=priority, keyword=keyword)
+    tenant_id, owner_id = _private_scope(principal)
+    tickets = list_tickets(
+        status=status, priority=priority, keyword=keyword,
+        tenant_id=tenant_id, owner_id=owner_id,
+    )
     return TicketListResponse(
         tickets=[TicketResponse(**ticket.to_dict()) for ticket in tickets],
         total=len(tickets),
-        summary=get_ticket_summary(),
+        summary=get_ticket_summary(tenant_id=tenant_id, owner_id=owner_id),
     )
 
 
@@ -52,8 +71,8 @@ def get_ticket_by_id(
     ticket_id: str,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketResponse:
-    require_tenant_safe_feature(principal, "Tickets")
-    ticket = get_ticket(ticket_id)
+    tenant_id, owner_id = _private_scope(principal)
+    ticket = get_ticket(ticket_id, tenant_id=tenant_id, owner_id=owner_id)
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found.")
     return TicketResponse(**ticket.to_dict())
@@ -65,8 +84,8 @@ def create_ticket_manual(
     request: TicketCreateRequest,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> TicketResponse:
-    require_tenant_safe_feature(principal, "Tickets")
     require_write_role(principal.role)
+    tenant_id, owner_id = _private_scope(principal)
     ticket = create_ticket(
         title=request.title,
         description=request.description,
@@ -75,6 +94,8 @@ def create_ticket_manual(
         assignee=request.assignee,
         risk_level=request.risk_level,
         source_document_ids=request.source_document_ids,
+        tenant_id=tenant_id or "legacy",
+        owner_id=owner_id or "legacy",
     )
     return TicketResponse(**ticket.to_dict())
 
@@ -85,17 +106,17 @@ def create_ticket_status_draft(
     request: TicketStatusDraftRequest,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> PendingActionResponse:
-    require_tenant_safe_feature(principal, "Tickets")
     result = execute_tool(
         "update_ticket_status",
         {"ticket_id": ticket_id, "new_status": request.new_status, "assignee": request.assignee},
         actor_role=principal.role,
         actor_user=principal.actor_user,
+        **_tool_scope(principal),
     )
     if not result.success:
         status_code = 403 if result.status == "denied" else 400
         raise HTTPException(status_code=status_code, detail=result.result.get("error", "Draft failed."))
-    action = get_pending_action(result.pending_action_id)
+    action = get_pending_action(result.pending_action_id, tenant_id=_tenant_scope(principal))
     if action is None:
         raise HTTPException(status_code=500, detail="Pending action was not persisted.")
     return PendingActionResponse(**action.to_dict())
@@ -107,9 +128,9 @@ def remove_ticket(
     ticket_id: str,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> dict[str, str]:
-    require_tenant_safe_feature(principal, "Tickets")
     require_write_role(principal.role)
-    if not delete_ticket(ticket_id):
+    tenant_id, owner_id = _private_scope(principal)
+    if not delete_ticket(ticket_id, tenant_id=tenant_id, owner_id=owner_id):
         raise HTTPException(status_code=404, detail="Ticket not found.")
     return {"status": "deleted", "ticket_id": ticket_id}
 
@@ -119,9 +140,11 @@ def get_pending_actions(
     status: str = "pending",
     principal: ActorPrincipal = Depends(current_principal),
 ) -> list[PendingActionResponse]:
-    require_tenant_safe_feature(principal, "Tickets")
     require_operator_role(principal.role)
-    actions = list_pending_actions(status=None if status == "all" else status)
+    actions = list_pending_actions(
+        status=None if status == "all" else status,
+        tenant_id=_tenant_scope(principal),
+    )
     return [PendingActionResponse(**action.to_dict()) for action in actions]
 
 
@@ -133,12 +156,12 @@ def approve_action(
     request: ApprovalRequest,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> ApprovalResponse:
-    require_tenant_safe_feature(principal, "Tickets")
     resolution = resolve_tool_action(
         action_id,
         request.approved,
         actor_role=principal.role,
         actor_user=principal.actor_user,
+        tenant_id=_tenant_scope(principal) or "legacy",
     )
     if resolution.status == "not_found":
         raise HTTPException(status_code=404, detail=resolution.message)

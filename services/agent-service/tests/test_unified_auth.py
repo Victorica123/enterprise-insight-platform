@@ -109,6 +109,7 @@ class UnifiedAuthTests(unittest.TestCase):
             retriever_mode="hybrid",
             actor_role="operator",
             actor_user="user-123",
+            workspace_type="personal",
             retrieval_scope=RetrievalScope(
                 tenant_id="tenant-123",
                 owner_id="user-123",

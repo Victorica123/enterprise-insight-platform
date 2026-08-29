@@ -68,6 +68,7 @@ class AgenticRagState:
     retriever_mode: str
     actor_role: str = "operator"
     actor_user: str = "anonymous"
+    workspace_type: str = "team"
     retrieval_scope: RetrievalScope | None = None
     intent: str = "general"
     complexity: str = "simple"
@@ -97,6 +98,7 @@ def answer_agentic_question(
     retriever_mode: str = "hybrid",
     actor_role: str = "operator",
     actor_user: str = "anonymous",
+    workspace_type: str = "team",
     retrieval_scope: RetrievalScope | None = None,
 ) -> ChatResponse:
     init_tools()
@@ -107,6 +109,7 @@ def answer_agentic_question(
         retriever_mode=retriever_mode,
         actor_role=actor_role,
         actor_user=actor_user,
+        workspace_type=workspace_type,
         retrieval_scope=retrieval_scope,
         trace=[
             TraceStep(
@@ -197,7 +200,7 @@ def answer_agentic_question(
 
 def run_graph_agent(state: AgenticRagState) -> None:
     """Graph Agent：识别问题实体，取子图并生成关系链上下文。"""
-    lookup = lookup_graph(state.question, state.intent)
+    lookup = lookup_graph(state.question, state.intent, scope=state.retrieval_scope)
     if not lookup.matched_entities:
         return
 
@@ -245,6 +248,16 @@ def _question_needs_tools(question: str) -> bool:
     return any(kw.lower() in lowered for kw in _TOOL_KEYWORDS)
 
 
+def _tool_scope_kwargs(state: AgenticRagState) -> dict[str, str]:
+    """Keep tool reads, drafts and approvals in the same scope as retrieval."""
+    scope = state.retrieval_scope
+    return {
+        "tenant_id": scope.tenant_id if scope else "legacy",
+        "owner_id": (scope.owner_id or "legacy") if scope else "legacy",
+        "workspace_type": state.workspace_type,
+    }
+
+
 def _is_tool_only_question(question: str) -> bool:
     """Direct ticket operations can bypass RAG; knowledge-backed creation cannot."""
     query_or_update = any(
@@ -284,7 +297,13 @@ def run_tool_agent(state: AgenticRagState) -> None:
         if valid_calls:
             state.agents.append("Tool Agent")
             tool_results = [
-                execute_tool(name, arguments, actor_role=state.actor_role, actor_user=state.actor_user)
+                execute_tool(
+                    name,
+                    arguments,
+                    actor_role=state.actor_role,
+                    actor_user=state.actor_user,
+                    **_tool_scope_kwargs(state),
+                )
                 for name, arguments in valid_calls
             ]
             _record_tool_results(state, tool_results, source="LLM 工具选择")
@@ -321,7 +340,15 @@ def run_tool_agent(state: AgenticRagState) -> None:
             if priority_kw in state.question.lower():
                 kwargs["priority"] = priority_kw
                 break
-        tool_results.append(execute_tool("query_tickets", kwargs, actor_role=state.actor_role))
+        tool_results.append(
+            execute_tool(
+                "query_tickets",
+                kwargs,
+                actor_role=state.actor_role,
+                actor_user=state.actor_user,
+                **_tool_scope_kwargs(state),
+            )
+        )
 
     # 创建工单场景
     if create_requested and state.evidence_status in {"passed", "not_required"}:
@@ -337,6 +364,7 @@ def run_tool_agent(state: AgenticRagState) -> None:
             },
             actor_role=state.actor_role,
             actor_user=state.actor_user,
+            **_tool_scope_kwargs(state),
         )
         tool_results.append(result)
 
@@ -351,6 +379,7 @@ def run_tool_agent(state: AgenticRagState) -> None:
                     {"ticket_id": ticket_id, "new_status": target_status},
                     actor_role=state.actor_role,
                     actor_user=state.actor_user,
+                    **_tool_scope_kwargs(state),
                 )
             )
         elif not ticket_id:
@@ -383,7 +412,10 @@ def _record_tool_results(state: AgenticRagState, tool_results: list[ToolCallResu
     for result in tool_results:
         if not result.pending_action_id:
             continue
-        pending = get_pending_action(result.pending_action_id)
+        pending = get_pending_action(
+            result.pending_action_id,
+            tenant_id=(state.retrieval_scope.tenant_id if state.retrieval_scope else None),
+        )
         if pending is not None:
             state.pending_actions.append(PendingActionResponse(**pending.to_dict()))
 

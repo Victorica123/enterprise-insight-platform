@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth import (
     ActorPrincipal,
     current_principal,
-    require_tenant_safe_feature,
     require_write_role,
 )
 from app.graph_store import find_paths, get_graph_overview, list_entities, list_relations, rebuild_graph
@@ -21,10 +20,15 @@ from app.models import (
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
+def _graph_scope(principal: ActorPrincipal) -> dict[str, str]:
+    if principal.auth_mode == "jwt":
+        return {"tenant_id": principal.tenant_id, "owner_id": principal.user_id}
+    return {"tenant_id": "legacy", "owner_id": "legacy"}
+
+
 @router.get("/overview", response_model=GraphOverviewResponse, summary="图谱概览（实体/关系/类型分布）")
 def graph_overview(principal: ActorPrincipal = Depends(current_principal)) -> GraphOverviewResponse:
-    require_tenant_safe_feature(principal, "Graph")
-    return GraphOverviewResponse(**get_graph_overview())
+    return GraphOverviewResponse(**get_graph_overview(**_graph_scope(principal)))
 
 
 @router.get("/entities", response_model=list[GraphEntityResponse], summary="实体列表（类型/关键词过滤）")
@@ -34,8 +38,10 @@ def graph_entities(
     limit: int = 100,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> list[GraphEntityResponse]:
-    require_tenant_safe_feature(principal, "Graph")
-    return [GraphEntityResponse(**entity.to_dict()) for entity in list_entities(entity_type, keyword, limit)]
+    return [
+        GraphEntityResponse(**entity.to_dict())
+        for entity in list_entities(entity_type, keyword, limit, **_graph_scope(principal))
+    ]
 
 
 @router.get("/relations", response_model=list[GraphRelationResponse], summary="关系列表（按实体过滤，含证据句）")
@@ -45,8 +51,10 @@ def graph_relations(
     limit: int = 200,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> list[GraphRelationResponse]:
-    require_tenant_safe_feature(principal, "Graph")
-    return [GraphRelationResponse(**relation.to_dict()) for relation in list_relations(entity, relation_type, limit)]
+    return [
+        GraphRelationResponse(**relation.to_dict())
+        for relation in list_relations(entity, relation_type, limit, **_graph_scope(principal))
+    ]
 
 
 @router.get("/paths", response_model=GraphPathQueryResponse, summary="两实体间关系链（BFS，最多 4 跳）")
@@ -56,10 +64,12 @@ def graph_paths(
     max_depth: int = 3,
     principal: ActorPrincipal = Depends(current_principal),
 ) -> GraphPathQueryResponse:
-    require_tenant_safe_feature(principal, "Graph")
     if not source.strip() or not target.strip():
         raise HTTPException(status_code=400, detail="source 和 target 不能为空。")
-    paths = find_paths(source.strip(), target.strip(), max_depth)
+    paths = find_paths(
+        source.strip(), target.strip(), max_depth,
+        **_graph_scope(principal),
+    )
     return GraphPathQueryResponse(
         source=source.strip(),
         target=target.strip(),
@@ -88,6 +98,5 @@ def graph_paths(
 def graph_rebuild(
     principal: ActorPrincipal = Depends(current_principal),
 ) -> GraphRebuildResponse:
-    require_tenant_safe_feature(principal, "Graph")
     require_write_role(principal.role)
-    return GraphRebuildResponse(**rebuild_graph())
+    return GraphRebuildResponse(**rebuild_graph(**_graph_scope(principal)))

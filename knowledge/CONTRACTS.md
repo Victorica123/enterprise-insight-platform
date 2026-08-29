@@ -48,8 +48,11 @@ PRD 发布契约：
 - `POST /analysis/sessions/{id}/publication/approve`：校验 request ID、token、明确 `confirmation=PUBLISH`、Workspace 类型和职责分离后进入 `PUBLISHED`。
 - `GET /analysis/publication-queue`：只向 team Workspace 的写角色返回其他提交者的待审批 PRD。
 - `GET /analysis/sessions/{id}/audit`：返回发布申请与批准的 actor、role、策略和时间，不返回审批 token。
+- `GET /analysis/sessions/{id}/deliverables`：读取已发布 PRD 的不可变版本、知识候选和行动项草稿，响应契约为 `contracts/http/publication-deliverables-v1.schema.json`。
+- `POST /analysis/sessions/{id}/knowledge-candidates/{candidate_id}/decision`：对仍为 `PENDING` 的候选做一次性批准/拒绝；个人 owner 明确决定，team 由不同写角色成员决定。
+- `POST /analysis/sessions/{id}/action-items/{action_item_id}/ticket-draft`：只生成受控工具的 pending action，不直接创建工单；重复请求返回同一关联。审批结果会把行动项投影为 `TICKET_CREATED/REJECTED/FAILED`，成功时保存 `ticket_id`。
 
-个人策略允许原 OWNER 完成第二次确认；团队策略拒绝 `requested_by == approved_by`。审批 token 在成功后清空，状态转换与审计写入同一事务。
+个人策略允许原 OWNER 完成第二次确认；团队策略拒绝 `requested_by == approved_by`。审批 token 在成功后清空，状态转换、审计、不可变 PRD 版本和初始派生交付物写入同一事务。
 
 ## 版本策略
 

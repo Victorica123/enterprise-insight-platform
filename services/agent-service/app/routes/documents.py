@@ -110,7 +110,6 @@ def remove_document(
             document_id,
             tenant_id=principal.tenant_id,
             owner_id=principal.user_id,
-            rebuild_graph=False,
         )
     )
     if not deleted:

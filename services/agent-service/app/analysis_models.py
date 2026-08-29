@@ -123,3 +123,67 @@ class AnalysisSessionResponse(BaseModel):
     publication: PublicationApproval | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PublishedPrdVersion(BaseModel):
+    version_id: str
+    session_id: str
+    tenant_id: str
+    owner_id: str
+    version_number: int = Field(ge=1)
+    content_sha256: str
+    prd: PrdDraft
+    published_by: str
+    published_at: datetime
+
+
+class KnowledgeCandidate(BaseModel):
+    candidate_id: str
+    session_id: str
+    version_id: str
+    tenant_id: str
+    owner_id: str
+    requirement_id: str
+    statement: str
+    evidence: list[EvidenceRef]
+    status: Literal["PENDING", "APPROVED", "REJECTED"] = "PENDING"
+    created_by: str
+    created_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+
+
+class ActionItemDraft(BaseModel):
+    action_item_id: str
+    session_id: str
+    version_id: str
+    tenant_id: str
+    owner_id: str
+    requirement_id: str
+    title: str
+    description: str
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    evidence: list[EvidenceRef]
+    status: Literal[
+        "DRAFT", "TICKET_PENDING_APPROVAL", "TICKET_CREATED",
+        "TICKET_REJECTED", "TICKET_FAILED",
+    ] = "DRAFT"
+    pending_action_id: str | None = None
+    ticket_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PublicationDeliverables(BaseModel):
+    version: PublishedPrdVersion
+    knowledge_candidates: list[KnowledgeCandidate]
+    action_items: list[ActionItemDraft]
+
+
+class KnowledgeCandidateDecisionRequest(BaseModel):
+    approved: bool
+
+
+class ActionItemTicketDraftResponse(BaseModel):
+    action_item: ActionItemDraft
+    pending_action_id: str

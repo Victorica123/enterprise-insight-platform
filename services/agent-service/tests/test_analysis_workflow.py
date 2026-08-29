@@ -126,6 +126,53 @@ class AnalysisApiTests(unittest.TestCase):
             ["PUBLICATION_REQUESTED", "PUBLICATION_APPROVED"],
         )
 
+        deliverables_response = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/deliverables", headers=headers,
+        )
+        self.assertEqual(deliverables_response.status_code, 200, deliverables_response.text)
+        deliverables = deliverables_response.json()
+        self.assertEqual(deliverables["version"]["version_number"], 1)
+        self.assertEqual(len(deliverables["version"]["content_sha256"]), 64)
+        self.assertEqual(deliverables["knowledge_candidates"][0]["status"], "PENDING")
+        self.assertEqual(deliverables["action_items"][0]["status"], "DRAFT")
+
+        candidate = deliverables["knowledge_candidates"][0]
+        decided = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/{candidate['candidate_id']}/decision",
+            headers=headers, json={"approved": True},
+        )
+        self.assertEqual(decided.status_code, 200, decided.text)
+        self.assertEqual(decided.json()["status"], "APPROVED")
+
+        action = deliverables["action_items"][0]
+        drafted = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/action-items/{action['action_item_id']}/ticket-draft",
+            headers=headers,
+        )
+        self.assertEqual(drafted.status_code, 200, drafted.text)
+        self.assertEqual(drafted.json()["action_item"]["status"], "TICKET_PENDING_APPROVAL")
+        pending_id = drafted.json()["pending_action_id"]
+        approved_ticket = self.client.post(
+            f"/pending-actions/{pending_id}/approve",
+            headers=headers, json={"approved": True},
+        )
+        self.assertEqual(approved_ticket.status_code, 200, approved_ticket.text)
+        self.assertEqual(approved_ticket.json()["status"], "succeeded")
+        completed = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/deliverables", headers=headers,
+        ).json()["action_items"][0]
+        self.assertEqual(completed["status"], "TICKET_CREATED")
+        self.assertEqual(
+            completed["ticket_id"], approved_ticket.json()["result"]["ticket"]["ticket_id"],
+        )
+        repeated = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/action-items/{action['action_item_id']}/ticket-draft",
+            headers=headers,
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.text)
+        self.assertEqual(repeated.json()["pending_action_id"], pending_id)
+        self.assertEqual(repeated.json()["action_item"]["status"], "TICKET_CREATED")
+
     def test_team_publication_rejects_self_approval_and_accepts_second_member(self) -> None:
         author = {
             "X-User-Role": "operator", "X-User-Id": "user-a",
@@ -170,6 +217,22 @@ class AnalysisApiTests(unittest.TestCase):
         )
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(approved.json()["publication"]["approved_by"], "user-b")
+
+        deliverables = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/deliverables", headers=author,
+        ).json()
+        candidate_id = deliverables["knowledge_candidates"][0]["candidate_id"]
+        self_decision = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/{candidate_id}/decision",
+            headers=author, json={"approved": True},
+        )
+        self.assertEqual(self_decision.status_code, 403)
+        reviewed = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/{candidate_id}/decision",
+            headers=reviewer, json={"approved": True},
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        self.assertEqual(reviewed.json()["decided_by"], "user-b")
 
 
 if __name__ == "__main__":

@@ -157,6 +157,11 @@ def init_db() -> None:
         ensure_column(conn, table="chat_metrics", column="completion_tokens", definition="integer not null default 0")
         ensure_column(conn, table="chat_metrics", column="total_tokens", definition="integer not null default 0")
         ensure_column(conn, table="chat_metrics", column="estimated_cost_usd", definition="real not null default 0")
+        ensure_column(conn, table="chat_metrics", column="tenant_id", definition="text not null default 'legacy'")
+        ensure_column(conn, table="chat_metrics", column="owner_id", definition="text not null default 'legacy'")
+        conn.execute(
+            "create index if not exists idx_chat_metrics_scope on chat_metrics(tenant_id, owner_id, created_at)"
+        )
         # V5: 请求日志（失败回放 + 用户反馈）；chat_metrics 保持不含问题原文
         conn.execute(
             """
@@ -187,6 +192,11 @@ def init_db() -> None:
             create index if not exists idx_chat_logs_outcome
             on chat_logs(outcome, created_at)
             """
+        )
+        ensure_column(conn, table="chat_logs", column="tenant_id", definition="text not null default 'legacy'")
+        ensure_column(conn, table="chat_logs", column="owner_id", definition="text not null default 'legacy'")
+        conn.execute(
+            "create index if not exists idx_chat_logs_scope on chat_logs(tenant_id, owner_id, created_at)"
         )
         conn.execute(
             """
@@ -585,6 +595,20 @@ def bump_content_revision(conn: sqlite3.Connection) -> None:
     )
 
 
+def _scope_where(
+    *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> tuple[str, list[object]]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
+    return (f"where {' and '.join(clauses)}" if clauses else ""), params
+
+
 def record_chat_metric(
     *,
     workflow_mode: str,
@@ -605,20 +629,24 @@ def record_chat_metric(
     completion_tokens: int = 0,
     total_tokens: int = 0,
     estimated_cost_usd: float = 0.0,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
 ) -> None:
     init_db()
     with connect() as conn:
         conn.execute(
             """
             insert into chat_metrics (
-                workflow_mode, answer_mode, retriever_mode, intent, complexity,
+                tenant_id, owner_id, workflow_mode, answer_mode, retriever_mode, intent, complexity,
                 retrieval_rounds, query_count, evidence_status, citation_status,
                 source_count, outcome, answer_status, latency_ms, answer_chars,
                 prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                tenant_id,
+                owner_id,
                 workflow_mode,
                 answer_mode,
                 retriever_mode,
@@ -641,11 +669,14 @@ def record_chat_metric(
         )
 
 
-def get_chat_metrics_summary() -> dict[str, object]:
+def get_chat_metrics_summary(
+    *, tenant_id: str | None = None, owner_id: str | None = None,
+) -> dict[str, object]:
     init_db()
+    where, scope_params = _scope_where(tenant_id=tenant_id, owner_id=owner_id)
     with connect() as conn:
         totals = conn.execute(
-            """
+            f"""
             select
                 count(*) as total,
                 sum(case when outcome = 'answered' then 1 else 0 end) as answered,
@@ -664,8 +695,9 @@ def get_chat_metrics_summary() -> dict[str, object]:
                 sum(completion_tokens) as completion_tokens,
                 sum(total_tokens) as total_tokens,
                 sum(estimated_cost_usd) as total_cost
-            from chat_metrics
-            """
+            from chat_metrics {where}
+            """,
+            scope_params,
         ).fetchone()
         total = int(totals["total"] or 0)
         if total == 0:
@@ -673,23 +705,25 @@ def get_chat_metrics_summary() -> dict[str, object]:
 
         p95_index = max(0, math.ceil(total * 0.95) - 1)
         p95_row = conn.execute(
-            "select latency_ms from chat_metrics order by latency_ms limit 1 offset ?",
-            (p95_index,),
+            f"select latency_ms from chat_metrics {where} order by latency_ms limit 1 offset ?",
+            [*scope_params, p95_index],
         ).fetchone()
         feedback = conn.execute(
-            """
+            f"""
             select
                 sum(case when feedback > 0 then 1 else 0 end) as positive,
                 sum(case when feedback < 0 then 1 else 0 end) as negative
-            from chat_logs where feedback != 0
-            """
+            from chat_logs {where}{' and' if where else ' where'} feedback != 0
+            """,
+            scope_params,
         ).fetchone()
 
         def grouped_count(column: str) -> dict[str, int]:
             return {
                 str(row["key"]): int(row["value"])
                 for row in conn.execute(
-                    f"select {column} as key, count(*) as value from chat_metrics group by {column}"
+                    f"select {column} as key, count(*) as value from chat_metrics {where} group by {column}",
+                    scope_params,
                 ).fetchall()
             }
 
@@ -697,15 +731,18 @@ def get_chat_metrics_summary() -> dict[str, object]:
             return {
                 str(row["key"]): round(float(row["value"] or 0), 2)
                 for row in conn.execute(
-                    f"select {key} as key, avg({value}) as value from chat_metrics group by {key}"
+                    f"select {key} as key, avg({value}) as value from chat_metrics {where} group by {key}",
+                    scope_params,
                 ).fetchall()
             }
 
         token_rows = conn.execute(
-            "select answer_mode as key, sum(total_tokens) as value from chat_metrics group by answer_mode"
+            f"select answer_mode as key, sum(total_tokens) as value from chat_metrics {where} group by answer_mode",
+            scope_params,
         ).fetchall()
         cost_rows = conn.execute(
-            "select answer_mode as key, sum(estimated_cost_usd) as value from chat_metrics group by answer_mode"
+            f"select answer_mode as key, sum(estimated_cost_usd) as value from chat_metrics {where} group by answer_mode",
+            scope_params,
         ).fetchall()
         workflow_usage = grouped_count("workflow_mode")
         answer_mode_usage = grouped_count("answer_mode")
@@ -823,19 +860,23 @@ def record_chat_log(
     estimated_cost_usd: float,
     answer_preview: str,
     trace: list[dict[str, str]],
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
 ) -> int:
     init_db()
     with connect() as conn:
         cursor = conn.execute(
             """
             insert into chat_logs (
-                question, workflow_mode, answer_mode, retriever_mode, intent, outcome,
+                tenant_id, owner_id, question, workflow_mode, answer_mode, retriever_mode, intent, outcome,
                 evidence_status, citation_status, source_count, latency_ms,
                 total_tokens, estimated_cost_usd, answer_preview, trace_json
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                tenant_id,
+                owner_id,
                 question[:300],
                 workflow_mode,
                 answer_mode,
@@ -855,34 +896,77 @@ def record_chat_log(
         return int(cursor.lastrowid or 0)
 
 
-def list_chat_logs(outcome: str = "", limit: int = 50) -> list[dict[str, object]]:
+def list_chat_logs(
+    outcome: str = "",
+    limit: int = 50,
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> list[dict[str, object]]:
     init_db()
-    clauses = ""
+    clauses: list[str] = []
     params: list[object] = []
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     if outcome:
-        clauses = " where outcome = ?"
+        clauses.append("outcome = ?")
         params.append(outcome)
+    where = f" where {' and '.join(clauses)}" if clauses else ""
     params.append(max(1, min(limit, 200)))
     with connect() as conn:
         rows = conn.execute(
-            f"select * from chat_logs{clauses} order by log_id desc limit ?", params
+            f"select * from chat_logs{where} order by log_id desc limit ?", params
         ).fetchall()
     return [_chat_log_row_to_dict(row, include_trace=False) for row in rows]
 
 
-def get_chat_log(log_id: int) -> dict[str, object] | None:
+def get_chat_log(
+    log_id: int,
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> dict[str, object] | None:
     init_db()
+    clauses = ["log_id = ?"]
+    params: list[object] = [log_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     with connect() as conn:
-        row = conn.execute("select * from chat_logs where log_id = ?", (log_id,)).fetchone()
+        row = conn.execute(
+            f"select * from chat_logs where {' and '.join(clauses)}", params,
+        ).fetchone()
     return _chat_log_row_to_dict(row, include_trace=True) if row else None
 
 
-def set_chat_log_feedback(log_id: int, feedback: int, note: str = "") -> bool:
+def set_chat_log_feedback(
+    log_id: int,
+    feedback: int,
+    note: str = "",
+    *,
+    tenant_id: str | None = None,
+    owner_id: str | None = None,
+) -> bool:
     init_db()
+    clauses = ["log_id = ?"]
+    params: list[object] = [log_id]
+    if tenant_id is not None:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if owner_id is not None:
+        clauses.append("owner_id = ?")
+        params.append(owner_id)
     with connect() as conn:
         cursor = conn.execute(
-            "update chat_logs set feedback = ?, feedback_note = ? where log_id = ?",
-            (feedback, note[:500], log_id),
+            f"update chat_logs set feedback = ?, feedback_note = ? where {' and '.join(clauses)}",
+            [feedback, note[:500], *params],
         )
         return cursor.rowcount == 1
 
@@ -890,6 +974,8 @@ def set_chat_log_feedback(log_id: int, feedback: int, note: str = "") -> bool:
 def _chat_log_row_to_dict(row: sqlite3.Row, include_trace: bool) -> dict[str, object]:
     result: dict[str, object] = {
         "log_id": int(row["log_id"]),
+        "tenant_id": row["tenant_id"],
+        "owner_id": row["owner_id"],
         "question": row["question"],
         "workflow_mode": row["workflow_mode"],
         "answer_mode": row["answer_mode"],

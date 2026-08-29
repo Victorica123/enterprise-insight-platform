@@ -45,6 +45,7 @@ def chat(
                 "retriever_mode": request.retriever_mode,
                 "actor_role": actor_role,
                 "actor_user": actor_user,
+                "workspace_type": principal.workspace_type,
             }
             if retrieval_scope is not None:
                 kwargs["retrieval_scope"] = retrieval_scope
@@ -64,6 +65,7 @@ def chat(
             response=None,
             latency_ms=(perf_counter() - started_at) * 1000,
             outcome="error",
+            principal=principal,
         )
         raise
 
@@ -78,6 +80,7 @@ def chat(
         response=response,
         latency_ms=(perf_counter() - started_at) * 1000,
         outcome=outcome,
+        principal=principal,
     )
     if isinstance(log_id, int):
         response.log_id = log_id
@@ -103,9 +106,12 @@ def safe_record_chat_metric(
     response: ChatResponse | None,
     latency_ms: float,
     outcome: str,
+    principal: ActorPrincipal | None = None,
 ) -> int:
     """记录指标 + 请求日志（含 token 成本），返回日志 ID 供反馈使用。"""
     try:
+        tenant_id = principal.tenant_id if principal and principal.auth_mode == "jwt" else "legacy"
+        owner_id = principal.user_id if principal and principal.auth_mode == "jwt" else "legacy"
         summary = response.agent_summary if response else None
         usage = response.token_usage if response else None
         answer_status = "error"
@@ -132,6 +138,8 @@ def safe_record_chat_metric(
             completion_tokens=usage.completion_tokens if usage else 0,
             total_tokens=usage.total_tokens if usage else 0,
             estimated_cost_usd=usage.estimated_cost_usd if usage else 0.0,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
         )
         return record_chat_log(
             question=request.question,
@@ -148,6 +156,8 @@ def safe_record_chat_metric(
             estimated_cost_usd=usage.estimated_cost_usd if usage else 0.0,
             answer_preview=response.answer[:400] if response else "",
             trace=[step.model_dump() for step in response.trace] if response else [],
+            tenant_id=tenant_id,
+            owner_id=owner_id,
         )
     except Exception:
         logger.exception("Failed to record chat metric")

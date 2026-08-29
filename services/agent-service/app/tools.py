@@ -8,6 +8,7 @@ from time import perf_counter
 from typing import Callable
 
 from app.auth import OPERATOR_ROLES, WRITE_ROLES
+from app.publication_artifacts import settle_action_ticket
 from app.ticket_store import (
     PendingAction,
     claim_pending_action,
@@ -21,6 +22,7 @@ from app.ticket_store import (
     reject_pending_action,
     update_ticket_status,
     update_tool_call,
+    utc_now,
 )
 
 
@@ -31,15 +33,22 @@ READ_ROLES = OPERATOR_ROLES
 
 
 @dataclass(frozen=True)
+class ToolExecutionContext:
+    tenant_id: str = "legacy"
+    owner_id: str = "legacy"
+    workspace_type: str = "team"
+
+
+@dataclass(frozen=True)
 class ToolDefinition:
     name: str
     description: str
     parameters: dict
-    handler: Callable[..., dict]
+    handler: Callable[[ToolExecutionContext, dict], dict]
     operation: str = "read"
     requires_approval: bool = False
     allowed_roles: frozenset[str] = READ_ROLES
-    approved_handler: Callable[..., dict] | None = None
+    approved_handler: Callable[[ToolExecutionContext, dict], dict] | None = None
 
 
 @dataclass
@@ -165,10 +174,14 @@ def execute_tool(
     actor_role: str = "operator",
     actor_user: str = "anonymous",
     approval_ttl_seconds: int = 900,
+    tenant_id: str = "legacy",
+    owner_id: str = "legacy",
+    workspace_type: str = "team",
 ) -> ToolCallResult:
     """Run one validated tool call or create an approval draft for writes."""
     init_tools()
     started_at = perf_counter()
+    context = ToolExecutionContext(tenant_id, owner_id, workspace_type)
     tool = get_tool(name)
     if tool is None:
         duration = _elapsed_ms(started_at)
@@ -181,6 +194,7 @@ def execute_tool(
             input_payload=_audit_payload(arguments),
             error_message="unknown_tool",
             duration_ms=duration,
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         return ToolCallResult(name, False, {"error": "未知工具。"}, "failed", duration)
 
@@ -195,6 +209,7 @@ def execute_tool(
             input_payload=_audit_payload(arguments),
             error_message="permission_denied",
             duration_ms=duration,
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         return ToolCallResult(name, False, {"error": "当前角色没有调用该工具的权限。"}, "denied", duration)
 
@@ -211,11 +226,12 @@ def execute_tool(
             input_payload=_audit_payload(arguments),
             error_message=str(exc),
             duration_ms=duration,
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         return ToolCallResult(name, False, {"error": str(exc)}, "failed", duration)
 
     try:
-        result = tool.handler(**validated)
+        result = tool.handler(context, validated)
         if "error" in result:
             raise ValueError(str(result["error"]))
         if not tool.requires_approval:
@@ -229,6 +245,7 @@ def execute_tool(
                 input_payload=_audit_payload(validated),
                 result=_audit_payload(result),
                 duration_ms=duration,
+                tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
             )
             return ToolCallResult(name, True, result, "succeeded", duration)
 
@@ -239,12 +256,16 @@ def execute_tool(
             status="preparing",
             actor_role=actor_role,
             input_payload=_audit_payload(validated),
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         action, reused = create_pending_action(
             name,
             result["draft"],
             requested_by=actor_role,
             requested_by_user=actor_user,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            workspace_type=workspace_type,
             tool_call_id=call_id,
             ttl_seconds=approval_ttl_seconds,
         )
@@ -269,6 +290,7 @@ def execute_tool(
             input_payload=_audit_payload(arguments),
             error_message=str(exc),
             duration_ms=duration,
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         return ToolCallResult(name, False, {"error": str(exc)}, "failed", duration)
 
@@ -284,11 +306,12 @@ def resolve_tool_action(
     *,
     actor_role: str,
     actor_user: str = "anonymous",
+    tenant_id: str = "legacy",
 ) -> ApprovalResolution:
     """Resolve an approval with atomic claiming and duplicate-request idempotency."""
     started_at = perf_counter()
     init_tools()
-    action = get_pending_action(action_id)
+    action = get_pending_action(action_id, tenant_id=tenant_id)
     if action is None:
         return ApprovalResolution(action_id, "not_found", {}, "待审批操作不存在。")
     tool = get_tool(action.action_type)
@@ -303,9 +326,13 @@ def resolve_tool_action(
             actor_role=actor_role,
             input_payload={"action_id": action_id, "approved": approved},
             error_message="permission_denied",
+            tenant_id=action.tenant_id,
+            owner_id=action.owner_id,
+            actor_user=actor_user,
         )
         return ApprovalResolution(action_id, "denied", {}, "当前角色没有审批权限。")
     if action.status not in {"pending", "executing"}:
+        _settle_linked_action(action)
         return _resolved_response(action, already_resolved=True)
 
     # 职责分离：发起人不能审批自己的写操作（双方身份都明确时才比对，
@@ -313,6 +340,7 @@ def resolve_tool_action(
     if (
         approved
         and _approval_sod_enforced()
+        and action.workspace_type == "team"
         and actor_user != "anonymous"
         and action.requested_by_user == actor_user
     ):
@@ -327,13 +355,16 @@ def resolve_tool_action(
             actor_role=actor_role,
             input_payload={"action_id": action_id, "approved": approved},
             error_message="separation_of_duties",
+            tenant_id=action.tenant_id,
+            owner_id=action.owner_id,
+            actor_user=actor_user,
         )
         return ApprovalResolution(
             action_id, "denied", {}, "职责分离：发起人不能审批自己发起的写操作，请由其他人审批。"
         )
 
     if not approved:
-        resolved = reject_pending_action(action_id, actor_role)
+        resolved = reject_pending_action(action_id, actor_role, tenant_id=tenant_id)
         if resolved is None:
             return ApprovalResolution(action_id, "not_found", {}, "待审批操作不存在。")
         update_tool_call(
@@ -343,9 +374,10 @@ def resolve_tool_action(
             result={"decision": resolved.status},
             duration_ms=_elapsed_ms(started_at),
         )
+        _settle_linked_action(resolved)
         return _resolved_response(resolved)
 
-    claimed, acquired = claim_pending_action(action_id, actor_role)
+    claimed, acquired = claim_pending_action(action_id, actor_role, tenant_id=tenant_id)
     if claimed is None:
         return ApprovalResolution(action_id, "not_found", {}, "待审批操作不存在。")
     if not acquired and claimed.status == "executing":
@@ -358,13 +390,19 @@ def resolve_tool_action(
                 action_id=action_id,
                 duration_ms=_elapsed_ms(started_at),
             )
+            _settle_linked_action(claimed)
         return _resolved_response(claimed, already_resolved=claimed.status in {"succeeded", "failed"})
 
     try:
         validated = validate_arguments(tool, claimed.payload)
         if tool.approved_handler is None:
             raise RuntimeError("工具没有配置审批执行器。")
-        result = tool.approved_handler(**validated)
+        context = ToolExecutionContext(
+            tenant_id=claimed.tenant_id,
+            owner_id=claimed.owner_id,
+            workspace_type=claimed.workspace_type,
+        )
+        result = tool.approved_handler(context, validated)
         if "error" in result:
             raise RuntimeError(str(result["error"]))
         duration = _elapsed_ms(started_at)
@@ -374,6 +412,7 @@ def resolve_tool_action(
             result=result,
             error_message="",
             duration_ms=duration,
+            tenant_id=tenant_id,
         )
         update_tool_call(
             claimed.tool_call_id,
@@ -382,6 +421,7 @@ def resolve_tool_action(
             result=_audit_payload(result),
             duration_ms=duration,
         )
+        _settle_linked_action(completed or claimed)
         return _resolved_response(completed or claimed)
     except Exception as exc:
         duration = _elapsed_ms(started_at)
@@ -391,6 +431,7 @@ def resolve_tool_action(
             result={},
             error_message=str(exc),
             duration_ms=duration,
+            tenant_id=tenant_id,
         )
         update_tool_call(
             claimed.tool_call_id,
@@ -399,7 +440,20 @@ def resolve_tool_action(
             error_message=str(exc),
             duration_ms=duration,
         )
+        _settle_linked_action(completed or claimed)
         return _resolved_response(completed or claimed)
+
+
+def _settle_linked_action(action: PendingAction) -> None:
+    ticket = action.result.get("ticket") if isinstance(action.result, dict) else None
+    ticket_id = ticket.get("ticket_id") if isinstance(ticket, dict) else None
+    settle_action_ticket(
+        action.action_id,
+        tenant_id=action.tenant_id,
+        action_status=action.status,
+        ticket_id=ticket_id,
+        updated_at=utc_now(),
+    )
 
 
 def validate_arguments(tool: ToolDefinition, arguments: dict) -> dict:
@@ -435,17 +489,25 @@ def validate_arguments(tool: ToolDefinition, arguments: dict) -> dict:
     return validated
 
 
-def _query_tickets(status: str = "", priority: str = "", keyword: str = "") -> dict:
-    tickets = list_tickets(status=status or None, priority=priority or None, keyword=keyword, limit=20)
+def _query_tickets(context: ToolExecutionContext, arguments: dict) -> dict:
+    tickets = list_tickets(
+        status=arguments.get("status") or None,
+        priority=arguments.get("priority") or None,
+        keyword=arguments.get("keyword", ""),
+        limit=20,
+        tenant_id=context.tenant_id,
+        owner_id=context.owner_id,
+    )
     return {"count": len(tickets), "tickets": [ticket.to_dict() for ticket in tickets]}
 
 
-def _get_ticket_detail(ticket_id: str) -> dict:
-    ticket = get_ticket(ticket_id)
+def _get_ticket_detail(context: ToolExecutionContext, arguments: dict) -> dict:
+    ticket_id = arguments["ticket_id"]
+    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.owner_id)
     return ticket.to_dict() if ticket else {"error": f"工单 {ticket_id} 不存在。"}
 
 
-def _draft_create_ticket(**payload) -> dict:
+def _draft_create_ticket(_: ToolExecutionContext, payload: dict) -> dict:
     return {
         "action": "create_ticket",
         "status": "pending_approval",
@@ -454,13 +516,18 @@ def _draft_create_ticket(**payload) -> dict:
     }
 
 
-def _execute_create_ticket(**payload) -> dict:
-    ticket = create_ticket(status="open", **payload)
+def _execute_create_ticket(context: ToolExecutionContext, payload: dict) -> dict:
+    ticket = create_ticket(
+        status="open", tenant_id=context.tenant_id, owner_id=context.owner_id, **payload,
+    )
     return {"action": "created", "ticket": ticket.to_dict(), "message": "工单已创建。"}
 
 
-def _draft_update_status(ticket_id: str, new_status: str, assignee: str = "") -> dict:
-    ticket = get_ticket(ticket_id)
+def _draft_update_status(context: ToolExecutionContext, payload: dict) -> dict:
+    ticket_id = payload["ticket_id"]
+    new_status = payload["new_status"]
+    assignee = payload.get("assignee", "")
+    ticket = get_ticket(ticket_id, tenant_id=context.tenant_id, owner_id=context.owner_id)
     if ticket is None:
         return {"error": f"工单 {ticket_id} 不存在。"}
     return {
@@ -472,8 +539,14 @@ def _draft_update_status(ticket_id: str, new_status: str, assignee: str = "") ->
     }
 
 
-def _execute_update_status(ticket_id: str, new_status: str, assignee: str = "") -> dict:
-    ticket = update_ticket_status(ticket_id, new_status, assignee=assignee or None)
+def _execute_update_status(context: ToolExecutionContext, payload: dict) -> dict:
+    ticket_id = payload["ticket_id"]
+    new_status = payload["new_status"]
+    assignee = payload.get("assignee", "")
+    ticket = update_ticket_status(
+        ticket_id, new_status, assignee=assignee or None,
+        tenant_id=context.tenant_id, owner_id=context.owner_id,
+    )
     if ticket is None:
         return {"error": f"工单 {ticket_id} 不存在。"}
     return {"action": "updated", "ticket": ticket.to_dict(), "message": "工单状态已更新。"}

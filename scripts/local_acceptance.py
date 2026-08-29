@@ -238,6 +238,42 @@ def main() -> int:
             assert [event["action"] for event in audit] == [
                 "PUBLICATION_REQUESTED", "PUBLICATION_APPROVED",
             ]
+            _, deliverables = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/deliverables",
+                token=token,
+            )
+            assert len(deliverables["version"]["content_sha256"]) == 64
+            candidate = deliverables["knowledge_candidates"][0]
+            assert candidate["status"] == "PENDING"
+            _, candidate = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}"
+                f"/knowledge-candidates/{candidate['candidate_id']}/decision",
+                method="POST", token=token, payload={"approved": True},
+            )
+            assert candidate["status"] == "APPROVED"
+            action_item = deliverables["action_items"][0]
+            _, ticket_draft = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}"
+                f"/action-items/{action_item['action_item_id']}/ticket-draft",
+                method="POST", token=token,
+            )
+            assert ticket_draft["action_item"]["status"] == "TICKET_PENDING_APPROVAL"
+            _, ticket_approval = request_json(
+                f"http://127.0.0.1:{agent_port}/pending-actions/{ticket_draft['pending_action_id']}/approve",
+                method="POST", token=token, payload={"approved": True},
+            )
+            assert ticket_approval["status"] == "succeeded"
+            _, settled_deliverables = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/deliverables",
+                token=token,
+            )
+            settled_action = settled_deliverables["action_items"][0]
+            assert settled_action["status"] == "TICKET_CREATED"
+            assert settled_action["ticket_id"] == ticket_approval["result"]["ticket"]["ticket_id"]
+            _, tickets = request_json(
+                f"http://127.0.0.1:{agent_port}/tickets", token=token,
+            )
+            assert tickets["total"] == 1
 
             _, playback_envelope = request_json(
                 f"http://127.0.0.1:{media_port}/api/media/video/{task_id}/playback-token", token=token,
@@ -259,6 +295,8 @@ def main() -> int:
                 "checks": ["register_workspace", "jwt_tenant", "upload", "mock_transcript",
                            "outbox_delivery", "agent_retrieval", "timestamp_source",
                            "analysis_wait_resume", "evidence_prd", "publication_approval_audit",
+                           "immutable_prd_snapshot", "knowledge_candidate_approval",
+                           "action_item_ticket_approval",
                            "range_playback"],
             }, ensure_ascii=False, indent=2))
             return 0
