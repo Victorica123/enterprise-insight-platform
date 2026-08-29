@@ -64,7 +64,7 @@ TAG_METADATA = [
     {"name": "graph", "description": "关系图谱：概览、实体、关系、关系链查询与重建。重建需 operator+。"},
     {"name": "embeddings", "description": "Embedding 覆盖率查询与全量重建。重建需 operator+。"},
     {"name": "internal-media", "description": "Media Service 专用的版本化证据摄取接口。"},
-    {"name": "analysis", "description": "六阶段证据分析、人工补充与可评审 PRD 草稿。"},
+    {"name": "analysis", "description": "六阶段证据分析、人工补充、PRD 发布审批与审计。"},
 ]
 
 app = FastAPI(

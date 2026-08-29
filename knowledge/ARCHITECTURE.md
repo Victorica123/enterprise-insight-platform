@@ -15,7 +15,7 @@ Media Service
 Agent Service
   ├─ evidence segments / indexes / retrieval
   ├─ analysis sessions / confirmation checkpoints
-  ├─ PRD drafts / approvals / action items
+  ├─ PRD drafts / publication approvals / immutable audit
   └─ evidence-backed answers and evaluations
 ```
 
@@ -48,7 +48,8 @@ Agent Service
 ## 可靠性边界
 
 - 媒体任务状态：排队、处理中、完成、失败，可重试。
-- Agent 分析状态：草稿、运行、等待确认、完成、失败、取消，可恢复。
+- Agent 分析状态：运行、等待确认、草稿就绪、待发布审批、已发布、失败，可恢复。
+- 发布状态采用服务端 compare-and-set：`DRAFT_READY → PUBLISH_PENDING → PUBLISHED`，状态变更与审计事件在同一 SQLite 事务提交，避免并发重复批准。
 - 跨服务投递采用版本化事件、`event_id` 幂等和可重放设计。
 - Media 在任务完成事务内写入 `integration_event_outbox`，本地调度器通过 HTTP/1.1 投递；瞬时失败指数退避，契约冲突进入 DEAD，Agent 端继续执行事件级与语义级双重幂等。
 - 外部基础设施的 light/mock 模式仅用于开发；生产声明必须由真实集成 smoke 支撑。

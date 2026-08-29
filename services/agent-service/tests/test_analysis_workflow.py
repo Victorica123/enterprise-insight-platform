@@ -83,6 +83,94 @@ class AnalysisApiTests(unittest.TestCase):
         )
         self.assertEqual(hidden.status_code, 404)
 
+    def test_personal_owner_uses_two_explicit_steps_and_receives_audit_chain(self) -> None:
+        headers = {
+            "X-User-Role": "admin", "X-User-Id": "user-a",
+            "X-Tenant-Id": "tenant-a", "X-Workspace-Type": "personal",
+        }
+        created = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "发布合规交付 PRD", "asset_ids": ["asset-a"]},
+        ).json()
+
+        requested_response = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/request", headers=headers,
+        )
+        self.assertEqual(requested_response.status_code, 200, requested_response.text)
+        requested = requested_response.json()
+        self.assertEqual(requested["status"], "PUBLISH_PENDING")
+        self.assertEqual(requested["publication"]["policy"], "OWNER_RECONFIRMATION")
+        self.assertEqual(requested["prd"]["publication_status"], "PUBLISH_PENDING")
+
+        approved_response = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve", headers=headers,
+            json={
+                "request_id": requested["publication"]["request_id"],
+                "approval_token": requested["publication"]["approval_token"],
+                "confirmation": "PUBLISH",
+            },
+        )
+        self.assertEqual(approved_response.status_code, 200, approved_response.text)
+        approved = approved_response.json()
+        self.assertEqual(approved["status"], "PUBLISHED")
+        self.assertEqual(approved["publication"]["approved_by"], "user-a")
+        self.assertIsNone(approved["publication"]["approval_token"])
+        self.assertEqual(approved["prd"]["publication_status"], "PUBLISHED")
+
+        audit = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/audit", headers=headers,
+        )
+        self.assertEqual(audit.status_code, 200, audit.text)
+        self.assertEqual(
+            [event["action"] for event in audit.json()],
+            ["PUBLICATION_REQUESTED", "PUBLICATION_APPROVED"],
+        )
+
+    def test_team_publication_rejects_self_approval_and_accepts_second_member(self) -> None:
+        author = {
+            "X-User-Role": "operator", "X-User-Id": "user-a",
+            "X-Tenant-Id": "tenant-a", "X-Workspace-Type": "team",
+        }
+        reviewer = {
+            "X-User-Role": "operator", "X-User-Id": "user-b",
+            "X-Tenant-Id": "tenant-a", "X-Workspace-Type": "team",
+        }
+        created = self.client.post(
+            "/analysis/sessions", headers=author,
+            json={"objective": "团队发布合规 PRD", "asset_ids": ["asset-a"]},
+        ).json()
+        requested = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/request", headers=author,
+        ).json()
+        approval = {
+            "request_id": requested["publication"]["request_id"],
+            "approval_token": requested["publication"]["approval_token"],
+            "confirmation": "PUBLISH",
+        }
+
+        self_approval = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve",
+            headers=author, json=approval,
+        )
+        self.assertEqual(self_approval.status_code, 403)
+
+        cross_tenant = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve",
+            headers={**reviewer, "X-Tenant-Id": "tenant-b"}, json=approval,
+        )
+        self.assertEqual(cross_tenant.status_code, 404)
+
+        queue = self.client.get("/analysis/publication-queue", headers=reviewer)
+        self.assertEqual(queue.status_code, 200, queue.text)
+        self.assertEqual([item["session_id"] for item in queue.json()], [created["session_id"]])
+
+        approved = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve",
+            headers=reviewer, json=approval,
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertEqual(approved.json()["publication"]["approved_by"], "user-b")
+
 
 if __name__ == "__main__":
     unittest.main()

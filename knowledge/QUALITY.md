@@ -16,10 +16,10 @@
 
 2026-08-29 已重新建立首条纵向链路的本地证据：
 
-- Agent Service 100/100 用例通过，新增六阶段等待/恢复、证据化 PRD 与分析会话租户隔离回归。
+- Agent Service 102/102 用例通过，新增六阶段等待/恢复、证据化 PRD、个人二次确认、团队职责分离与分析会话租户隔离回归。
 - 统一 React Web 完成 `tsc -b` 与 Vite 生产构建。
 - Media Service 生产与测试源码完成 Maven 编译；JWT/Workspace、真实注册上传、结构化事件契约定向测试通过。
-- `python scripts/local_acceptance.py` 在随机 localhost 端口通过，覆盖 Workspace 注册、统一 JWT/tenant、视频上传、mock 转写、事务 outbox、Agent 摄取与范围检索、时间戳来源、六阶段等待/恢复、证据化 PRD、签名播放和 HTTP Range。
+- `python scripts/local_acceptance.py` 在随机 localhost 端口通过，覆盖 Workspace 注册、统一 JWT/tenant、视频上传、mock 转写、事务 outbox、Agent 摄取与范围检索、时间戳来源、六阶段等待/恢复、证据化 PRD、个人二次发布确认、审计查询、签名播放和 HTTP Range。
 
 当前 Media Service 的结构化转写新增测试在本机 JDK 25 下可定向运行通过，生产与测试源码均已完成 Maven 编译；全量 Media 回归仍需按声明的 JDK 17/18 执行，不能用当前 JDK 25 的 Mockito/ByteBuddy 兼容性结果替代。
 
@@ -32,7 +32,7 @@
 - `python scripts/update_knowledge.py --check` 通过。
 - 无法运行的验证必须说明环境原因、影响边界和替代证据。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent 100 用例 + V6 黄金集、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent 102 用例 + V6 黄金集、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

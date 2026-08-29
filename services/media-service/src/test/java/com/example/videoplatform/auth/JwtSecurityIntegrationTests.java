@@ -48,9 +48,12 @@ class JwtSecurityIntegrationTests {
 
 		assertThat(tenantId).isNotBlank();
 		assertThat(data.path("role").asText()).isEqualTo("admin");
+		assertThat(data.path("workspaceType").asText()).isEqualTo("personal");
 		assertThat(claims.getSubject()).isEqualTo(userId);
 		assertThat(claims.get("tenant_id", String.class)).isEqualTo(tenantId);
 		assertThat(claims.get("role", String.class)).isEqualTo("admin");
+		assertThat(claims.get("workspace_type", String.class)).isEqualTo("personal");
+		assertThat(claims.get("identity_version", Integer.class)).isEqualTo(2);
 		assertThat(claims.get("token_use", String.class)).isEqualTo("access");
 	}
 

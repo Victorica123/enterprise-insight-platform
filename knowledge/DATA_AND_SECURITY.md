@@ -5,6 +5,7 @@
 - 浏览器只提交受信身份提供方签发的 JWT；两个后端使用相同的 issuer、audience 和签名信任配置。
 - `sub` 映射用户身份，`tenant_id` 是强制租户声明，角色/权限来自受信声明或服务端授权表。
 - 注册会创建独立 Workspace 和 OWNER 成员关系；`tenant_id` 是 Workspace ID，不等同于 user ID。老账号在首次登录时幂等补建。
+- 新签发令牌使用身份契约 V2，并携带受信的 `workspace_type=personal|team`。旧 V1 令牌缺失该声明时按 team 处理，不能获得个人 OWNER 自批能力。
 - 生产路径禁止使用客户端自报的 `X-Role`、`X-User` 等头部获得权限。
 - Agent Service 的兼容身份头仅存在于显式 `development` 模式；`APP_ENV=production` 搭配非 JWT 模式会拒绝启动。
 - 服务间调用使用独立的服务身份，同时保留原用户的 tenant/owner 上下文；不能把服务身份当成最终资源所有者。
@@ -27,6 +28,8 @@
 ## 人工审批边界
 
 以下动作默认需要人确认：发布 PRD 为正式版本、把新事实合并进共享知识、创建或更新外部工单、通知外部联系人，以及任何具有不可逆业务影响的工具调用。
+
+PRD 发布已经执行差异化职责分离：个人 Workspace 的 OWNER 必须先申请、再用一次性 token 明确确认；team Workspace 必须由同租户另一位具备写权限的成员批准。状态比较更新和审计事件同事务提交；跨租户审批统一返回 404。
 
 ## 待发布决策
 

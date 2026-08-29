@@ -29,7 +29,7 @@ public class WorkspaceService {
 		WorkspaceMember member = memberRepository.findByTenantIdAndUserId(resolvedTenantId, user.getUserId())
 				.orElseGet(() -> memberRepository.save(new WorkspaceMember(
 						UUID.randomUUID().toString(), resolvedTenantId, user.getUserId(), WorkspaceMember.WorkspaceRole.OWNER)));
-		return new WorkspaceContext(resolvedTenantId, member.getRole().jwtRole());
+		return new WorkspaceContext(resolvedTenantId, member.getRole().jwtRole(), "personal");
 	}
 
 	private static String personalWorkspaceName(String username) {
@@ -41,6 +41,6 @@ public class WorkspaceService {
 		return safeUsername + suffix;
 	}
 
-	public record WorkspaceContext(String tenantId, String jwtRole) {
+	public record WorkspaceContext(String tenantId, String jwtRole, String workspaceType) {
 	}
 }

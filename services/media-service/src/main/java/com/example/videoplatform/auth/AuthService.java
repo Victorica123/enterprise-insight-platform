@@ -62,8 +62,10 @@ public class AuthService {
 
 	private AuthDtos.AuthResponse response(UserAccount user, WorkspaceService.WorkspaceContext workspace) {
 		String token = jwtService.generateAccessToken(
-				user.getUserId(), user.getUsername(), workspace.tenantId(), workspace.jwtRole());
+				user.getUserId(), user.getUsername(), workspace.tenantId(),
+				workspace.jwtRole(), workspace.workspaceType());
 		return new AuthDtos.AuthResponse(
-				user.getUserId(), user.getUsername(), workspace.tenantId(), workspace.jwtRole(), token);
+				user.getUserId(), user.getUsername(), workspace.tenantId(),
+				workspace.jwtRole(), workspace.workspaceType(), token);
 	}
 }

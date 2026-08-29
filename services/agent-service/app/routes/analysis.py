@@ -6,11 +6,18 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.analysis_models import (
-    AnalysisConfirmationRequest, AnalysisCreateRequest, AnalysisSessionResponse,
+    AnalysisAuditEvent, AnalysisConfirmationRequest, AnalysisCreateRequest,
+    AnalysisSessionResponse, PublicationApprovalRequest,
 )
 from app.analysis_pipeline import run_six_stage_analysis
-from app.analysis_store import get_session, list_sessions, save_session, utc_now
+from app.analysis_store import (
+    get_session, get_session_for_tenant, list_audit_events,
+    list_pending_publications, list_sessions, save_session, utc_now,
+)
 from app.auth import ActorPrincipal, current_principal, require_write_role
+from app.publication_service import (
+    PublicationRuleError, approve_publication, request_publication,
+)
 from app.retrievers import RetrievalScope, load_chunks
 
 
@@ -52,6 +59,17 @@ def get_analysis_sessions(
     return list_sessions(principal.tenant_id, principal.user_id, limit)
 
 
+@router.get("/publication-queue", response_model=list[AnalysisSessionResponse])
+def get_publication_queue(
+    limit: int = Query(default=50, ge=1, le=100),
+    principal: ActorPrincipal = Depends(current_principal),
+) -> list[AnalysisSessionResponse]:
+    require_write_role(principal.role)
+    if principal.workspace_type != "team":
+        return []
+    return list_pending_publications(principal.tenant_id, principal.user_id, limit)
+
+
 @router.get("/sessions/{session_id}", response_model=AnalysisSessionResponse)
 def get_analysis_session(
     session_id: str,
@@ -91,8 +109,51 @@ def confirm_analysis_session(
     return existing
 
 
+@router.post("/sessions/{session_id}/publication/request", response_model=AnalysisSessionResponse)
+def request_prd_publication(
+    session_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> AnalysisSessionResponse:
+    require_write_role(principal.role)
+    existing = _require_session(session_id, principal)
+    try:
+        return request_publication(existing, principal)
+    except PublicationRuleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.post("/sessions/{session_id}/publication/approve", response_model=AnalysisSessionResponse)
+def approve_prd_publication(
+    session_id: str,
+    request: PublicationApprovalRequest,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> AnalysisSessionResponse:
+    require_write_role(principal.role)
+    existing = _require_tenant_session(session_id, principal)
+    try:
+        return approve_publication(existing, request, principal)
+    except PublicationRuleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.get("/sessions/{session_id}/audit", response_model=list[AnalysisAuditEvent])
+def get_analysis_audit(
+    session_id: str,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> list[AnalysisAuditEvent]:
+    _require_session(session_id, principal)
+    return list_audit_events(session_id, principal.tenant_id)
+
+
 def _require_session(session_id: str, principal: ActorPrincipal) -> AnalysisSessionResponse:
     session = get_session(session_id, principal.tenant_id, principal.user_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis session not found.")
+    return session
+
+
+def _require_tenant_session(session_id: str, principal: ActorPrincipal) -> AnalysisSessionResponse:
+    session = get_session_for_tenant(session_id, principal.tenant_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis session not found.")
     return session

@@ -40,7 +40,8 @@ public class JwtService {
 		}
 	}
 
-	public String generateAccessToken(String userId, String username, String tenantId, String role) {
+	public String generateAccessToken(
+			String userId, String username, String tenantId, String role, String workspaceType) {
 		Instant now = Instant.now();
 		return Jwts.builder()
 				.issuer(appProperties.getJwt().getIssuer())
@@ -51,6 +52,8 @@ public class JwtService {
 				.claim("username", username)
 				.claim("tenant_id", tenantId)
 				.claim("role", role)
+				.claim("workspace_type", workspaceType)
+				.claim("identity_version", 2)
 				.claim("token_use", "access")
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusSeconds(appProperties.getJwt().getExpirationSeconds())))

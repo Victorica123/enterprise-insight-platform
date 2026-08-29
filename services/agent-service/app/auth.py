@@ -20,6 +20,7 @@ from fastapi import Header, HTTPException, status
 
 
 VALID_ROLES = frozenset({"viewer", "operator", "admin"})
+VALID_WORKSPACE_TYPES = frozenset({"personal", "team"})
 WRITE_ROLES = frozenset({"operator", "admin"})
 OPERATOR_ROLES = WRITE_ROLES
 
@@ -32,6 +33,7 @@ class ActorPrincipal:
     username: str = ""
     token_id: str = ""
     auth_mode: str = "jwt"
+    workspace_type: str = "team"
 
     @property
     def actor_user(self) -> str:
@@ -69,15 +71,21 @@ def current_principal(
     x_user_role: str = Header(default="viewer"),
     x_user_id: str = Header(default=""),
     x_tenant_id: str = Header(default="legacy"),
+    x_workspace_type: str = Header(default="personal"),
 ) -> ActorPrincipal:
     if get_auth_mode() == "development":
         actor = normalize_actor_user(x_user_id)
+        try:
+            workspace_type = _workspace_type(x_workspace_type)
+        except JwtValidationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         return ActorPrincipal(
             user_id="legacy" if actor == "anonymous" else actor,
             tenant_id=x_tenant_id.strip() or "legacy",
             role=validate_actor_role(x_user_role),
             username=actor,
             auth_mode="development",
+            workspace_type=workspace_type,
         )
 
     if authorization is None or not authorization.startswith("Bearer "):
@@ -94,6 +102,9 @@ def current_principal(
         username=str(claims.get("username", "")),
         token_id=str(claims["jti"]),
         auth_mode="jwt",
+        # V1 tokens did not carry workspace_type. Treating them as team is
+        # fail-closed for self-publication while keeping read/retrieval compatible.
+        workspace_type=str(claims.get("workspace_type", "team")),
     )
 
 
@@ -148,6 +159,8 @@ def decode_shared_jwt(token: str, *, now: int | None = None) -> dict[str, Any]:
     if role not in VALID_ROLES:
         raise JwtValidationError("Invalid access token role.")
     claims["role"] = role
+    if "workspace_type" in claims:
+        claims["workspace_type"] = _workspace_type(str(claims["workspace_type"]))
     return claims
 
 
@@ -156,6 +169,13 @@ def validate_actor_role(raw_role: str) -> str:
     if role not in VALID_ROLES:
         raise HTTPException(status_code=403, detail="Unknown user role.")
     return role
+
+
+def _workspace_type(raw_workspace_type: str) -> str:
+    workspace_type = raw_workspace_type.strip().lower()
+    if workspace_type not in VALID_WORKSPACE_TYPES:
+        raise JwtValidationError("Invalid workspace type.")
+    return workspace_type
 
 
 def require_write_role(role: str) -> None:

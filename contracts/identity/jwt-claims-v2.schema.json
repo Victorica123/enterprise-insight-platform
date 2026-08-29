@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/identity/jwt-claims-v2.schema.json",
+  "title": "Enterprise Insight User JWT Claims V2",
+  "type": "object",
+  "required": [
+    "iss", "aud", "sub", "exp", "iat", "jti", "tenant_id", "role",
+    "workspace_type", "identity_version", "token_use"
+  ],
+  "properties": {
+    "iss": { "type": "string", "minLength": 1 },
+    "aud": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+      ]
+    },
+    "sub": { "type": "string", "minLength": 1 },
+    "exp": { "type": "integer" },
+    "iat": { "type": "integer" },
+    "nbf": { "type": "integer" },
+    "jti": { "type": "string", "minLength": 1 },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "role": { "enum": ["viewer", "operator", "admin"] },
+    "workspace_type": { "enum": ["personal", "team"] },
+    "identity_version": { "const": 2 },
+    "username": { "type": "string" },
+    "token_use": { "const": "access" }
+  }
+}

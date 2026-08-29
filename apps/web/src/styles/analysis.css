@@ -34,6 +34,10 @@
 .prd-draft > p { color: var(--text-secondary); }
 .prd-draft > article { margin-top: 12px; padding: 12px; background: var(--surface-2); border-radius: 9px; }
 .prd-draft .assumption { color: var(--warning-text); }
-.publication-note { margin-top: 14px; padding: 10px; color: var(--warning-text); background: var(--warning-soft); border-radius: 8px; font-size: 12px; }
+.publication-note { margin-top: 14px; padding: 10px; color: var(--warning-text); background: var(--warning-soft); border-radius: 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.publication-note .button { flex: 0 0 auto; }
+.publication-note.published { justify-content: flex-start; color: var(--success-text); background: var(--success-soft); }
+.publication-audit { display: grid; gap: 5px; margin-top: 10px; padding: 10px; border: 1px solid var(--border-light); border-radius: 8px; font-size: 12px; color: var(--text-secondary); }
+.publication-audit strong { display: flex; align-items: center; gap: 5px; color: var(--text); }
 @media (max-width: 900px) { .analysis-layout { grid-template-columns: 1fr; } .analysis-sidebar { position: static; } }
 @media (max-width: 680px) { .stage-grid { grid-template-columns: 1fr; } }

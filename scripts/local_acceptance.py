@@ -147,6 +147,7 @@ def main() -> int:
             )
             auth = auth_envelope["data"]
             assert auth["tenantId"] and auth["role"] == "admin"
+            assert auth["workspaceType"] == "personal"
             token = auth["token"]
 
             upload_body, upload_type = multipart_file(
@@ -213,6 +214,31 @@ def main() -> int:
             prd_evidence = analysis["prd"]["requirements"][0]["evidence"][0]
             assert prd_evidence["asset_id"] == task["videoId"] and prd_evidence["start_ms"] == 0
 
+            _, publication = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/publication/request",
+                method="POST", token=token,
+            )
+            assert publication["status"] == "PUBLISH_PENDING"
+            assert publication["publication"]["policy"] == "OWNER_RECONFIRMATION"
+            _, publication = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/publication/approve",
+                method="POST", token=token,
+                payload={
+                    "request_id": publication["publication"]["request_id"],
+                    "approval_token": publication["publication"]["approval_token"],
+                    "confirmation": "PUBLISH",
+                },
+            )
+            assert publication["status"] == "PUBLISHED"
+            assert publication["prd"]["publication_status"] == "PUBLISHED"
+            _, audit = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/audit",
+                token=token,
+            )
+            assert [event["action"] for event in audit] == [
+                "PUBLICATION_REQUESTED", "PUBLICATION_APPROVED",
+            ]
+
             _, playback_envelope = request_json(
                 f"http://127.0.0.1:{media_port}/api/media/video/{task_id}/playback-token", token=token,
             )
@@ -232,7 +258,8 @@ def main() -> int:
                 "video_evidence": {"start_ms": source["start_ms"], "end_ms": source["end_ms"]},
                 "checks": ["register_workspace", "jwt_tenant", "upload", "mock_transcript",
                            "outbox_delivery", "agent_retrieval", "timestamp_source",
-                           "analysis_wait_resume", "evidence_prd", "range_playback"],
+                           "analysis_wait_resume", "evidence_prd", "publication_approval_audit",
+                           "range_playback"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

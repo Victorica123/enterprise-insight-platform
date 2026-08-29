@@ -31,6 +31,8 @@ def access_token(**overrides: object) -> str:
         "sub": "user-123",
         "tenant_id": "tenant-123",
         "role": "operator",
+        "workspace_type": "personal",
+        "identity_version": 2,
         "username": "alice",
         "iat": now,
         "exp": now + 600,
@@ -69,6 +71,7 @@ class UnifiedAuthTests(unittest.TestCase):
         claims = decode_shared_jwt(access_token())
         self.assertEqual(claims["sub"], "user-123")
         self.assertEqual(claims["tenant_id"], "tenant-123")
+        self.assertEqual(claims["workspace_type"], "personal")
 
         with self.assertRaises(JwtValidationError):
             decode_shared_jwt(access_token(exp=1), now=100)
@@ -77,6 +80,9 @@ class UnifiedAuthTests(unittest.TestCase):
         bad_header = encode_part({"alg": "none", "typ": "JWT"})
         with self.assertRaises(JwtValidationError):
             decode_shared_jwt(f"{bad_header}.{parts[1]}.{parts[2]}")
+
+        with self.assertRaises(JwtValidationError):
+            decode_shared_jwt(access_token(workspace_type="shared"))
 
     def test_chat_receives_server_validated_retrieval_scope(self) -> None:
         response_model = ChatResponse(answer="ok", sources=[])

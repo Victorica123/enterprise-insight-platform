@@ -6,7 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-AnalysisStatus = Literal["RUNNING", "WAITING_CONFIRMATION", "DRAFT_READY", "FAILED"]
+AnalysisStatus = Literal[
+    "RUNNING", "WAITING_CONFIRMATION", "DRAFT_READY",
+    "PUBLISH_PENDING", "PUBLISHED", "FAILED",
+]
 
 
 class AnalysisCreateRequest(BaseModel):
@@ -17,6 +20,12 @@ class AnalysisCreateRequest(BaseModel):
 class AnalysisConfirmationRequest(BaseModel):
     resume_token: str = Field(min_length=16, max_length=128)
     answers: dict[str, str] = Field(min_length=1, max_length=20)
+
+
+class PublicationApprovalRequest(BaseModel):
+    request_id: str = Field(min_length=16, max_length=64)
+    approval_token: str = Field(min_length=16, max_length=128)
+    confirmation: Literal["PUBLISH"]
 
 
 class EvidenceRef(BaseModel):
@@ -74,7 +83,28 @@ class PrdDraft(BaseModel):
     requirements: list[PrdRequirement]
     risks: list[str]
     open_questions: list[OpenQuestion] = Field(default_factory=list)
-    publication_status: Literal["DRAFT"] = "DRAFT"
+    publication_status: Literal["DRAFT", "PUBLISH_PENDING", "PUBLISHED"] = "DRAFT"
+
+
+class PublicationApproval(BaseModel):
+    request_id: str
+    policy: Literal["OWNER_RECONFIRMATION", "FOUR_EYES"]
+    status: Literal["PENDING", "APPROVED"]
+    requested_by: str
+    requested_at: datetime
+    approval_token: str | None = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+
+
+class AnalysisAuditEvent(BaseModel):
+    event_id: str
+    session_id: str
+    action: Literal["PUBLICATION_REQUESTED", "PUBLICATION_APPROVED"]
+    actor_id: str
+    actor_role: str
+    details: dict[str, str] = Field(default_factory=dict)
+    created_at: datetime
 
 
 class AnalysisSessionResponse(BaseModel):
@@ -90,5 +120,6 @@ class AnalysisSessionResponse(BaseModel):
     open_questions: list[OpenQuestion]
     confirmations: dict[str, str]
     prd: PrdDraft | None = None
+    publication: PublicationApproval | None = None
     created_at: datetime
     updated_at: datetime

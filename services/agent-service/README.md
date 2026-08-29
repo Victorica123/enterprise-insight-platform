@@ -28,7 +28,7 @@ uvicorn app.main:app --reload --port 8000
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -q           # 100 个回归测试
+python -m unittest discover -s tests -q           # 102 个回归测试
 python ../../quality/agent-evals/evaluate_v6.py   # 离线黄金集门禁
 ```
 
@@ -48,5 +48,6 @@ python ../../quality/agent-evals/evaluate_v6.py   # 离线黄金集门禁
 | `logging_config.py` | JSON 结构化日志 |
 | `analysis_pipeline.py` | 六阶段确定性编排、事实缺口检查与证据化 PRD 草稿 |
 | `analysis_store.py` | tenant/owner 隔离的会话检查点、恢复令牌和 PRD 草稿持久化 |
+| `publication_service.py` | 个人二次确认、团队四眼审批、并发状态转换与审计规则 |
 
-鉴权约定：生产使用与 Media Service 共同信任的 Bearer JWT，并在检索前应用 tenant/owner/asset 范围；自报身份头只在显式 development 模式可用。策略集中在 `app/auth.py`。
+鉴权约定：生产使用与 Media Service 共同信任的 Bearer JWT，并在检索前应用 tenant/owner/asset 范围；V2 身份声明增加 `workspace_type` 供发布策略选择。V1 令牌缺少该字段时按 team 处理，禁止降级成个人自批。自报身份头只在显式 development 模式可用。

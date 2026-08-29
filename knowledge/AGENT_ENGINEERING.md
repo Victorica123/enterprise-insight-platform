@@ -24,7 +24,7 @@
 
 分析会话需要持久化检查点。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`，记录结构化问题、原因和恢复令牌；用户或授权专家补充后从检查点继续，不从头重跑。
 
-当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY`；正式 PRD 发布策略正在等待“个人工作区是否允许 OWNER 自批”的业务决策，因此草稿不会提前进入正式知识或发布态。
+当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY → PUBLISH_PENDING → PUBLISHED`。发布逻辑独立放在 `publication_service.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 OWNER 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 token、compare-and-set 状态转换和同事务审计。
 
 ## 受控工具
 

@@ -1,6 +1,6 @@
 # Web 前端（React + Vite）
 
-React 19 + TypeScript + Vite。统一承载真实登录、视频证据、知识问答、六阶段需求分析/PRD 草稿、工单、关系图谱与运行监控。
+React 19 + TypeScript + Vite。统一承载真实登录、视频证据、知识问答、六阶段需求分析、PRD 发布审批、工单、关系图谱与运行监控。
 
 完整快速开始见[仓库根 README](../../README.md)。
 
@@ -38,7 +38,7 @@ src/
   features/
 	AuthGate.tsx       登录/注册个人 Workspace
 	MediaWorkspace.tsx 视频上传、范围选择与证据跳播
-	AnalysisWorkspace.tsx 六阶段分析、等待恢复和 PRD 草稿
+	AnalysisWorkspace.tsx 六阶段分析、等待恢复、PRD 审批和发布审计
     QAView.tsx        知识问答面板（上传/提问/证据/trace/反馈）
     TicketsView.tsx   工单与审批面板（待审批队列、四眼审批演示）
     GraphView.tsx     关系图谱面板（分层 SVG、关系链查询）
@@ -46,4 +46,4 @@ src/
     common.tsx        共享 UI（指标卡、错误提示等）
 ```
 
-顶栏展示 JWT 中的真实用户与角色，不再提供可伪造的角色/用户切换。正式审批规则由服务端 Workspace 策略决定。
+顶栏展示 JWT 中的真实用户与角色，不再提供可伪造的角色/用户切换。个人二次确认、团队待审批队列和四眼职责分离均由服务端 Workspace 策略裁决，前端只呈现状态。
