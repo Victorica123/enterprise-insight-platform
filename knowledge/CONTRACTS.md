@@ -64,6 +64,16 @@ PRD 发布契约：
 
 个人策略允许原 OWNER 完成第二次确认；团队策略拒绝 `requested_by == approved_by`。审批 token 在成功后清空，状态转换、审计、不可变 PRD 版本和初始派生交付物写入同一事务。
 
+## 缓存可观测性
+
+已鉴权的 `GET /embeddings/status` 以 `contracts/http/cache-observability-v1.schema.json` 为响应契约，在原 Embedding 覆盖率字段之外返回 `cache`：
+
+- `embedding_vectors`：BGE 进程内向量 LRU 的条目数、容量、命中、未命中、请求数和命中率。
+- `chunk_snapshots`：按 content revision 与 tenant/owner/asset 授权范围分键的 Chunk 快照 LRU 指标。
+- `scope=process`：全部计数只代表当前 Agent 进程，进程重启后归零；多实例部署不能直接把任一实例视作全局值。
+
+公开的 `GET /system/status` 仍只返回 Embedding 覆盖情况，不返回缓存请求量和命中计数。缓存契约只包含聚合数字，不包含原文、文本摘要、tenant、owner、asset 或缓存 key；这是有意的最小暴露边界。新增 `cache` 是已鉴权 Embedding 状态响应的扩展，消费者仍应按兼容策略忽略未知字段。
+
 ## 版本策略
 
 - 事件名称带版本后缀。

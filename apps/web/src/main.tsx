@@ -207,6 +207,7 @@ function App() {
         });
       }
       void getMetricsSummary().then(setMetricsSummary).catch(() => undefined);
+      void getEmbeddingStatus().then(setEmbeddingStatus).catch(() => undefined);
       void refreshTickets();
     } catch (caught) {
       setError(getErrorMessage(caught));
@@ -441,7 +442,8 @@ function App() {
       ) : activeTab === "graph" ? (
         <GraphView key={session.tenantId} actorRole={actorRole} setError={setError} />
       ) : (
-        <MonitorView metricsSummary={metricsSummary} onRefresh={refreshWorkspace} actorRole={actorRole} />
+        <MonitorView embeddingStatus={embeddingStatus} metricsSummary={metricsSummary}
+          onRefresh={refreshWorkspace} actorRole={actorRole} />
       )}
 		<EvidencePlayer request={videoEvidence} onClose={() => setVideoEvidence(null)} />
     </main>

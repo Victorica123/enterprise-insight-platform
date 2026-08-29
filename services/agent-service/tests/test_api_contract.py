@@ -25,6 +25,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status.status_code, 200)
         self.assertIn("document_count", status.json())
         self.assertIn("embedding", status.json())
+        self.assertNotIn("cache", status.json()["embedding"])
 
     def test_agentic_chat_contract(self) -> None:
         mocked_response = ChatResponse(
@@ -131,6 +132,29 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertIn("invitation", schema["$defs"])
         self.assertIn("activeSession", schema["$defs"])
+
+    def test_cache_observability_schema_matches_status_response(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "cache-observability-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+        self.assertTrue(schema["$id"].endswith("/cache-observability-v1.schema.json"))
+        self.assertIn("cache", schema["required"])
+        self.assertEqual(
+            set(schema["$defs"]["cacheMetric"]["required"]),
+            {"entries", "max_entries", "hits", "misses", "requests", "hit_rate"},
+        )
+
+        response = self.client.get("/embeddings/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["cache"]["scope"], "process")
+        for cache_name in ("embedding_vectors", "chunk_snapshots"):
+            self.assertEqual(
+                set(payload["cache"][cache_name]),
+                {"entries", "max_entries", "hits", "misses", "requests", "hit_rate"},
+            )
 
 
 if __name__ == "__main__":

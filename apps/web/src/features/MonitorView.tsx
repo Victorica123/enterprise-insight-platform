@@ -1,9 +1,11 @@
 import React from "react";
 import {
-  Coins, Gauge, Loader2, RefreshCw, ScrollText, ThumbsDown, ThumbsUp, Workflow,
+  Coins, Database, Gauge, Layers3, Loader2, RefreshCw, ScrollText, ThumbsDown,
+  ThumbsUp, Workflow,
 } from "lucide-react";
 import {
-  type ActorRole, type ChatLog, type ChatLogDetail, type ChatMetricsSummary, type TraceStep,
+  type ActorRole, type CacheMetric, type ChatLog, type ChatLogDetail, type ChatMetricsSummary,
+  type EmbeddingStatus, type TraceStep,
   getChatLogDetail, isPermissionError, listChatLogs,
 } from "../api";
 import {
@@ -13,8 +15,13 @@ import {
 
 const OUTCOME_LABELS: Record<string, string> = { answered: "已回答", refused: "已拒答", error: "错误" };
 
-export function MonitorView({ metricsSummary, onRefresh, actorRole }: {
+function cacheRate(metric: CacheMetric | undefined): string {
+  return metric && metric.requests > 0 ? formatPercent(metric.hit_rate) : "—";
+}
+
+export function MonitorView({ metricsSummary, embeddingStatus, onRefresh, actorRole }: {
   metricsSummary: ChatMetricsSummary | null;
+  embeddingStatus: EmbeddingStatus | null;
   onRefresh: () => void | Promise<void>;
   actorRole: ActorRole;
 }) {
@@ -60,6 +67,8 @@ export function MonitorView({ metricsSummary, onRefresh, actorRole }: {
   }
 
   const summary = metricsSummary;
+  const vectorCache = embeddingStatus?.cache.embedding_vectors;
+  const chunkCache = embeddingStatus?.cache.chunk_snapshots;
   return (
     <div className="monitor-container">
       <section className="v3-metrics-band">
@@ -131,6 +140,43 @@ export function MonitorView({ metricsSummary, onRefresh, actorRole }: {
           )}
         </section>
       </div>
+
+      <section className="card cache-observability-card">
+        <h2>
+          <Database size={19} />
+          检索缓存
+          <span className="token-pill">进程级 · 重启归零</span>
+        </h2>
+        {embeddingStatus ? (
+          <>
+            <div className="cache-observability-grid">
+              <article className="cache-observability-panel">
+                <h3><Database size={16} />BGE 向量 LRU</h3>
+                <p>按模型实例与文本摘要复用向量推理，不在 key 中保存原文。</p>
+                <div className="metrics-grid">
+                  <MetricItem label="命中率" value={cacheRate(vectorCache)} />
+                  <MetricItem label="请求" value={vectorCache?.requests ?? 0} />
+                  <MetricItem label="命中 / 未命中" value={`${vectorCache?.hits ?? 0} / ${vectorCache?.misses ?? 0}`} />
+                  <MetricItem label="容量" value={`${vectorCache?.entries ?? 0} / ${vectorCache?.max_entries ?? 0}`} />
+                </div>
+              </article>
+              <article className="cache-observability-panel">
+                <h3><Layers3 size={16} />授权 Chunk 快照</h3>
+                <p>Cache key 绑定 content revision 与 tenant/owner/asset scope。</p>
+                <div className="metrics-grid">
+                  <MetricItem label="命中率" value={cacheRate(chunkCache)} />
+                  <MetricItem label="请求" value={chunkCache?.requests ?? 0} />
+                  <MetricItem label="命中 / 未命中" value={`${chunkCache?.hits ?? 0} / ${chunkCache?.misses ?? 0}`} />
+                  <MetricItem label="容量" value={`${chunkCache?.entries ?? 0} / ${chunkCache?.max_entries ?? 0}`} />
+                </div>
+              </article>
+            </div>
+            <p className="cache-observability-note">
+              这些指标只描述当前 Agent 进程。多实例部署需要由 Prometheus 汇总，不能把单进程命中率当成全局命中率。
+            </p>
+          </>
+        ) : <div className="empty-state">正在获取缓存指标...</div>}
+      </section>
 
       <section className="card">
         <h2>

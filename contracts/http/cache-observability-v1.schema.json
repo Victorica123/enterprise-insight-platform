@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/cache-observability-v1.schema.json",
+  "title": "Embedding and retrieval cache observability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "total_chunks",
+    "embedded_chunks",
+    "missing_chunks",
+    "coverage",
+    "embedded_chunks_v2",
+    "missing_chunks_v2",
+    "cache"
+  ],
+  "properties": {
+    "total_chunks": { "type": "integer", "minimum": 0 },
+    "embedded_chunks": { "type": "integer", "minimum": 0 },
+    "missing_chunks": { "type": "integer", "minimum": 0 },
+    "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+    "embedded_chunks_v2": { "type": "integer", "minimum": 0 },
+    "missing_chunks_v2": { "type": "integer", "minimum": 0 },
+    "cache": { "$ref": "#/$defs/cacheObservability" }
+  },
+  "$defs": {
+    "cacheMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entries", "max_entries", "hits", "misses", "requests", "hit_rate"],
+      "properties": {
+        "entries": { "type": "integer", "minimum": 0 },
+        "max_entries": { "type": "integer", "minimum": 0 },
+        "hits": { "type": "integer", "minimum": 0 },
+        "misses": { "type": "integer", "minimum": 0 },
+        "requests": { "type": "integer", "minimum": 0 },
+        "hit_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "cacheObservability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "embedding_vectors", "chunk_snapshots"],
+      "properties": {
+        "scope": { "const": "process" },
+        "embedding_vectors": { "$ref": "#/$defs/cacheMetric" },
+        "chunk_snapshots": { "$ref": "#/$defs/cacheMetric" }
+      }
+    }
+  }
+}

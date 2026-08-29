@@ -18,13 +18,32 @@ export type DocumentUploadResponse = {
   chunk_count: number;
 };
 
-export type EmbeddingStatus = {
+export type CacheMetric = {
+  entries: number;
+  max_entries: number;
+  hits: number;
+  misses: number;
+  requests: number;
+  hit_rate: number;
+};
+
+export type CacheObservability = {
+  scope: "process";
+  embedding_vectors: CacheMetric;
+  chunk_snapshots: CacheMetric;
+};
+
+export type EmbeddingCoverageStatus = {
   total_chunks: number;
   embedded_chunks: number;
   missing_chunks: number;
   coverage: number;
   embedded_chunks_v2?: number;
   missing_chunks_v2?: number;
+};
+
+export type EmbeddingStatus = EmbeddingCoverageStatus & {
+  cache: CacheObservability;
 };
 
 export type EmbeddingRebuildResponse = EmbeddingStatus & {
@@ -39,7 +58,7 @@ export type SystemStatus = {
   llm_configured: boolean;
   default_answer_mode: AnswerMode;
   default_retriever_mode: RetrieverMode;
-  embedding: EmbeddingStatus;
+  embedding: EmbeddingCoverageStatus;
 };
 
 export type Source = {

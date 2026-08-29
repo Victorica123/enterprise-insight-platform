@@ -149,6 +149,13 @@ def main() -> int:
             ))
             wait_ready(f"http://127.0.0.1:{media_port}/actuator/health", processes[-1][0], media_log)
 
+            _, public_status = request_json(f"http://127.0.0.1:{agent_port}/system/status")
+            assert "cache" not in public_status["embedding"]
+            denied_cache_status, _ = request_json_with_errors(
+                f"http://127.0.0.1:{agent_port}/embeddings/status",
+            )
+            assert denied_cache_status == 401
+
             username = f"acceptance-{uuid.uuid4().hex[:10]}"
             _, auth_envelope = request_json(
                 f"http://127.0.0.1:{media_port}/api/auth/register", method="POST",
@@ -200,6 +207,16 @@ def main() -> int:
             assert video_sources, chat
             source = video_sources[0]
             assert source["asset_id"] == task["videoId"] and source["start_ms"] == 0
+
+            _, embedding_status = request_json(
+                f"http://127.0.0.1:{agent_port}/embeddings/status", token=token,
+            )
+            cache = embedding_status["cache"]
+            assert cache["scope"] == "process"
+            assert cache["chunk_snapshots"]["requests"] > 0
+            assert cache["chunk_snapshots"]["requests"] == (
+                cache["chunk_snapshots"]["hits"] + cache["chunk_snapshots"]["misses"]
+            )
 
             _, analysis = request_json(
                 f"http://127.0.0.1:{agent_port}/analysis/sessions", method="POST", token=token,
@@ -481,7 +498,8 @@ def main() -> int:
                            "range_playback", "team_invitation_and_switch",
                            "team_media_cross_member_read", "personal_workspace_isolation",
                            "team_agent_retrieval", "team_four_eyes_publication",
-                           "team_knowledge_and_ticket_delivery", "viewer_read_only"],
+                           "team_knowledge_and_ticket_delivery", "viewer_read_only",
+                           "cache_metrics_auth_boundary", "cache_scope_after_retrieval"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

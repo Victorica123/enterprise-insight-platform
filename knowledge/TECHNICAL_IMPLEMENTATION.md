@@ -104,6 +104,8 @@ Media Service 是成员关系和 active Workspace 令牌的唯一权威。OWNER 
 | 业务 chunk 快照 | DB path + content revision + scope | 已授权 chunk 对象 | 数据写入提升 revision |
 | 业务真实向量 LRU | model identity + text digest | BGE 向量 | 进程重启、显式清理或 LRU 淘汰 |
 
+业务缓存的 `cache_info` 被统一归一化为 entries、max_entries、hits、misses、requests 和 hit_rate，通过已鉴权 `/embeddings/status` 返回，并在 Web 监控页并列展示。指标只聚合当前进程且重启归零，不包含缓存 key 或 tenant/owner 分组；公开 `/system/status` 只保留覆盖率。这样既能验证缓存是否真正产生收益，也不会通过公共健康检查暴露工作负载计数。多实例生产环境应由 Prometheus 按实例采集后聚合，容量调整必须基于代表性流量而非本地冷启动样本。
+
 这类设计与 KV cache 的共同点是“稳定 key 复用昂贵计算”。但 LLM attention KV cache 属于模型推理引擎能力，本项目没有把普通字典缓存包装成模型级 KV cache，也不会虚构 provider 缓存命中率。Skill 通过稳定短前缀 + Top-K 动态上下文提高潜在前缀缓存友好度，最终是否命中仍由模型运行时决定。
 
 ## 5. Skill 如何使用向量知识
@@ -163,5 +165,5 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 1. 先确定正式 IdP、JWT 即时撤权、数据保留期限和模型数据策略，这些会改变安全架构。
 2. 用真实 MySQL、Redis、RocketMQ/S3 兼容对象存储跑集成与故障注入，再给出生产可靠性声明。
 3. 当业务 chunk 数量超过单机扫描预算时，再引入支持 metadata pre-filter 的向量数据库；迁移前保留当前 SQLite 基线做行为对照。
-4. 为 embedding LRU 和检索快照增加命中率、淘汰、冷启动耗时指标，并依据真实流量调整容量。
+4. 将现有进程级 embedding LRU/检索快照指标接入 Prometheus，补充 eviction 与冷启动耗时，并依据真实流量调整容量和实例级告警。
 5. 模型供应商支持 prompt caching 时，固定 system/tool schema 前缀，动态证据后置，并以 provider 返回的 cached-token 指标验证收益。

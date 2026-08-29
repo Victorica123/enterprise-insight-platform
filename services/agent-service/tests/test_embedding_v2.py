@@ -18,7 +18,17 @@ from app.embeddings import (
     is_real_embedding_available,
 )
 from app.rag import ingest_document
-from app.retrievers import Chunk, HybridRetriever, RetrievalHit, get_retriever
+from app.retrievers import (
+    Chunk,
+    HybridRetriever,
+    RetrievalHit,
+    RetrievalScope,
+    clear_chunk_cache,
+    get_chunk_cache_stats,
+    get_retriever,
+    load_chunks,
+)
+from app.status_service import build_embedding_status
 
 try:  # pragma: no cover - numpy 随 fastembed 安装，缺失时跳过相关用例
     import numpy as np
@@ -101,6 +111,51 @@ class RealEmbeddingProviderTests(unittest.TestCase):
 
     def test_cosine_similarity_dim_mismatch_is_zero(self) -> None:
         self.assertEqual(cosine_similarity([1.0, 0.0], [1.0, 0.0, 0.0]), 0.0)
+
+
+class CacheObservabilityTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        clear_real_embedding_cache()
+        clear_chunk_cache()
+
+    def test_status_calculates_process_cache_hit_rates(self) -> None:
+        status = build_embedding_status(
+            {
+                "total_chunks": 4,
+                "embedded_chunks": 4,
+                "missing_chunks": 0,
+                "embedded_chunks_v2": 2,
+                "missing_chunks_v2": 2,
+            },
+            embedding_cache_stats={
+                "entries": 3, "max_entries": 512, "hits": 6, "misses": 2,
+            },
+            chunk_cache_stats={
+                "entries": 2, "max_entries": 64, "hits": 0, "misses": 0,
+            },
+        )
+        self.assertEqual(status.cache.scope, "process")
+        self.assertEqual(status.cache.embedding_vectors.requests, 8)
+        self.assertEqual(status.cache.embedding_vectors.hit_rate, 0.75)
+        self.assertEqual(status.cache.chunk_snapshots.hit_rate, 0.0)
+
+    def test_chunk_cache_metrics_keep_authorization_scopes_separate(self) -> None:
+        clear_chunk_cache()
+        team_scope = RetrievalScope(tenant_id="tenant-a")
+        personal_scope = RetrievalScope(tenant_id="tenant-a", owner_id="user-a")
+        with (
+            patch("app.retrievers.database.get_content_revision", return_value=7),
+            patch("app.retrievers.database.list_chunk_rows", return_value=[]) as list_rows,
+        ):
+            load_chunks(team_scope)
+            load_chunks(team_scope)
+            load_chunks(personal_scope)
+
+        stats = get_chunk_cache_stats()
+        self.assertEqual(stats["hits"], 1)
+        self.assertEqual(stats["misses"], 2)
+        self.assertEqual(stats["entries"], 2)
+        self.assertEqual(list_rows.call_count, 2)
 
 
 class EmbeddingV2StorageTests(unittest.TestCase):

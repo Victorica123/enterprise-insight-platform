@@ -30,7 +30,7 @@ from app.routes.internal_media import router as internal_media_router
 from app.routes.observability import router as observability_router
 from app.routes.tickets import router as tickets_router
 from app.routes.analysis import router as analysis_router
-from app.status_service import build_embedding_status
+from app.status_service import build_embedding_coverage
 from app.tools import init_tools
 
 
@@ -64,7 +64,7 @@ TAG_METADATA = [
     {"name": "tickets", "description": "工单管理与状态草稿；写操作需 operator+。"},
     {"name": "observability", "description": "指标、请求日志与回放、工具调用审计、用户反馈。审计数据需 operator+。"},
     {"name": "graph", "description": "关系图谱：概览、实体、关系、关系链查询与重建。重建需 operator+。"},
-    {"name": "embeddings", "description": "Embedding 覆盖率查询与全量重建。重建需 operator+。"},
+    {"name": "embeddings", "description": "Embedding 覆盖率、进程缓存指标与全量重建。状态需登录，重建需 operator+。"},
     {"name": "internal-media", "description": "Media Service 专用的版本化证据摄取接口。"},
     {"name": "analysis", "description": "六阶段证据分析、人工补充、PRD 发布审批与审计。"},
 ]
@@ -125,7 +125,7 @@ def health() -> dict[str, object]:
 @app.get("/system/status", response_model=SystemStatus, summary="系统状态（文档/Chunk/LLM/Embedding）")
 def get_system_status() -> SystemStatus:
     documents = list_documents()
-    embedding = build_embedding_status(get_embedding_stats())
+    embedding = build_embedding_coverage(get_embedding_stats())
     llm_settings = get_llm_settings()
     return SystemStatus(
         status="ok",

@@ -30,5 +30,6 @@ Availability excludes declared maintenance and user-controlled external model ou
 
 - Media Service exports health and Micrometer/Prometheus metrics for HTTP, task stages, retries and queue delay.
 - Agent Service exposes tenant-scoped chat/tool summaries and auditable logs. Production aggregation must remove tenant identifiers from cross-tenant telemetry views.
+- Authenticated Agent embedding status exposes process-local vector and authorized chunk cache occupancy, request count and hit rate. Establish a representative request baseline before defining cache targets; a restarted or cold process is not an SLO breach.
 - Page on sustained error-budget burn, dead outbox events, stale media tasks, evidence-validation failures or any exact-once violation.
 - Review objectives after at least 14 days of representative pilot traffic; do not tighten targets using only mock localhost timings.

@@ -23,7 +23,23 @@ class DocumentSummary(BaseModel):
     created_at: str
 
 
-class EmbeddingStatus(BaseModel):
+class CacheMetric(BaseModel):
+    entries: int = Field(default=0, ge=0)
+    max_entries: int = Field(default=0, ge=0)
+    hits: int = Field(default=0, ge=0)
+    misses: int = Field(default=0, ge=0)
+    requests: int = Field(default=0, ge=0)
+    hit_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class CacheObservability(BaseModel):
+    # Both caches are process-local and intentionally reset after restart.
+    scope: Literal["process"] = "process"
+    embedding_vectors: CacheMetric = Field(default_factory=CacheMetric)
+    chunk_snapshots: CacheMetric = Field(default_factory=CacheMetric)
+
+
+class EmbeddingCoverageStatus(BaseModel):
     total_chunks: int
     embedded_chunks: int
     missing_chunks: int
@@ -31,6 +47,10 @@ class EmbeddingStatus(BaseModel):
     # A3: 真实语义 embedding（BGE）覆盖情况；0 表示模型不可用，检索走哈希回退
     embedded_chunks_v2: int = 0
     missing_chunks_v2: int = 0
+
+
+class EmbeddingStatus(EmbeddingCoverageStatus):
+    cache: CacheObservability = Field(default_factory=CacheObservability)
 
 
 class EmbeddingRebuildResponse(EmbeddingStatus):
@@ -45,7 +65,7 @@ class SystemStatus(BaseModel):
     llm_configured: bool
     default_answer_mode: str
     default_retriever_mode: str
-    embedding: EmbeddingStatus
+    embedding: EmbeddingCoverageStatus
 
 
 class ToolCallRecord(BaseModel):

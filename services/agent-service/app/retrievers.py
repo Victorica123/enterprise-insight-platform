@@ -367,6 +367,16 @@ def clear_chunk_cache() -> None:
     _load_chunks_cached.cache_clear()
 
 
+def get_chunk_cache_stats() -> dict[str, int]:
+    info = _load_chunks_cached.cache_info()
+    return {
+        "entries": info.currsize,
+        "max_entries": info.maxsize or 0,
+        "hits": info.hits,
+        "misses": info.misses,
+    }
+
+
 def deduplicate_preserve_order(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []

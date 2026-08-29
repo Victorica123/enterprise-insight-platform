@@ -10,7 +10,7 @@ from app.status_service import build_embedding_status
 router = APIRouter(tags=["embeddings"])
 
 
-@router.get("/embeddings/status", response_model=EmbeddingStatus, summary="Embedding 覆盖率状态")
+@router.get("/embeddings/status", response_model=EmbeddingStatus, summary="Embedding 覆盖率与进程缓存状态")
 def get_embeddings_status(_: ActorPrincipal = Depends(current_principal)) -> EmbeddingStatus:
     return build_embedding_status(get_embedding_stats())
 
@@ -30,5 +30,6 @@ def rebuild_embeddings(
         coverage=status.coverage,
         embedded_chunks_v2=status.embedded_chunks_v2,
         missing_chunks_v2=status.missing_chunks_v2,
+        cache=status.cache,
         updated_chunks=stats["updated_chunks"],
     )

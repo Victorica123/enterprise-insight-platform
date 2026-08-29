@@ -27,6 +27,15 @@
 
 JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加载错误；这不是产品回归，也不是通过证据。全量质量结论来自受支持 JDK 18 的 108/108 结果。
 
+2026-08-30 完成业务缓存可观测性增量验证：
+
+- Agent Service 全量 116/116 通过；新增用例覆盖 hit rate 计算、零请求语义、tenant/owner/asset 授权范围分键，以及已鉴权 `/embeddings/status` 与机器 JSON 契约的一致性。公开 `/system/status` 的响应负向断言确认不包含缓存流量。
+- `contracts/http/cache-observability-v1.schema.json` 通过机器解析；Agent 聚焦契约/缓存测试 19/19 通过。
+- 统一 Web 再次完成 `tsc -b` 与 Vite 生产构建，缓存监控的前后端类型闭环通过。
+- V6 黄金集保持 keyword、embedding、hybrid 的 decision 98%、recall@3 97%、fact 97%，本轮 p95 分别为 13.5 ms、28.5 ms、18.2 ms，质量门禁通过。该结果用于证明指标采集未改变检索行为，不代表生产吞吐。
+- localhost-only 纵向验收扩展为 23 项并全部通过；新增验证匿名缓存状态被拒绝、公开系统状态不暴露缓存流量，以及真实检索后授权 Chunk 缓存计数可见。仍只使用随机本机端口、临时 H2/SQLite/local 文件与 mock/local AI。
+- 维护知识索引单元测试 3/3 通过，覆盖语义路由、增量向量复用、revision 缓存失效和归档排除。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

@@ -65,6 +65,26 @@
       "vector_b64": "AAAAAAAAAAAAAAAAAO8AAAAAAAAAAAAA7wAAAAAAAADvAAAAAADeAAAAAAAAAAAAAAAA7wAAAAAAIgAAEQAAAAAAAAAAAAAkAAAAAAAAAAAAAAAAIgAAAAAAAAAAAAAAAAAAAAAAAAAAJAAAAAAAAAAAAAAAAAAA3gAAAAAA7wAAAAAAAAAAEQAAAAAAAAAAAAAAAAAA7wAAAO8AACIAAAAAAAAAEQAAAAAAvAAAABEAAAAAAAAAAAAAAAAAAAAA"
     },
     {
+      "end_line": 46,
+      "fingerprint": "791b98f0826bb7f59b295f69a0e50c51b68528f593d7a933617afbe551ecc7ad",
+      "heading": "cache-observability-v1.schema",
+      "id": "7e2cb5dbd3dffc933c89",
+      "path": "contracts/http/cache-observability-v1.schema.json",
+      "preview": "{ \"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"$id\": \"https://enterprise-insight.local/contracts/http/cache-observability-v1.schema.json\", \"title\": \"embedding and retrieval cache observability v1\", \"type\": \"object\", \"additionalproperties\": false, \"required\": [ \"total_chunks\", \"embedded_chunks\", \"missing_",
+      "start_line": 1,
+      "vector_b64": "AAAAAAAA+wAAAAAAAAAAAAn7AAAABQAAAAAJAAAJAAAO9gAA+wDJBQD3AAAACQD3AAAA9wAAAPYAAAAAAAAAAAAAAAAAAAAKAAkAAAAAAAAACgAALQkF8gAAAPcAAAAAAQAAAA4OAAUAAAAAAAAAAAAAAAAAAAAF+wAAAAAAAAX3AAAA8vIAEgAAAAAA9woFAAAAAPcACfsAAAD7ADcAAAAAAPsA9/sAAAAAvAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "end_line": 50,
+      "fingerprint": "e7871d223a469979a7e99f3c402f0fdba92522c828d933608f18b7d8bf8927ec",
+      "heading": "cache-observability-v1.schema",
+      "id": "a85b80447a04057bfb09",
+      "path": "contracts/http/cache-observability-v1.schema.json",
+      "preview": "} } } }",
+      "start_line": 47,
+      "vector_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK8AAAAAAAAAAAAAAAAAAABRAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAmAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
       "end_line": 28,
       "fingerprint": "c87466706aaeec839ab769328565337590a20b5a86bc4ed6eacdaf500dad5742",
       "heading": "evidence-source-v1.schema",
@@ -235,14 +255,14 @@
       "vector_b64": "AAoAAAAAAPYAAPYA7QAAAPYAAAAKAPYAAAAAAAAAAAABAAr19vYAAO0A9gAACgAAAAoAAPYAAAAT9goAAOMKAPYA9vYAAAAUAAAAAPb27RMAAAATABMAAAAA9gAAChMAFAAA7QAAAAAAFOwA9vYAE/YKAAD2AAD2AAoAAAAKAAAAAAAAE+0AAPYACgAKABQKAAoTAPYA2vYACgrjAAD2AAoAAAoAAPYAAPYAAADjAAAdAAD2AAoAAAD2AAoAAAAA"
     },
     {
-      "end_line": 34,
-      "fingerprint": "8accef7b0734dc370c735dc7c4c9defcdc3e13468faaf40bf53b31d4165a46b3",
+      "end_line": 35,
+      "fingerprint": "0bf2a25bd4a5cea86d977938ce57c10faac8d707b4c6cf85d54b6525f2c81c1c",
       "heading": "Measurement and alerting",
-      "id": "7267de5c9e0d69939bb6",
+      "id": "fe7239c252882cd5cc6f",
       "path": "docs/SLO.md",
-      "preview": "## measurement and alerting - media service exports health and micrometer/prometheus metrics for http, task stages, retries and queue delay. - agent service exposes tenant-scoped chat/tool summaries and auditable logs. production aggregation must remove tenant identifiers from cross-tenant telemetry views. - page on su",
+      "preview": "## measurement and alerting - media service exports health and micrometer/prometheus metrics for http, task stages, retries and queue delay. - agent service exposes tenant-scoped chat/tool summaries and auditable logs. production aggregation must remove tenant identifiers from cross-tenant telemetry views. - authentica",
       "start_line": 29,
-      "vector_b64": "AAD2AAAAAAAACgD2AAAA9gAKAPYA9gAAAAoA9gAAAAAW6uzgAOwU9gAAAPYAAAAAAAAAAAoAAAAK9vYKAAAAAAoA9gAA7AAWAAAAAAAA9hQAAAAKChQACgAA9gAAAAAAFgAAAAAAAAAAFuAAAAAACgAAAAAACgAACgoA9gDsAAAAAPYA6goUAAoAAAD2AAAA7Ar2AAAAAPYAAADNAAD2CgAACgAACgAA9vYAAAAKAAAACuwA9gAAAAD2AAAAAAAA"
+      "vector_b64": "AAD4AAAAAAAAAAD4AAAA+AAIAPgA+AAAAAgA+AAAAAAj7u/mAO8R+AAA+PgAAAgAAAAAAAgA+O4I+OcIAAAAAAgA+PgA7wASAAgAAAAA+BkAEgAIABEACAgA+PgACAAIEgAAAAAAAAAAEuYACAAACAAAAAAACAAACAgA7wjvCAgA+Pj49ggRAAgAAAD4AAAA+AgIAAD4+PgAAPjFAAD4CAAACAAACAAA+PgAAAAIAAAACO8IAAAAAAD4AAAAAAAA"
     },
     {
       "end_line": 15,
@@ -265,43 +285,43 @@
       "vector_b64": "/+sJAPcIBwX0CQD/AfkAAAAHAAAJAAD/9AAFBw34AOIR8P/wBQD8+wAAAwD5AP/7Df8R+wn5AeoAAAAI+AUAAPcVAAD5APj3AAAAAP0AAP38AwsDEQD0CfweFgn7B/v/ABb5APcD/QcJFfcACwcQ+/8ACwH3+wEAAPsIBPwF+fsABfsLBQX7BwD0AAMSACj8/fn06PkI+/n7BQwBEBT/Av/5AAv1+AD/BQf5AAUA9/v5AO4I/AfnAAgBBfv59AEH"
     },
     {
-      "end_line": 32,
-      "fingerprint": "e0726f1c07298ef390022dd7448ff2f6743f43ec138d2f07f74641f1f98f9140",
+      "end_line": 33,
+      "fingerprint": "3366e2106ad2a89d755e3aeffc3c6c1ef1ef4faca649cbccee124282243a2f6d",
       "heading": "检索与缓存实现",
-      "id": "a449714c53f0cd61100c",
+      "id": "73f6a6c28a881b002b1c",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 检索与缓存实现 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 bge 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。 - hybrid 先独立执行 keyword 与 embedding，再以 rrf 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。 - 可选 cross-encoder 只精排 top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。 - chunk 快照 lru 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asse",
       "start_line": 24,
-      "vector_b64": "DfP4APcA//3/Dgf0DQYA/v/7+wD6+QkE7AD/9BXs+wIN7wX1DAwFCP3kAwn/+wMF8xEB+AkJ7O/79fsA+Qf0AQEA+QcOAAAA//3///v/A/XzIgkDAQQA+fv9AfwBBAYMAQf5Bfn/BQ75+f8JC/8HAPgABwP/9ADqFfEA+QfzBwAE9//yAPQRAPT8EAD6AAABFv0EAAAA8fkA+wz3DAbyDfn9B/IBAfsH+QgABQH5BAEKCfwL7vsA/P8VBfAQ/Pj3"
+      "vector_b64": "DPX5APQA+v7/DAH8DQUABAj8/Ab7+gAD7wD/9gvv9wIL8gj9DwoEB/7aAhH//AgD+Q4B9AcI7+0A6/wA9wv1AQEA9QYMAAQA//3/9vf/A/L1HQgCBwQG/P3/BwEB/QUVBwP6BPX/Awz1+v8KCvcNAfkEBgH9//roEu8A+gX1BgAD9f/0APYPC/r9DQf7+hIGGP4DAAAB8/oA+Qr4CgXvC/z/AfQAAQEG9gn/BAj2/gEKAv0J8vwA/f8SBPIN/Pn9"
     },
     {
-      "end_line": 38,
+      "end_line": 39,
       "fingerprint": "574d9e534a0c8cb72e62de5b0501a5d5f633fb1875a88743a9400f6457474780",
       "heading": "等待与恢复",
-      "id": "d8abe44158b5113bd0c5",
+      "id": "426b5cfc37b84246e970",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 等待与恢复 分析会话需要持久化检查点。遇到真实信息缺口时进入 `waiting_confirmation`，记录结构化问题、原因和恢复令牌；用户或授权专家补充后从检查点继续，不从头重跑。 当前状态机已实现 `waiting_confirmation → draft_ready → publish_pending → published`。发布逻辑独立放在 `publication_service.py`，交付物投影放在 `publication_artifacts.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 owner 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 t",
-      "start_line": 33,
+      "start_line": 34,
       "vector_b64": "//z29AAB9P339gzzBgD/+QD0/wb5Bv/z9wcP/QMHDQAA7v7t8wf6DPz9A//9AAYBAfEK9wD5Buf6AAf6CQAGBvT69wAB9/wG7wAGAQkPBQcA+QQA8fkKAAEE9gH8Bw3/AAz0BvgAB+799/D6EwANAfkGCPz9DfQNDfkA+RD6B/kE6A8S/P8V/wQA9wD8BxL6/PcPGwAB+fQBBvADABAHBv//5gkA8/MH/Qr8AAEAAPwA/fn//wAABvr3+fwHGQMG"
     },
     {
-      "end_line": 45,
+      "end_line": 46,
       "fingerprint": "fbdc501e3311284706b4fe0b1ecdb7c150df0959ef3081a4fd1a067507173223",
       "heading": "受控工具",
-      "id": "6551a671570747f401e3",
+      "id": "2159f894afa19fd28082",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 受控工具 - 工具参数使用 schema 验证，调用前重复鉴权。 - 读工具和写工具分级；有业务副作用的写工具进入审批。 - 重试只用于幂等调用；每次调用保留 trace、输入摘要、批准者和结果。 - prd 行动项转工单复用 `create_ticket` 受控工具；生成 pending action 不等于工单已创建，只有审批执行后才产生工单。终态会回写为 `ticket_created/rejected/failed`，成功时记录真实 `ticket_id`，重复进入请求保持幂等。",
-      "start_line": 39,
+      "start_line": 40,
       "vector_b64": "CAIDAPsCAOn37Aj7AAD+APcA+AAACAcA9wgICwL+AAD4+v7mCQD+BfcACA4A8g4AAwID/QYDAOYFFg4M7A/uDgP0AAAABu4M+vj4AP4lCP4ABvcJCP3+D/IAAAAAAAAABQYAAOgJ/vgAAOz4AADbCfcAAvj+DPoIAPIC+ucA+O4GCQDvAAACAAj6APoAAAYAAP4OAALyAP4AEvgA+wAJAAAC+gIGAAYA9/gAAPsGAAAIBgUC8gAAAAkO+u8IA/0C"
     },
     {
-      "end_line": 52,
+      "end_line": 53,
       "fingerprint": "6269187dd6237c72164ccc94dd24c68cd3e106a454aaae6b4c4f39a7e647e591",
       "heading": "自进化闭环",
-      "id": "76c67bf1cc1d0d7b4dcb",
+      "id": "4de1d812518201ee846f",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 自进化闭环 - 坏案例：失败答案进入回归数据，记录期望、实际、证据和失败分类。 - 根因：区分摄取、检索、权限、提示、模型、验证和工具错误。 - 改进：优先修复确定性系统问题，再调整提示或模型路由。 - 知识：发布 prd 生成保留证据的候选；候选经过独立人工决定后才成为可发布知识状态，不把 prd 审批等同于知识审批。 - 门禁：任何影响 agent 行为的变更必须有对应评测案例，不能仅凭演示判断提升。",
-      "start_line": 46,
+      "start_line": 47,
       "vector_b64": "+voFAP4DBg39EfoADvgACP4AAPgAAwAA7wgOAhEDAvgN7Qb3AAMAAPLyCAgJAPgGBgACAPj++v7y+Nns8+8F/QIFDQD1APf4/gD+AP0cBgIACBzwDv7+AwAUA/MACADzCwYGAP/7/ggOAP0DBfjz+AYGAAj49Q36CwD69wsACQDyBgAA+v4CBgLsDvMAAAb6CBMJBgD4Ag4AAP39+AAQ+gUQAAMIDgAY/gAABfoC7/gAAAAAAgbzAAYIDf4G/vjy"
     },
     {
@@ -425,13 +445,23 @@
       "vector_b64": "AQH68vUA7wP8AQf6APMAAP4ABwbqB/8EAAf6AAH9AAcc7wHo7PoBCPz/AggABg0HBPoD/w71Bu71+fX1B/8ECwPyBxAABPoUAAYO+gMGBPwA9fQQBgj/EAYGEOf5/wD/AfP/AfMMAxIXAPUAEPnuAQAAARDzDgYAAPIAAAb6+uYGB/MDBAD9Awfy8wgOAAAA/f0G+AYD//r6Df8A/Qj1AAf/+foA+gYACxT5//oG/QMAAAAH+hH5CwH/8/QGFQD/"
     },
     {
-      "end_line": 72,
+      "end_line": 76,
+      "fingerprint": "a899c4ec99b34225df1c012158589f29c1c6230bd555247c9a5ce85a5a86f395",
+      "heading": "缓存可观测性",
+      "id": "e29611cf3712ccaf7301",
+      "path": "knowledge/CONTRACTS.md",
+      "preview": "## 缓存可观测性 已鉴权的 `get /embeddings/status` 以 `contracts/http/cache-observability-v1.schema.json` 为响应契约，在原 embedding 覆盖率字段之外返回 `cache`： - `embedding_vectors`：bge 进程内向量 lru 的条目数、容量、命中、未命中、请求数和命中率。 - `chunk_snapshots`：按 content revision 与 tenant/owner/asset 授权范围分键的 chunk 快照 lru 指标。 - `scope=process`：全部计数只代表当前 agent 进程，进程重启后归",
+      "start_line": 67,
+      "vector_b64": "BPX8+ff7+vkEBAf7DvURBQD9Bfbz+wUMBAAHBfv+Bf4P+/zh+wAIB+787QsHAAX1//0QBQQDB/AAAAzyAAAIAPkNAAcIAAcR8g75+/AB//kAFAUIEgv/AAf89xXy/wADCQsA/wAA9QAJ/wASBesH9//5BQD5AAAAAPUB//kA+QID/QH/8BT7Bf8JCPcA+wMHAQD39Oz85fIB+fkHDAD0AQEBAwnzAfIH6w8EAxHr8wz9+QT59wAH+fP4AAAM/PQH"
+    },
+    {
+      "end_line": 82,
       "fingerprint": "b0d77ff990162aeb60b8b4263eefa28b53035c4dbde8fd92a481759c37b16389",
       "heading": "版本策略",
-      "id": "ce6f105a8d0be071bd19",
+      "id": "4a008c3f35ed4c20f626",
       "path": "knowledge/CONTRACTS.md",
       "preview": "## 版本策略 - 事件名称带版本后缀。 - 新增可选字段可留在当前版本；删除、改义、改变必填性需发布新版本。 - 生产者、消费者和 schema 都必须有契约测试。 - 未知可选字段应被消费者忽略；未知事件版本不得静默降级处理。",
-      "start_line": 67,
+      "start_line": 77,
       "vector_b64": "AP4HAA0ABwIC/gL+CQcA+QsJAAb5/A8JAA/5DwAAAAAAAP4ACgcLCQAA9gYAAAkHAAD5DxECAOoH9+3f+gYALAkA+e3vAAAaC/cC+QIAAAAABwD3CREHBwD+AN8ECQAAGAsADwkABwcAAPoC+QAECfUJExQAAPf+BwAA+f7xAAAHAPcTBwAAAAD+BwD5APcC9wL3APkA+REC+QD3DwD8+QAA/gIAAP4N/vwAAP4AAAD+AAQADwAJABEJAP4ABP7t"
     },
     {
@@ -776,13 +806,13 @@
     },
     {
       "end_line": 12,
-      "fingerprint": "89c3b412d278f221f5cace2b943e26e8207437fd7c23a61ac0e0de12a9368801",
+      "fingerprint": "65ee9680d670cb69aad4ef201b9105a9ec10f959f0734bbc61a2f07e8a97ef21",
       "heading": "Workspace inventory",
-      "id": "9969374d34dea6b8ea0d",
+      "id": "0b3b01dde57644417a33",
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "preview": "## workspace inventory - media service: 84 production java files; 26 test files; 108 `@test` methods. - agent service: 40 application python files; 19 test files; 113 pytest test functions. - react web: 23 typescript/tsx/css source files. - machine-readable contracts: 6 files. - local localhost-only acceptance runner: ",
+      "preview": "## workspace inventory - media service: 84 production java files; 26 test files; 108 `@test` methods. - agent service: 40 application python files; 19 test files; 116 pytest test functions. - react web: 23 typescript/tsx/css source files. - machine-readable contracts: 7 files. - local localhost-only acceptance runner: ",
       "start_line": 5,
-      "vector_b64": "APQAAAAAAAAZAAAA5wznAAD0AAAAAAAAAAAAAAAAAPQb5QDlAPQADPQAAAAMAPQADAAAAAAAAAAAAPQAACUAAAAAAAAAAAAbAAAAAAAAAAAADAAAAAAAAAAA9AAMAAAADgAAAAAAAAAAGwwAAPQMDAAADAAAAAAAAAAAAAAAAAAAMgAA5QAAAAAAAPQADBsAAAAAAAwA9AAAAPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADBkAAOcAAAAAAAAAAAAA"
+      "vector_b64": "APQAAAAAAAAZAAAA5wznAAAAAAAAAAAAAAAAAAAAAPQb5QDlAPQADAAAAAAMAPQADAAAAAAAAAAAAPQAACUAAAAAAAAAAAAbAAAAAAAAAAAADAAAAAAAAAAA9AAMAAAADgAAAAAAAAAAGwwAAPQMDAAADAAAAAAAAAAAAAAAAAAAMgAA5QAAAAAAAPQADBsAAAAAAAwA9AAAAPQMAAAAAAAAAAAAAAwAAAAAAAAAAAAADBkAAOcAAAAAAAAAAAAA"
     },
     {
       "end_line": 18,
@@ -805,23 +835,23 @@
       "vector_b64": "AAAAAAAAGAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAzTAAAOgYAADoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMwAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAOgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     },
     {
-      "end_line": 32,
-      "fingerprint": "70acf73d8bd0bee0e7f6a7aceed9e435e51777794e585384b7aba8cda1d47022",
+      "end_line": 33,
+      "fingerprint": "14e6d085df24a7c9af7c0a739323da7a271502a589826a2fba83cc858c8ddf82",
       "heading": "Versioned contracts",
-      "id": "cb13ff386f0f77b58f95",
+      "id": "fa816fa46338ed1e5b30",
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "preview": "## versioned contracts - `contracts/events/transcript-ready-v1.schema.json` - `contracts/http/evidence-source-v1.schema.json` - `contracts/http/publication-deliverables-v1.schema.json` - `contracts/http/workspace-collaboration-v1.schema.json` - `contracts/identity/jwt-claims-v1.schema.json` - `contracts/identity/jwt-cl",
+      "preview": "## versioned contracts - `contracts/events/transcript-ready-v1.schema.json` - `contracts/http/cache-observability-v1.schema.json` - `contracts/http/evidence-source-v1.schema.json` - `contracts/http/publication-deliverables-v1.schema.json` - `contracts/http/workspace-collaboration-v1.schema.json` - `contracts/identity/j",
       "start_line": 24,
-      "vector_b64": "AAAAAAAAAAAAAAAAAAAA6gAAAAAAANQAAAAAAAAAAAAvAADRAAAA6gDqAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALwAAAAAAAAAAAAAAAAAAAAAAACwAAOoAAAAAAAAAAAAAAAAAAAAAAAAA6gAAAAAAAAAAAAAAAAAAAAAAFgAAAAAAAAAAAAAAFgAAAAAAAAAAAAAAAAAA"
+      "vector_b64": "AAAAAAAAAAAAAAAAAAAA7AAAAAAAANcAAAAAAAAAAAAsAADUAAAA7ADsAAAAAAAAAAAAAAAAANQAAAAAAAAAAAAAAAAAAAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAAAAAAAAAAAAAAAAAAAAAACkAAOwAAAAAAAAAAAAAAAAAAAAAAAAA7AAAAOwAAAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAAAAA"
     },
     {
-      "end_line": 35,
+      "end_line": 36,
       "fingerprint": "4a0d5580fdc6b176d34b2f2b9d37b2323708bb42206d1dccf9057627413e31ac",
       "heading": "Source-of-truth note",
-      "id": "cb67901f8aa696895d78",
+      "id": "404f4dbec6401cad60c4",
       "path": "knowledge/generated/CURRENT_STATE.md",
       "preview": "## source-of-truth note counts and versions above are structural observations, not release claims. read the human-maintained knowledge pages for product semantics, boundaries and verified quality evidence.",
-      "start_line": 33,
+      "start_line": 34,
       "vector_b64": "AAAAAAAAAO0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoACYA2gAAAAAAAAAAAAAAAAAAAADtAAAAAAAAAO0AAAAAAAAAAAAAAADtABMAABMAKAAAAADtAAAAAAATAAAAKAAAAAAAAADtAAAA7QAAAAAAAADtAAAAAAAA7QATAAAAAO0AAAAA7e0AAAAAAAAAAAAAAAATAO0AAADaAAATAAAAAAAAAAAAAAAAAAAAAAAAEwAAAAAAAAAAAAAAAAAA"
     },
     {
@@ -885,33 +915,33 @@
       "vector_b64": "B/4D+/3+AAMHAwAAA/v+FwkAEQ4J5AkAFwUAAAIAAPAABwLdAAAJCtvyBwAA9/kOAAkCAPIA7/cJ9wfr8AAAAAD3ABAA+fkTCQn3AAr5BQcAABMACQwJDgL+APIJAN0DEAUACQDrABIC/gAA+wcAAPcJAPAD+QD9+/kAB/sA8PcJ9wD+6wD+/f4ACf4AAAACCgD5AP4D9/gAAwAACQAAAAD59AAJ9/cA+wDwAP0A9/n2CvoACvkCAAIAAAUHAAAD"
     },
     {
-      "end_line": 62,
-      "fingerprint": "dd1fcf3330fa8c83430af366c23179ab9c2508c1148554930987ef4a20854358",
+      "end_line": 64,
+      "fingerprint": "d9bbf10bba8ebf7b293cee269cf9209dedf6c66f833be40a42dfbdb56960937f",
       "heading": "可观测性",
-      "id": "a31a36c1408cfafcc0a9",
+      "id": "9ad28cf3255fc62db5f4",
       "path": "knowledge/OPERATIONS.md",
-      "preview": "## 可观测性 - `trace_id` 从前端/网关贯穿媒体任务、事件投递、agent 摄取、问答和工具调用。 - 指标至少覆盖队列积压、各阶段延迟、失败/重试、事件重复与冲突、引用验证失败、等待确认时长和审批结果。 - 错误对用户提供可操作原因，对日志保留结构化内部原因且不泄露敏感数据。",
+      "preview": "## 可观测性 - `trace_id` 从前端/网关贯穿媒体任务、事件投递、agent 摄取、问答和工具调用。 - 指标至少覆盖队列积压、各阶段延迟、失败/重试、事件重复与冲突、引用验证失败、等待确认时长和审批结果。 - 错误对用户提供可操作原因，对日志保留结构化内部原因且不泄露敏感数据。 - 登录后可在统一 web 的“监控”页查看 bge 向量 lru 与授权 chunk 快照的命中率、请求、命中/未命中和容量，也可携带当前 workspace bearer jwt 调用 `get /embeddings/status`。公开 `get /system/status` 不返回这些流量指标。 - 缓存响应中的 `scope=pr",
       "start_line": 57,
-      "vector_b64": "7wDz+Aj2COf8AAAI/gAAAPwPAfgA/Pb4CAAIAgL+/voP5wATAgj2+gT0AgAAAAoNAAAMCgAEAAD2AOcAAggA/PgAAPj4/voPAAAA/gIA7PgAAPb+E/b+9v4ACvj29hH89gIAAAAABgD+JvMRAAgACggIAPgT9gr++AD2CvEAEQgA9vgA8fgA+Az29usACB8A+P4KAP74+v72APUC9gD+APT4AAYAAu8K9P74/gwAAPYACAr48QAAAPYCAOkADPwA"
+      "vector_b64": "++b47wj/B/b+DAcEAO/5BQAEBgD7BPj/BwAFAfz3//b99gDwAQrz/wjx9AwAAPkJ/wAMDAABAOoAAO7r/Ar/+AEKAPsB/wERBP/z/fcH8vIACfn/Df0EAP/7AwHf/xL3+QMAAAj7Afn/GvcRBQfzAQEFAPsKBPn8AAD5DO4AEQ32/AH29vb79BT98+z7/xUDA/8H+//r8gXs+/EBAAj/+/j7+w0AB/QH9wH5/wgBBfn//QEF7wcBBwD3AO8HAQEA"
     },
     {
-      "end_line": 70,
+      "end_line": 72,
       "fingerprint": "2b4763ee9788e32fdf95960e5f550182553dfebd153b1148884c23b44cfb3c85",
       "heading": "恢复策略",
-      "id": "99d33e7a0ea46e2c629b",
+      "id": "7342acc74d92da0a0f5b",
       "path": "knowledge/OPERATIONS.md",
       "preview": "## 恢复策略 - 媒体任务可安全重试，不能重复创建资产。 - 转写事件可重放，agent 消费必须幂等。 - agent 会话从持久化检查点恢复。 - 发布 prd、知识合并和外部写操作使用幂等键及审计记录。 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 sha-256 manifest 的归档；`verify` 校验文件与 sqlite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。",
-      "start_line": 63,
+      "start_line": 65,
       "vector_b64": "+QIA+QAC9/L3AA0CAPkXCQD7EfUA/P75BQAA+wcHAAsA9ffv+QcABwD59wD0B/4LAPMAAAAMEBIACgAH/v4AAPn+AAkAB/YpAPkA/AUAAAAAB/kACQAJCgkWAPkABwAAABYABwAAF/kXFuoJBPnzCfcA9gAJAPcA8gcACQ759/n+APkA6gD8CQcACwEACQL5DAIAAPX7AAD3AOMCEAD1+QAA6hAQAAL4AAAACQkACfcJ/vUFAAAABQAAAPL5Dvz3"
     },
     {
-      "end_line": 75,
+      "end_line": 77,
       "fingerprint": "730ac2c8efe8d4b3e977ab2d06315fd024e41b5654cbffba605b46182bcf4027",
       "heading": "当前运行状态与缺口",
-      "id": "4a9bd51ade67df101882",
+      "id": "1d8e6995d4f3b64d949f",
       "path": "knowledge/OPERATIONS.md",
       "preview": "## 当前运行状态与缺口 统一 localhost compose、启动/停止脚本、备份校验恢复工具、本地发布手册和本地质量目标已提供。无容器验收链路已实际通过；当前主机没有 docker，因此 compose 本轮只完成静态配置校验，不能声明容器运行已验证。 真实 redis、rocketmq、mysql、s3、外部模型与正式身份提供方 smoke，生产数据库迁移编排、灾备演练、监控告警接入和生产 slo 批准仍待目标环境与业务决策。`docs/slo.md` 中的生产数值只是候选项，不是已经兑现的服务承诺。",
-      "start_line": 71,
+      "start_line": 73,
       "vector_b64": "BwD9APoBAAAAAQYAAPb3B/b5DQcABgH/BvkADPkHBgDxDAHwBhP29Oz0//oGDAAB8QEDAP8EEAYAAADw6g0A+gYA+Af//wAMBh3qGQ//Bvr5AAEAAAEK+fMNA/Pz+e35BAz5+QwBAQ8ABu78AwAHBvwJAQoGBxAAAfkG/ADxA/oAAAD/7vkB7vnt/AX6AP3xBvQAAP8B7AD2BAAA8QEHEAP08woPCO36/wcHCgMJAAD/APoA9gD/AAMGBuEA9vzx"
     },
     {
@@ -985,33 +1015,43 @@
       "vector_b64": "AvgA+vz2+OwI9AoAAP7+CPYIAAYA/gb++Ar4AgYACPAOAAroCwD6BPwA+Ar+APYAAAIMABL+AAAA+vj6/gIAAAAA+AAAACgMAAD+CgACAP74EBIIFAAE+foA/PgA/hMIGBAAAP4ACgoaGPYOAgD+AAgI9gAOAAAAAvgS/gAA+AD8ABASAAr+5Qj+APUA9ggABAD6EAoAAAAIGPX4BAL+APTu/vgA+gAC/v74FA8CAAAKAPYACAgEABQA/voA8vIA"
     },
     {
-      "end_line": 29,
-      "fingerprint": "7d9023cddbe4bd33ed623acfc25fa01044bd9a981a5570ef8fe4ed418687cd19",
+      "end_line": 32,
+      "fingerprint": "088d9c0a29b3e8a42866478ddb6b3bf31b83e702249acc96d192ea3a2ea5e77f",
       "heading": "当前已知基线",
-      "id": "807bff5de859f8bb0401",
+      "id": "029650ec92a42b28abfa",
       "path": "knowledge/QUALITY.md",
       "preview": "## 当前已知基线 - agent service 在整合前的回归基线为 87 个 pytest 用例通过；首批契约、幂等摄取、检索隔离、jwt 与时间戳引用加入后为 98 个用例通过。 - react 应用在整合前可完成 typescript/vite 生产构建。 - media service 声明支持 jdk 17/18；jdk 25 下 mockito inline/bytebuddy 失败属于不支持工具链，不能作为服务回归结论，也不能当作通过。 2026-08-29 已重新建立完整业务纵向链路的本地证据： - agent service 113/113 用例通过，覆盖 team workspace 下文档、视频证据、分析、",
       "start_line": 11,
-      "vector_b64": "AQEBB/r5AwEHDAL7AwLyBP0DB/n3/RD79/YIDAL9BPkT+gLvCQQVDgv4+RQR/QUMBwD+Av3//wP9BP3zBP3+AfsF/gMHCfULAf4CBgH+Cf8DBB3//fv+/wv///Xz//4O+QP++v72Bf39Dvb8/wkJ/vkGA/PxBPkEAfz9+QME9vsIEQH49P379QL6AvTv/f79EgT1CgIB7Qn/DvH6+hELBffK/AYECvwE+wH8C/7wAgzv//cL/Q/1+f8E+PEHBvoF"
+      "vector_b64": "Af8CBvr2A/4HDwP8AwP1A/8FB/r4/Q37+PcHDQD9A/QR/QPyCAQXDQn09xIS/QcNCAL+Bf8A/wP9Av30/v3+AfsI+wgJCPYKAfsCCP/+Cf0DBBwAA/7+Agr///b0/P4P+gH9+v/3Bv39DfcA/QkL//cGBfTyBvcGBPr9+gED9/UJEf379QD6+P/6AvHx/v8DEQP3Cf8B7gj/De/4+xMKCPPJ/AQBCfsD+wD9Cv/vAg3y+/gI/Q72+fwD+fQGBfcF"
     },
     {
-      "end_line": 40,
+      "end_line": 38,
+      "fingerprint": "12641e13a33614a485d2ebde54e35428f6f5edafbf7558d3538dd8d8d379ec54",
+      "heading": "当前已知基线",
+      "id": "343f22cd79fe5984ce06",
+      "path": "knowledge/QUALITY.md",
+      "preview": "- `contracts/http/cache-observability-v1.schema.json` 通过机器解析；agent 聚焦契约/缓存测试 19/19 通过。 - 统一 web 再次完成 `tsc -b` 与 vite 生产构建，缓存监控的前后端类型闭环通过。 - v6 黄金集保持 keyword、embedding、hybrid 的 decision 98%、recall@3 97%、fact 97%，本轮 p95 分别为 13.5 ms、28.5 ms、18.2 ms，质量门禁通过。该结果用于证明指标采集未改变检索行为，不代表生产吞吐。 - localhost-only 纵向验收扩展为 23 项并全部通过；新增验证",
+      "start_line": 33,
+      "vector_b64": "B/4R+gEHEwcA9vr5/PIRAATz/wAAAAr99vgTC//4B/EX7v8DCwYB8wbm+hUAAPoIDPr6AAoA/+8A9AvqDP75/AEAAAYGAvIK9vkA9f0G/wEAFhEIB/8H/Pr9/fn6Bg0HDgH/+gD/+fkRAP34AwcKD/0MAPL9BP8DAPkI+gAOAfkA+QD+4gYHAAYAAQP5BgP9BBcAARb/+P76BPgA+A0LCP/Z/wMGAfYBAA8OAAkA+gADAAwB9QAGAAb6+QMGBwT/"
+    },
+    {
+      "end_line": 49,
       "fingerprint": "7e75c440884602a4bc521941fa927f7806522d5781ad08c9529110b67018a515",
       "heading": "合并门禁",
-      "id": "0c55328faa4b85618663",
+      "id": "e9274568fcee196909a3",
       "path": "knowledge/QUALITY.md",
       "preview": "## 合并门禁 - 相关服务全量测试通过。 - web 类型检查和构建通过。 - 契约校验、owner/tenant 负向测试通过。 - agent 行为变化对应评测未退化。 - `python scripts/update_knowledge.py --check` 通过。 - 无法运行的验证必须说明环境原因、影响边界和替代证据。 `.github/workflows/quality.yml` 将门禁拆为 agent 全量用例 + v6 黄金集 + 维护索引单测与知识漂移、media jdk 17 全量测试、web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位",
-      "start_line": 30,
+      "start_line": 39,
       "vector_b64": "AfkIBvYRAPoA+gYGAPkAF/oAAPkAAQAE/wAAGAPz/QAL8xDuBvgABvIAAAcAAf0EBADz+Qb4APLvCAH5+Pnp+goG6wAAAOUR//oP8v8ACwT5AP8AAQsEAAEKAAb2+QD/EfoEFAcI+fXtGfoKAQAGB/0B+vz6/Pb4AAD5/wcBAQcGAO8I5wAABv/4B+nyABH5AQABAAcD/wAG/fAQ+ADz/PPo+Pr/CAAO/PoA/wkAAQAK//YOGAD6AQDy8/8AAfkG"
     },
     {
-      "end_line": 46,
+      "end_line": 55,
       "fingerprint": "782ebc1f856cc28a58ccf79fea53213f520bb5cedf89a498ce703788ed3f7059",
       "heading": "不允许的质量声明",
-      "id": "3c985c0bb84f776bf67e",
+      "id": "30e41967b368e7bb6dd3",
       "path": "knowledge/QUALITY.md",
       "preview": "## 不允许的质量声明 - mock 中间件通过不等于真实 redis、mq、对象存储或模型通过。 - 有 citation 字段不等于引用真实正确。 - ui 隐藏资源不等于完成授权。 - happy path 演示不等于任务具备重试、幂等和恢复能力。",
-      "start_line": 41,
+      "start_line": 50,
       "vector_b64": "AAIA9+f3AAAAHBDyAAD5B/cA9wAJ/gD8/gAAGgf5APkjAAAAAvkHAvf3FwAAAPLuAAkFAAAAAOcAAAkHAAD+AAD+AAASHO8V9gD3Cfz5/vkAAAD5AAX+AAAEBPn2GQAAFQsABwf59+QC+fcA7gD+9wAAAPQADPkAAAD3AAcAAPkA/vcA6wkH/gAAAAAHABwAAAAAAAkAAAD+GgcAAPv3APf5AAD5CgIA/vEHAAwA+RIA+QIC+ADyAAAACQcAAAcH"
     },
     {
@@ -1095,74 +1135,74 @@
       "vector_b64": "APv8APcQ+gQOAAEEBQ0EBv8GBPkA/w4YBQX/BhAAB/wA8Qzx9Q8KBPrvBhQAAAvx/gX7DBAHC/H2AAr6BQX79gwF+wUBAAAFAQIA+gX6/QsMGwsBAAQK9ewG//7+BhEGBBT/Cwb5DgD5+toHFf4K+gD6BgD2DAAAB/4GBQQA/f785vr3Cfv/Cvz/DPkA9BAREgL2APv8BwQEAP38+QD+APz7AQsHEP/7BAz/AAIaBQD0/gYBBPkAAQQA9v4KAf4E"
     },
     {
-      "end_line": 108,
-      "fingerprint": "3123f4ed53d80a00e4b6fd9b3d0ecd16b56941501c91aefb276756a476e66c72",
+      "end_line": 110,
+      "fingerprint": "16615ed38cb01b23eb1dfda188b0397b764eeb976ccb0600105a62856c46f7ad",
       "heading": "4.2 维护 Skill 语义索引",
-      "id": "3bb1b56d81d11ef6e4c1",
+      "id": "85a05a07277d9b6738bd",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "### 4.2 维护 skill 语义索引 维护知识和客户业务数据完全分离。`scripts/knowledge_index.py` 只扫描仓库内批准的知识、adr、契约、readme、当前运维文档和 skill 参考，不读取 `docs/archive`、sqlite、媒体、上传内容或 runtime 目录。 索引使用 192 维 `hash-ngram-topic-embedding-v1`：英文/代码词、中文 1~3 gram 与领域 topic alias 共同映射到稳定向量。归一化向量进一步量化为 signed int8 并 base64 存储，把每个 chunk 的向量载荷固定为 192 字节；查询时解码并执行 cosi",
       "start_line": 92,
-      "vector_b64": "EArwAv0HD/QT+vgECAn49vb/+wQA6QcYBgH5DQL29/gU/wDzCwcNBgHxBxL3BAQE+QX7/Oz89fgE8v34BAj9/AME/Pz8BfML8/r3//UA//z0DwEABAT//g4E/AL2DAQJBwTzAAABFAUN/AQNAwkEAe78/ggFBgX+BgUAAA7w9AD+9gTl9wAE+QbzAPn5/xID+/cSAQD9Afz9BPr39gIIBPP8+fcS9Pz8+fr3CAUE7wT/EgkB/wgI/Pb79PMN6gL4"
+      "vector_b64": "DwjvAvsGD/oN/vYCCAT79wL5/AH86/4VDfoBCwb3+/INAv/wDQoL/gLsBhj5BAL+AwX5/Or68/kI7/70/wsB+gIG+AEACPgK9fP3/PUI/vrzDv3/BAT/Ag0C/Qf6CgYIBwj+AP0BFAQM/QQMBwL6/u/8/gkGDP39CQAAAQjy9P3++Arn9P0GAQzsBf79+x8H9wARAfsC/vn++Pr2+wIIBfn6+vkQ9vz++v73BwYB9AQCCwoB+gcF/Pb49vQL5wL6"
     },
     {
-      "end_line": 125,
+      "end_line": 127,
       "fingerprint": "4ce6dbeaced3971c858cbdbe97a5512e80fb27107573e6df2113491825e02879",
       "heading": "5. Skill 如何使用向量知识",
-      "id": "1a13aa80bab56ce4e350",
+      "id": "e2bf21126375f7648191",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "## 5. skill 如何使用向量知识 `enterprise-insight-maintainer` 保留少量高价值不变量作为稳定入口。跨服务、架构、rag 或陌生任务先运行： ```powershell python skills/enterprise-insight-maintainer/scripts/query_project_knowledge.py \"任务描述\" --top-k 5 ``` 脚本返回原始文件、标题和精确行号；agent 随后读取这些原文，而不是相信索引 preview。`knowledge/generated/semantic_index.json` 是可再生路由数据，不是新的事实来源。更新知识库时统",
-      "start_line": 109,
+      "start_line": 111,
       "vector_b64": "Agj9APsJCALqAgb4AAgA+gYJCwAA+gUF+AgIBvcIAPgT+wAADAAIDPf++ggIAPoTCwAI+ub5AAIG+voA8Ov+AP36APoMBQD3AAIWCwAMBf0IFPcA+AYFBgIA+vIAAAAG/gv++PTpAAD59P4AAgD4/gX0AAAQBvgD+gL6ABn4Avj48gL4/gb3AOz4AN8A/gD6/f0SAP7++AD4BvcJ/gICCAIABh4RCAAG/QD1/gUA/h4FDu37CfcAA/Dy+/oA9QD4"
     },
     {
-      "end_line": 136,
+      "end_line": 138,
       "fingerprint": "6c944a9f2f650fb46ca49c38d117ee2a1359332fc2cea614898106cb7879e8cd",
       "heading": "6. 安全、可靠性与一致性技术点",
-      "id": "ad2e58bcf5c9d3cba031",
+      "id": "761426b5c2dcc3f58bf6",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "## 6. 安全、可靠性与一致性技术点 - 身份：共享 issuer/audience/signature 的 jwt；tenant、owner、workspace type 与 role 由服务端签发。 - 越权隐藏：跨 scope 资源统一按不存在处理，避免枚举资源身份。 - 幂等：上传内容、媒体事件、语义 transcript version、发布 cas 和工具 action 都有稳定 key。 - 事务 outbox：数据库事实和待投递事件同事务，避免业务成功但消息丢失。 - 可恢复状态机：媒体任务可重试；agent 会话可从 checkpoint 恢复；审批副作用独立治理。 - 不可变发布：canonical json ",
-      "start_line": 126,
+      "start_line": 128,
       "vector_b64": "9Pr8+wYH9ukPBhQA/wnyBQn/AO4A9wD7/wEAAQb6+wAU6AvxAfUEBPr1+wH3BfoM//kE//QEAuv6B/8AAvX/BvX+AAAA//QJ+voCCur7CgYAGgkG+vkJ+fsG7+v7//oHEAwAAAYHBfX8DdwFBgAMBvr/Bvz7+gAF/vr29wAAAAAA9gAA9AAE/AX+EfUFAAUHBAD7Cv/8APQKAPkNAAAZAgAA9gkA8AAL8PsH+gsACgAMAPEH7QDv9v8AAfz6+f8W"
     },
     {
-      "end_line": 142,
+      "end_line": 144,
       "fingerprint": "74b513b95323d9223a9211de715da2b1710a02340e09a7157560ef66a28f10ca",
       "heading": "7. 前端实现",
-      "id": "b504e79b8038d67664de",
+      "id": "8315975bad51a23f48ca",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "## 7. 前端实现 react 应用只保存一个 active workspace session。切换后覆盖本地 jwt/session，并清空文档、工单、工具调用、聊天响应和选中媒体等 scope 相关状态；analysis 与 graph 使用 tenant key 强制重建，防止旧 workspace 组件状态串入新空间。 workspace 管理弹窗通过 react portal 挂载到 `document.body`。这是因为 sticky header 的 `backdrop-filter` 会创建新的 containing block，使嵌套的 `position: fixed` 相对 header 而非 viewp",
-      "start_line": 137,
+      "start_line": 139,
       "vector_b64": "+goAAAkX+AMqAAj+AALqAgD1/vcA8AAG9wAIAggJ+gAG8wPlCAD4AhYA/g/+AAgA9/kADgL+AADz7gb4/fr++PoHAAAAAez4AgUA/vsGAggIEP36EAAAAAAGBQDyAAgSIQv7AAAABgARE+IUAADzCP4A/vcICAAADQAA/v4I/wUH/gAICfoRBgD9Avj+BRsG+gD2DQAOBQAA8v76AAnv/v4AAAIIAPry/gD3+u4A/gAAAP0DAAAA/g4CAAMA/gD+"
     },
     {
-      "end_line": 151,
+      "end_line": 153,
       "fingerprint": "94637e94c546881d926d16ffcf2e8f911ce5f1f428168dbfa35ac9e7ab2e9332",
       "heading": "8. 验证体系",
-      "id": "9236f42ecac97e660dbc",
+      "id": "0e9914af674b9f1190f7",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "## 8. 验证体系 - media service：junit/spring 集成测试覆盖认证、上传、任务、播放、outbox、租户与团队协作。 - agent service：unittest/pytest 覆盖摄取、检索、向量回退、分析、发布、工具、隔离与观测。 - agent 评测：黄金集分别验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟门禁。 - web：typescript project build + vite production build，并补真实浏览器业务操作。 - 平台：`scripts/local_acceptance.py` 使用随机 localhos",
-      "start_line": 143,
+      "start_line": 145,
       "vector_b64": "AvcDAvgAAA8AAw8AAgAL/+r69wAA8QgM/QAGBv0I+AAABhDxFP4R+u/+AgAG+vIIEQsL+v8CBvL6Agb0APj+AA4AAAAACfEMAAb3BQIM/v7yEhX6+gL48QD18f7sAAIJEg4GAAkABfgZC+v+BQAJCQb+APoFE/D+BgAA/vf4AwD4CQ8A7gb+EQAIAvr+CQv9/Q4AEgAA9AAGCPYA/ggJAP74AAYCCQDy9f/yCfv6Dgn4+Ab47PgC/gAA/fIAGv34"
     },
     {
-      "end_line": 160,
+      "end_line": 162,
       "fingerprint": "bf738bd17685d0983b1de1a11b1db9874a35a0d5738ba28d09d724277b8c7b08",
       "heading": "9. 面试或简历可重点说明的技术价值",
-      "id": "a13baa11f65b098dfa10",
+      "id": "4b799c537fbbfd2135b1",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "## 9. 面试或简历可重点说明的技术价值 1. 不是把两个页面拼在一起，而是用统一身份、tenant/owner、版本化契约和一条业务纵向链路完成系统整合。 2. rag 不只“有向量库”：检索前授权、混合召回、rrf、可选 rerank、证据门控、引用验证和时间戳回放形成可信链。 3. agent 不是一次大 prompt：六阶段结构化状态、等待/恢复、cas 审批、不可变版本和受控工具把不确定生成与确定性副作用分开。 4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避和可恢复检查点共同保证一致性。 5. 缓存不是盲目存结果：所有缓存 key 都带模型/内容/数据 revisi",
-      "start_line": 152,
+      "start_line": 154,
       "vector_b64": "DPv+7+X7/woFBQX3AQgI9AL1AO4ABQHrAPsGAgAGBfQC/AX+9hf1/v/qAgYNBvkABP78APz1AQn0+wUA6f7/CwcAAAAN+vEG/wD3Cf8LAQIQAgD2+gEB/QX07gkBAQz9ARoACwD8BPoMEvT6CgD7BQAABgn0+/sE+/v17wr7APEH+/oV9gAfC/kLFgYA9RABAfn8B/8CAP8GB/8P9gX+BAz1AAoL+wD6+Qb8+/T0CQb+/v8A9f8ADAL19/oXD/8H"
     },
     {
-      "end_line": 167,
-      "fingerprint": "a5adabbe611100378f047c3e22b2f778470bab3965a4cfe59274cb763b442ecd",
+      "end_line": 169,
+      "fingerprint": "1353aa7e7c717fe97d19bc9f4c14e23137e2497647064d072f66eaa0525f25bf",
       "heading": "10. 后续生产优化顺序",
-      "id": "8e8ac7e191407a53f5c9",
+      "id": "14011d33b93ff2f3bcd9",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
-      "preview": "## 10. 后续生产优化顺序 1. 先确定正式 idp、jwt 即时撤权、数据保留期限和模型数据策略，这些会改变安全架构。 2. 用真实 mysql、redis、rocketmq/s3 兼容对象存储跑集成与故障注入，再给出生产可靠性声明。 3. 当业务 chunk 数量超过单机扫描预算时，再引入支持 metadata pre-filter 的向量数据库；迁移前保留当前 sqlite 基线做行为对照。 4. 为 embedding lru 和检索快照增加命中率、淘汰、冷启动耗时指标，并依据真实流量调整容量。 5. 模型供应商支持 prompt caching 时，固定 system/tool schema 前缀，动态证据后置，并以 ",
-      "start_line": 161,
-      "vector_b64": "BPj0BvsA+wISCw4A9AgF/gD6BvgI8ggTAP4MAAL4CAAS6AD2EwD77wDx+hD4DwAQBQAG8vICAPQG8f/mBgD39wIF8QgAAPQA9wb+D/X7+P4AGAYIDwj7/vsAAAsDCPoCBgUGAAgDCAD5DAYAAgL++Prx+wPy+vIAAggMBvj9AgIP9xf2BQAG+Qjv+AIB+PcC+gAICQ/u9/oSFAACBgL3+gD6Ag4NAO/x/gD++BQI9wL+AP0C9Q/4DPsDAP0A/vUG"
+      "preview": "## 10. 后续生产优化顺序 1. 先确定正式 idp、jwt 即时撤权、数据保留期限和模型数据策略，这些会改变安全架构。 2. 用真实 mysql、redis、rocketmq/s3 兼容对象存储跑集成与故障注入，再给出生产可靠性声明。 3. 当业务 chunk 数量超过单机扫描预算时，再引入支持 metadata pre-filter 的向量数据库；迁移前保留当前 sqlite 基线做行为对照。 4. 将现有进程级 embedding lru/检索快照指标接入 prometheus，补充 eviction 与冷启动耗时，并依据真实流量调整容量和实例级告警。 5. 模型供应商支持 prompt caching 时，固定 syst",
+      "start_line": 163,
+      "vector_b64": "BPj0BvsA+gMJCw4A9AAG/gD4BvgI8ggaAP4MAAL4CAAT7wD2FPr96QD3+xH4EAAPBQAI8vgCAPQG+P/tBgD39wIF8AgAAPQA9wb3EPsM+PcAGQYICQgC/voA+gMDCPICBwYGAAgD//r5DAYAAvv+AADw+wP1+voCAggMBvT9AgIQ9xf2DfoG+QLv7wIB+P0C+w4ICRD19/oTFAgDBgL3+gD6+wwVAPjxBAAF+AwG9/v3AP0C9RD4DPsDAP0ABvUG"
     },
     {
       "end_line": 16,
@@ -1385,7 +1425,7 @@
       "vector_b64": "AAAAAAAAAAAAAAAAAAAAAADtAAAAAAAA7QAAAAAAAAAAAAAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAADtANoAACYA7e0AAAAAAAAAAAAAAAAAABMAAAAAAAAAAAATAAAAAAAAAAAAAAAA2u0AAADtEwAAAAAAABMAAAAA7QAAAAAAAAAAAAAAAAAAAADtACgA7QAAAADtAAAAAADtAAAAJgAAANrtAADtABMAAAAAAAAAAAAAAAAAAADtAAAAAAAA"
     }
   ],
-  "corpus_revision": "4a56b38a50c5c9945676241c6371fb5438d7314690fd1f8c56788315aa03c273",
+  "corpus_revision": "54c25008b8ce01007648c00e861efb158bd89d012925ce1795e46e660be29436",
   "embedding": {
     "algorithm": "hash-ngram-topic-embedding-v1",
     "dimension": 192,
@@ -1401,6 +1441,10 @@
     {
       "path": "contracts/events/transcript-ready-v1.schema.json",
       "sha256": "7067cb80b9c9e415cd040346dc180f6d68453e3a1c15ed7f27f52a674148d197"
+    },
+    {
+      "path": "contracts/http/cache-observability-v1.schema.json",
+      "sha256": "95835bb012cf8b020f9f955ec5589036dd79cf299baa02dd7e5b4f3f63f203a8"
     },
     {
       "path": "contracts/http/evidence-source-v1.schema.json",
@@ -1428,11 +1472,11 @@
     },
     {
       "path": "docs/SLO.md",
-      "sha256": "ccc8e8063781dcdbaee8cb3b10e9eb53731bb1d88229029b165a1b8b464613c1"
+      "sha256": "f5602ac42e16adca26898357a9a0b2b4be49d140e8c34ae523d90bf94f8845a8"
     },
     {
       "path": "knowledge/AGENT_ENGINEERING.md",
-      "sha256": "a730055e01d02422ec6ae5196b864453eccc2e1b62932df34b46c88cc15dd4b6"
+      "sha256": "e9f3d90a51cd31457c9df646b996c151636917dac636f1538c936c5c11c0794a"
     },
     {
       "path": "knowledge/ARCHITECTURE.md",
@@ -1440,7 +1484,7 @@
     },
     {
       "path": "knowledge/CONTRACTS.md",
-      "sha256": "59377395617ab37c848e4b7f0cc3f81e7ff6a3323e713bff9a6fb02422a53fd9"
+      "sha256": "9cf08da32eeaf288de83929012f4d74b618ac64ccf2adf5deafadd130f352c1e"
     },
     {
       "path": "knowledge/DATA_AND_SECURITY.md",
@@ -1476,7 +1520,7 @@
     },
     {
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "sha256": "76b9cbce76fb8f3c10f6f045eb33c2fd1115fdd9ec28832d52f6f7450a1ff05e"
+      "sha256": "8389348f7cff996b9aef51fb9a959fa2d4041e5a4cf5578466c5715b1358df95"
     },
     {
       "path": "knowledge/INDEX.md",
@@ -1484,7 +1528,7 @@
     },
     {
       "path": "knowledge/OPERATIONS.md",
-      "sha256": "4e0fd74035a6a7b702928d352857331fc4df5550ad7c972c4db41800504d5db3"
+      "sha256": "9777df571f26d9a4618414e62e8eaadc136beb7066a599b6a7ecc92bce912782"
     },
     {
       "path": "knowledge/PRODUCT.md",
@@ -1492,11 +1536,11 @@
     },
     {
       "path": "knowledge/QUALITY.md",
-      "sha256": "19edd1a09979faabe20c800548c50a0cc9afc49ca94c26c2d2e155c63c1e9700"
+      "sha256": "0670148d2ce9861ea999f9558c17564e6db9a7a9b575c33ab26dbd4847ca156e"
     },
     {
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
-      "sha256": "44f8682780e204e1c1f10c6a941df122d592367be766fc667ce787f95ed88a84"
+      "sha256": "c89aecf13dcf2096fc6a3cecc3b5a797a2f6f4ffe9e692b3463a9b192ec845c5"
     },
     {
       "path": "README.md",
