@@ -25,7 +25,7 @@ flowchart LR
 2. 带时间段的转写通过事务 outbox 幂等进入 Agent Service。
 3. 用户跨视频/文档提问，答案引用可点击回放的证据。
 4. Agent 经过意图、干系人、领域、风险、收敛、PRD 六阶段分析。
-5. 信息不足时进入持久化等待，人工补充后从检查点恢复。
+5. 信息不足时进入持久化等待；人工补充后恢复同一业务会话，并用授权证据与确认事实重新计算确定性阶段结果。
 6. personal Workspace 使用 OWNER 二次确认发布；team Workspace 必须不同成员四眼审批。
 7. 发布生成不可变 PRD、知识候选和行动项；知识与工单分别经过独立审批。
 8. 批准知识以版本、哈希和原始证据物化，并被后续 RAG 检索命中。
@@ -79,6 +79,7 @@ python scripts/local_acceptance.py
 - [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：一分钟介绍、架构取舍、高频追问、证据与不能夸大的边界。
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟主链路演示与无 UI 兜底方案。
 - [`docs/INTERVIEW_REHEARSAL.md`](docs/INTERVIEW_REHEARSAL.md)：可计时练习的口述稿、逐分钟演示、三段完整故事和追问速答。
+- [`docs/INTERVIEWER_STRESS_REVIEW.md`](docs/INTERVIEWER_STRESS_REVIEW.md)：站在面试官角度审查代码真实性、简历技术映射、连续追问和危险回答。
 - [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)：完整代码框架、数据流、RAG、缓存和 Agent 工程说明。
 - [`knowledge/decisions/`](knowledge/decisions/)：重要决策的背景、选型与后果。
 

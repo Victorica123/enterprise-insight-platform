@@ -54,7 +54,7 @@ python scripts/local_acceptance.py
 - 优先级规则：合规阻塞项优先；
 - 证据范围：仅使用当前视频。
 
-强调不是重新跑一个大 Prompt，而是携带 resume token 从持久化检查点恢复。
+强调当前恢复的是同一持久化业务 session，而不是恢复模型执行栈：接口校验 resume token，合并人工答案，再用当前授权证据重新执行确定性六阶段函数。不要把它讲成实习系统中的 AppServer/WebSocket continuation。
 
 ### 3:15-4:30 PRD 与审批
 

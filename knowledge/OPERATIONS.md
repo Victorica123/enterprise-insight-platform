@@ -66,7 +66,7 @@ npm run dev
 
 - 媒体任务可安全重试，不能重复创建资产。
 - 转写事件可重放，Agent 消费必须幂等。
-- Agent 会话从持久化检查点恢复。
+- Agent 业务会话、阶段结果和人工答案可持久化读回；确认后当前实现重新执行确定性六阶段函数，不宣称执行栈级 checkpoint continuation。
 - 发布 PRD、知识合并和外部写操作使用幂等键及审计记录；知识批准与 document/chunk/图索引同事务，失败回滚为 `PENDING`。
 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
 

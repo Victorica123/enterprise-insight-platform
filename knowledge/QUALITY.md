@@ -55,6 +55,13 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - `python scripts/update_knowledge.py --check` 通过。
 - 无法运行的验证必须说明环境原因、影响边界和替代证据。
 
+## Agent 评测适用边界
+
+- V6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。
+- `evaluate_v6.py` 显式关闭 LLM Router，使用确定性回答路径；judge 检查是否答/拒、Top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。
+- 当前黄金集不评价六阶段 PRD 的语义质量、冲突消解、假设完整性或领域 Agent 并行。`test_analysis_workflow.py` 验证等待、恢复、证据结构和发布治理，但不能替代代表性 PRD 人工评测。
+- 六阶段确认接口可以恢复同一持久化业务 session，但会重新执行确定性分析函数；同一 resume token 的并发数据库 CAS 消费尚未实现，也没有对应并发回归证据。
+
 `.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 黄金集 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明

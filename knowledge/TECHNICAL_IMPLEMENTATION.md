@@ -61,9 +61,9 @@ Engineering knowledge plane (not customer runtime data)
 
 ### 3.3 六阶段分析和发布治理
 
-分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段执行。阶段之间传递结构化 Pydantic 状态，而不是依赖不可检查的长对话。
+分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段输出结构化 Pydantic 结果，而不是依赖不可检查的长对话。当前 `analysis_pipeline.py` 是同步确定性规则基线，不包含独立领域 Agent 并行或生成模型调用；它用于先验证证据、状态与治理主链路。
 
-证据不足时，会话进入 `WAITING_CONFIRMATION` 并保存检查点和恢复 token；用户补充后从收敛点继续。PRD 从 `DRAFT_READY` 进入 `PUBLISH_PENDING` 后：
+证据不足时，会话进入 `WAITING_CONFIRMATION` 并保存 session、阶段结果、问题、答案和恢复 token；用户补充后恢复同一业务会话，并以当前授权证据与累计答案重新执行确定性函数。它不是执行栈级 checkpoint continuation，且当前 token 消费尚未使用数据库 CAS 防止并发重复确认。PRD 从 `DRAFT_READY` 进入 `PUBLISH_PENDING` 后：
 
 - personal Workspace 由 OWNER 使用一次性 token 做第二次明确确认；
 - team Workspace 必须由不同的写成员批准，提交者不能自批；
@@ -142,7 +142,7 @@ python scripts/update_knowledge.py --check
 - 越权隐藏：跨 scope 资源统一按不存在处理，避免枚举资源身份。
 - 幂等：上传内容、媒体事件、语义 transcript version、发布 CAS 和工具 action 都有稳定 key。
 - 事务 outbox：数据库事实和待投递事件同事务，避免业务成功但消息丢失。
-- 可恢复状态机：媒体任务可重试；Agent 会话可从 checkpoint 恢复；审批副作用独立治理。
+- 可恢复业务状态：媒体任务可重试；Agent 会话状态和人工答案可持久化读回，确认后确定性重算；审批副作用独立治理。
 - 不可变发布：canonical JSON + SHA-256，发布版本不可覆盖。
 - 原子知识沉淀：候选 CAS、托管 document/chunk、图索引与 provenance 同事务，失败保持 `PENDING`。
 - 证据最小化：跨服务事件不携带 JWT、存储密钥或永久播放 URL。
@@ -167,8 +167,8 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 1. 不是把两个页面拼在一起，而是用统一身份、tenant/owner、版本化契约和一条业务纵向链路完成系统整合。
 2. RAG 不只“有向量库”：检索前授权、混合召回、RRF、可选 rerank、证据门控、引用验证和时间戳回放形成可信链。
-3. Agent 不是一次大 Prompt：六阶段结构化状态、等待/恢复、CAS 审批、不可变版本、批准知识物化和受控工具把不确定生成与确定性副作用分开。
-4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避和可恢复检查点共同保证一致性。
+3. Agent 不等于一次大 Prompt：Agentic RAG 负责受限检索编排，六阶段当前使用结构化规则基线；等待/恢复、CAS 审批、不可变版本、批准知识物化和受控工具把不确定生成与确定性副作用分开。
+4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避和持久化业务会话共同保证可恢复性；节点级执行恢复仍是后续能力。
 5. 缓存不是盲目存结果：所有缓存 key 都带模型/内容/数据 revision 或授权 scope，并明确缓存层和失效边界。
 6. 工程知识也可执行：Skill、语义索引、ADR、生成快照和 CI 漂移检查让后续 Agent 不必每次重新理解整个仓库。
 

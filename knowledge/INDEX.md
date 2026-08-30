@@ -14,7 +14,7 @@
 | 代码框架、完整数据流、RAG、缓存与技术讲解 | [TECHNICAL_IMPLEMENTATION.md](TECHNICAL_IMPLEMENTATION.md) |
 | 测试分层、质量门禁、已验证事实 | [QUALITY.md](QUALITY.md) |
 | 本地启动、配置、部署、故障恢复 | [OPERATIONS.md](OPERATIONS.md)、[本地发布手册](../docs/LOCAL_RELEASE_RUNBOOK.md) 与 [SLO](../docs/SLO.md) |
-| 正式收尾、面试介绍、追问边界和 8 分钟演示 | [收尾基线](../docs/PROJECT_CLOSEOUT.md)、[面试指南](../docs/INTERVIEW_GUIDE.md)、[演示脚本](../docs/DEMO_SCRIPT.md) 与 [计时演练手册](../docs/INTERVIEW_REHEARSAL.md) |
+| 正式收尾、面试介绍、追问边界和 8 分钟演示 | [收尾基线](../docs/PROJECT_CLOSEOUT.md)、[面试指南](../docs/INTERVIEW_GUIDE.md)、[演示脚本](../docs/DEMO_SCRIPT.md)、[计时演练手册](../docs/INTERVIEW_REHEARSAL.md) 与 [面试官压力评审](../docs/INTERVIEWER_STRESS_REVIEW.md) |
 | 已批准且不可静默推翻的选择 | [decisions/](decisions/) |
 | 从代码生成的实时结构快照 | [generated/CURRENT_STATE.md](generated/CURRENT_STATE.md) |
 | 面向维护 Skill 的可再生语义路由索引 | `generated/SEMANTIC_INDEX.json`（通过脚本查询，不直接加载） |

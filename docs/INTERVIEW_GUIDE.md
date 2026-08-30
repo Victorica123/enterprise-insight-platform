@@ -32,9 +32,9 @@ Media 在业务事实提交的同一事务写 outbox，避免“任务成功但�
 
 ### 4. Agent 为什么不是一个大 Prompt
 
-六个阶段传递结构化 Pydantic 状态。证据不足时进入 `WAITING_CONFIRMATION`，保存一次性 resume token；补充后从检查点恢复。生成模型只负责不确定内容，权限、状态转换、哈希、幂等和副作用由确定性代码控制。
+六个阶段输出结构化 Pydantic 结果。当前交付分析路径是同步确定性规则基线，不是 Main Agent 调度多个领域 Agent，也不在该路径调用生成模型。证据不足时进入 `WAITING_CONFIRMATION` 并持久化 session、问题和答案；补充后恢复同一业务会话，但会用当前授权证据重新执行规则函数。权限、发布状态、哈希、幂等和副作用继续由确定性代码控制。
 
-当前实现通过 HTTP + 持久化检查点恢复，不是 WebSocket/AppServer；如果被问到实时交互，应明确这是下一层传输优化，不影响恢复语义。
+当前实现通过 HTTP + SQLite 完成业务状态恢复，不是 WebSocket/AppServer，也不是节点级执行 continuation。同一 resume token 的并发原子消费尚未做数据库 CAS；如果被问到实时交互或严格一次性确认，应把它们明确列为下一步，而不是借用实习架构作答。
 
 ### 5. “知识自进化”到底落在哪里
 
@@ -111,6 +111,8 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 面试前至少准备三个可复述故事：一个业务闭环、一个失败/修复、一个取舍/边界。每个故事都按“背景 → 约束 → 选择 → 验证 → 仍未解决”讲，避免只背架构名词。
 
 可直接计时练习的一分钟口述、8 分钟逐段话术、三段完整故事和追问速答见 [`INTERVIEW_REHEARSAL.md`](INTERVIEW_REHEARSAL.md)。
+
+正式练习前先阅读 [`INTERVIEWER_STRESS_REVIEW.md`](INTERVIEWER_STRESS_REVIEW.md)。它逐项对照简历与代码，并模拟资深面试官对 Agent 真实性、恢复语义、评测分母和个人贡献的连续追问。
 
 ## 简历叙事如何保持真实
 

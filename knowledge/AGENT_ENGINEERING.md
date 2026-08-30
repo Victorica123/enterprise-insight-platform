@@ -4,14 +4,14 @@
 
 1. 意图识别：识别会议目标、任务类型和期望交付物。
 2. 干系人识别：识别决策者、使用者、执行者、受影响方及立场。
-3. 领域深挖：并行提取业务流程、数据、技术约束、规则和术语。
+3. 领域深挖：按业务流程、数据、技术约束、规则和术语等维度提取材料事实。
 4. 异常与风险：识别矛盾、缺口、依赖、合规与交付风险。
 5. 收敛检查：把事实、推断、假设、待确认项分层，判断是否可生成 PRD。
 6. PRD 生成：生成带来源、验收口径、风险和未决问题的可评审草案。
 
 阶段是可观测的业务节点，不等同于必须绑定某个 Agent 框架。每一阶段接受结构化状态并产生可校验输出。
 
-当前实现位于独立的 `analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。分析会话按 tenant/owner 持久化；事实不足时返回结构化问题和一次性更新的恢复令牌，补充后从收敛点继续并生成带证据与假设标记的 DRAFT PRD。
+当前实现位于独立的 `analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。`analysis_pipeline` 是同步、确定性的规则基线：它从授权 scope 加载 chunk，依次构造六类结构化结果，当前不调度独立领域 Agent、不并行执行，也不调用生成模型。事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，但会使用当前授权证据和累计答案重新执行该确定性函数，再生成带证据与假设标记的 DRAFT PRD。
 
 ## 证据策略
 
@@ -34,7 +34,9 @@
 
 ## 等待与恢复
 
-分析会话需要持久化检查点。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`，记录结构化问题、原因和恢复令牌；用户或授权专家补充后从检查点继续，不从头重跑。
+分析会话持久化 session、阶段结果、结构化问题、答案、恢复令牌和 PRD。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`；用户补充后恢复同一业务会话。当前这是业务状态级恢复，不是执行栈或节点 continuation：确认接口会重新运行确定性六阶段函数，早期结果随当前证据重算；当前也没有 AppServer/WebSocket 传输层或独立专家渠道。
+
+当前 `resume_token` 会在 API 层做相等性校验，并在仍需确认时轮换，但确认保存使用普通 upsert，尚未通过数据库 compare-and-set 原子消费同一 token。两个并发确认可能在失效前同时通过读取校验，正式强化需要按 `session_id + status + resume_token` 条件更新并增加并发回归测试。
 
 当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY → PUBLISH_PENDING → PUBLISHED`。发布逻辑独立放在 `publication_service.py`，交付物投影放在 `publication_artifacts.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 OWNER 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 token、compare-and-set 状态转换，并在同一事务内写入审计、不可变版本和初始交付物。
 

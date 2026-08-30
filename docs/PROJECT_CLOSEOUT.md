@@ -21,6 +21,7 @@
 | 面试叙事与高频追问 | `docs/INTERVIEW_GUIDE.md` |
 | 8 分钟现场演示与失败兜底 | `docs/DEMO_SCRIPT.md` |
 | 计时演练、三段故事与追问速答 | `docs/INTERVIEW_REHEARSAL.md` |
+| 面试官压力评审与简历技术对照 | `docs/INTERVIEWER_STRESS_REVIEW.md` |
 | 本地无服务器验收 | `scripts/local_acceptance.py`、`docs/LOCAL_RELEASE_RUNBOOK.md` |
 | 测试与浏览器证据 | `knowledge/QUALITY.md`、`docs/images/interview/` |
 | 长期维护入口 | `skills/enterprise-insight-maintainer/`、`knowledge/INDEX.md` |
@@ -34,7 +35,7 @@
 - Web：TypeScript 与 Vite 生产构建通过。
 - 浏览器：真实完成文档上传、六阶段分析、发布、知识沉淀、未来 RAG 召回和缓存命中。
 - 并发迁移复测：20 并发、40 请求，40/40 返回 200。
-- 维护知识：37 个批准来源、212 个 chunk；增量向量复用、revision 查询缓存和漂移检查通过。
+- 维护知识：38 个批准来源、239 个 chunk；增量向量复用、revision 查询缓存和漂移检查通过。
 
 具体命令、环境与不能外推的边界以 `knowledge/QUALITY.md` 为准。
 
