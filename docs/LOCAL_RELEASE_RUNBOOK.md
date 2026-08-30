@@ -65,22 +65,31 @@ Restore verifies every SHA-256 checksum and SQLite `quick_check`. If existing ru
 
 The automated localhost runner verifies:
 
-1. registration creates a personal Workspace and trusted JWT;
-2. upload, mock transcript, outbox and Agent ingestion complete;
-3. video evidence contains an asset, stable segment and time range;
-4. analysis waits for missing facts and resumes from confirmation;
-5. PRD publication needs two explicit personal-owner steps;
-6. publication creates an immutable hash-addressed snapshot;
-7. knowledge candidates need a separate human decision;
-8. action items only create a pending ticket action, then require approval and project the real ticket ID back;
-9. signed playback supports HTTP Range.
-10. an OWNER creates a team Workspace and a second registered user consumes a one-time invitation;
-11. explicit Workspace switching reissues trusted JWT claims for both members;
-12. one member uploads media and the other reads it and retrieves its Agent evidence;
-13. the second member's personal Workspace cannot see team resources;
-14. team PRD publication rejects self-approval and accepts another write-capable member;
-15. team knowledge and ticket delivery remain shared and audited;
-16. a freshly switched VIEWER can read shared resources but cannot upload.
+1. registration creates a personal Workspace;
+2. the issued JWT contains the trusted tenant identity;
+3. a media upload creates a durable task;
+4. local mock transcription completes without an external model;
+5. the transactional outbox delivers evidence to Agent Service;
+6. Agent retrieval can answer from the ingested evidence;
+7. video evidence contains a stable segment and time range;
+8. analysis waits for missing facts and resumes from confirmation;
+9. the resumed analysis generates an evidence-backed PRD;
+10. PRD publication requires explicit approval and records audit actors;
+11. publication creates an immutable hash-addressed snapshot;
+12. knowledge candidates require a separate human decision;
+13. action items require tool approval and project the real ticket ID back;
+14. signed playback supports HTTP Range;
+15. a second user joins a team through a one-time invitation and both users switch explicitly;
+16. one team member can read another member's media;
+17. the second member's personal Workspace cannot see team resources;
+18. the second team member retrieves shared Agent evidence;
+19. team publication rejects self-approval and accepts another write-capable member;
+20. team knowledge and ticket delivery remain shared and audited;
+21. a freshly switched VIEWER can read shared resources but cannot upload;
+22. anonymous cache metrics are rejected and public status does not expose cache traffic;
+23. authenticated retrieval exposes scope-safe Chunk cache metrics;
+24. an approved candidate materializes a managed knowledge document with PRD/candidate/hash provenance;
+25. future RAG retrieves that approved knowledge and returns matching provenance.
 
 ## Rollback
 

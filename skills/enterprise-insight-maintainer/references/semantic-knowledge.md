@@ -27,6 +27,7 @@ Use precise names:
 - revision-aware query cache avoids reranking an unchanged query/corpus pair;
 - Agent chunk LRU avoids repeated SQLite row materialization for the same authorization scope and content revision;
 - Agent embedding LRU avoids repeated BGE inference for the same model and text digest;
+- approved business knowledge is customer-runtime data materialized only after governance; it must never be copied into the repository Skill index;
 - attention KV cache belongs to the model runtime/provider. Do not claim it exists or is effective without provider metrics such as cached input tokens.
 
 Keep stable instructions and schemas before dynamic Top-K evidence when constructing prompts. This is prefix-cache-friendly, but it is not proof of a model KV-cache hit.

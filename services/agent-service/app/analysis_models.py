@@ -151,6 +151,9 @@ class KnowledgeCandidate(BaseModel):
     created_at: datetime
     decided_by: str | None = None
     decided_at: datetime | None = None
+    knowledge_document_id: str | None = None
+    knowledge_content_sha256: str | None = None
+    knowledge_published_at: datetime | None = None
 
 
 class ActionItemDraft(BaseModel):

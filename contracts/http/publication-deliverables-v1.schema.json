@@ -64,7 +64,10 @@
         "created_by": { "type": "string", "minLength": 1 },
         "created_at": { "type": "string", "format": "date-time" },
         "decided_by": { "type": ["string", "null"] },
-        "decided_at": { "type": ["string", "null"], "format": "date-time" }
+        "decided_at": { "type": ["string", "null"], "format": "date-time" },
+        "knowledge_document_id": { "type": ["string", "null"] },
+        "knowledge_content_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "knowledge_published_at": { "type": ["string", "null"], "format": "date-time" }
       }
     },
     "actionItem": {

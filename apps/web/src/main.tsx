@@ -362,7 +362,7 @@ function App() {
         <div>
           <h1>
             <BrainCircuit size={28} />
-            Enterprise AI Workflow Assistant
+            Enterprise Insight Platform
           </h1>
 			<p>视频与文档证据 · Agent 分析 · 业务行动闭环</p>
         </div>

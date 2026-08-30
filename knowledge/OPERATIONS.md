@@ -14,7 +14,7 @@
 python scripts/local_acceptance.py
 ```
 
-脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；除个人全链路外，还会注册第二个用户，验证团队创建、一次性邀请、显式切换、跨成员视频与 Agent 共享、个人隔离、团队四眼发布、知识/工单交付和 VIEWER 只读。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；25 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、工单交付、VIEWER 只读和缓存安全边界。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
 
 维护知识索引使用以下命令，不依赖外部 embedding 服务：
 
@@ -67,7 +67,7 @@ npm run dev
 - 媒体任务可安全重试，不能重复创建资产。
 - 转写事件可重放，Agent 消费必须幂等。
 - Agent 会话从持久化检查点恢复。
-- 发布 PRD、知识合并和外部写操作使用幂等键及审计记录。
+- 发布 PRD、知识合并和外部写操作使用幂等键及审计记录；知识批准与 document/chunk/图索引同事务，失败回滚为 `PENDING`。
 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
 
 ## 当前运行状态与缺口

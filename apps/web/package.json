@@ -1,5 +1,5 @@
 {
-  "name": "enterprise-ai-workflow-web",
+  "name": "enterprise-insight-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,4 +21,3 @@
     "@types/react-dom": "^19.0.2"
   }
 }
-

@@ -277,6 +277,23 @@ def main() -> int:
                 method="POST", token=token, payload={"approved": True},
             )
             assert candidate["status"] == "APPROVED"
+            assert candidate["knowledge_document_id"].startswith("knowledge-")
+            assert len(candidate["knowledge_content_sha256"]) == 64
+            _, knowledge_chat = request_json(
+                f"http://127.0.0.1:{agent_port}/chat", method="POST", token=token,
+                payload={
+                    "question": "已批准业务知识有哪些？",
+                    "answer_mode": "local", "retriever_mode": "keyword",
+                    "workflow_mode": "standard",
+                },
+            )
+            approved_sources = [
+                source for source in knowledge_chat["sources"]
+                if source.get("origin_type") == "approved_knowledge"
+            ]
+            assert approved_sources, knowledge_chat
+            assert approved_sources[0]["knowledge_candidate_id"] == candidate["candidate_id"]
+            assert approved_sources[0]["content_sha256"] == candidate["knowledge_content_sha256"]
             action_item = deliverables["action_items"][0]
             _, ticket_draft = request_json(
                 f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}"
@@ -499,7 +516,8 @@ def main() -> int:
                            "team_media_cross_member_read", "personal_workspace_isolation",
                            "team_agent_retrieval", "team_four_eyes_publication",
                            "team_knowledge_and_ticket_delivery", "viewer_read_only",
-                           "cache_metrics_auth_boundary", "cache_scope_after_retrieval"],
+                           "cache_metrics_auth_boundary", "cache_scope_after_retrieval",
+                           "approved_knowledge_materialized", "approved_knowledge_retrieval"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

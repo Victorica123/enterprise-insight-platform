@@ -87,6 +87,8 @@ def list_documents(
             filename=row["filename"],
             chunk_count=row["chunk_count"],
             created_at=row["created_at"],
+            source_type=row["source_type"],
+            managed=row["source_type"] == "knowledge",
         )
         for row in list_document_rows(tenant_id=tenant_id, owner_id=owner_id)
     ]
@@ -260,7 +262,8 @@ def answer_question(
     )[:MAX_SOURCES]
     sources = [
         Source(
-            source_type=hit.chunk.source_type,
+            source_type="video" if hit.chunk.source_type == "video" else "document",
+            origin_type=hit.chunk.origin_type,
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
@@ -272,6 +275,9 @@ def answer_question(
             start_ms=hit.chunk.start_ms,
             end_ms=hit.chunk.end_ms,
             speaker=hit.chunk.speaker,
+            knowledge_candidate_id=hit.chunk.knowledge_candidate_id,
+            prd_version_id=hit.chunk.prd_version_id,
+            content_sha256=hit.chunk.content_sha256,
         )
         for hit in selected
     ]

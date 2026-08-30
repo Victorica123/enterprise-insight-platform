@@ -715,10 +715,12 @@ def delete_document_and_rebuild(
             clauses.append("owner_id = ?")
             params.append(owner_id)
         existing = conn.execute(
-            f"select id, tenant_id, owner_id from documents where {' and '.join(clauses)}",
+            f"select id, tenant_id, owner_id, source_type from documents where {' and '.join(clauses)}",
             params,
         ).fetchone()
         if existing is None:
+            return False
+        if existing["source_type"] == "knowledge":
             return False
         scope_tenant = existing["tenant_id"]
         scope_owner = existing["owner_id"]

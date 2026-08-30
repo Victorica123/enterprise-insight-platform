@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
@@ -32,6 +33,10 @@ class Chunk:
     start_ms: int | None = None
     end_ms: int | None = None
     speaker: str | None = None
+    origin_type: str = "uploaded_document"
+    knowledge_candidate_id: str | None = None
+    prd_version_id: str | None = None
+    content_sha256: str | None = None
 
 
 @dataclass
@@ -337,8 +342,18 @@ def _load_chunks_cached(
     # Both values intentionally participate in the cache key. The revision is
     # stored in SQLite, so writes from another process invalidate this cache too.
     del db_path, revision
-    return tuple(
-        Chunk(
+    chunks: list[Chunk] = []
+    for row in database.list_chunk_rows(
+        tenant_id=tenant_id,
+        owner_id=owner_id,
+        asset_ids=asset_ids,
+    ):
+        source_type = row["source_type"] if "source_type" in row.keys() else "document"
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}") if "metadata_json" in row.keys() else {}
+        except (TypeError, json.JSONDecodeError):
+            metadata = {}
+        chunks.append(Chunk(
             document_id=row["document_id"],
             filename=row["filename"],
             chunk_index=row["chunk_index"],
@@ -348,19 +363,26 @@ def _load_chunks_cached(
             title=row["chunk_title"] if "chunk_title" in row.keys() else "",
             tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "legacy",
             owner_id=row["owner_id"] if "owner_id" in row.keys() else "legacy",
-            source_type=row["source_type"] if "source_type" in row.keys() else "document",
+            source_type=source_type,
             asset_id=row["asset_id"] if "asset_id" in row.keys() else None,
             segment_id=row["segment_id"] if "segment_id" in row.keys() else None,
             start_ms=row["start_ms"] if "start_ms" in row.keys() else None,
             end_ms=row["end_ms"] if "end_ms" in row.keys() else None,
             speaker=row["speaker"] if "speaker" in row.keys() else None,
-        )
-        for row in database.list_chunk_rows(
-            tenant_id=tenant_id,
-            owner_id=owner_id,
-            asset_ids=asset_ids,
-        )
-    )
+            origin_type=(
+                "approved_knowledge" if source_type == "knowledge"
+                else "media_transcript" if source_type == "video"
+                else "uploaded_document"
+            ),
+            knowledge_candidate_id=(
+                row["external_id"] if source_type == "knowledge" and "external_id" in row.keys() else None
+            ),
+            prd_version_id=metadata.get("prd_version_id") if isinstance(metadata, dict) else None,
+            content_sha256=(
+                row["payload_sha256"] if source_type == "knowledge" and "payload_sha256" in row.keys() else None
+            ),
+        ))
+    return tuple(chunks)
 
 
 def clear_chunk_cache() -> None:

@@ -112,9 +112,12 @@ export function QAView(props: {
                 <li key={document.document_id}>
                   <div>
                     <strong>{document.filename}</strong>
-                    <span>{document.chunk_count} chunk · {formatDate(document.created_at)}</span>
+                    <span>
+                      {document.managed ? "受治理知识" : document.source_type === "video" ? "视频证据" : "上传文档"}
+                      {" · "}{document.chunk_count} chunk · {formatDate(document.created_at)}
+                    </span>
                   </div>
-                  <button
+                  {document.managed ? <span className="token-pill">审批后沉淀</span> : <button
                     className="icon-button danger"
                     type="button"
                     disabled={p.deletingDocumentId === document.document_id}
@@ -125,7 +128,7 @@ export function QAView(props: {
                     ) : (
                       <Trash2 size={14} />
                     )}
-                  </button>
+                  </button>}
                 </li>
               ))}
             </ul>
@@ -428,7 +431,7 @@ export function QAView(props: {
                 <header>
                   <strong>来源 {index + 1}</strong>
                   <span>
-					{source.source_type === "video" ? "视频证据" : "文档证据"} · {source.filename} · score {source.score}
+					{source.source_type === "video" ? "视频证据" : source.origin_type === "approved_knowledge" ? "已批准知识" : "文档证据"} · {source.filename} · score {source.score}
                   </span>
                 </header>
                 <p>{source.content}</p>

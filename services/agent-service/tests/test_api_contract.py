@@ -156,6 +156,20 @@ class ApiContractTests(unittest.TestCase):
                 {"entries", "max_entries", "hits", "misses", "requests", "hit_rate"},
             )
 
+    def test_approved_knowledge_contract_requires_materialization_provenance(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "approved-knowledge-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+        self.assertTrue(schema["$id"].endswith("/approved-knowledge-v1.schema.json"))
+        self.assertTrue({
+            "knowledge_document_id", "knowledge_content_sha256", "knowledge_published_at",
+        }.issubset(schema["required"]))
+        self.assertEqual(
+            schema["allOf"][0]["if"]["properties"]["status"]["const"], "APPROVED",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

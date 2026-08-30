@@ -36,6 +36,16 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - localhost-only 纵向验收扩展为 23 项并全部通过；新增验证匿名缓存状态被拒绝、公开系统状态不暴露缓存流量，以及真实检索后授权 Chunk 缓存计数可见。仍只使用随机本机端口、临时 H2/SQLite/local 文件与 mock/local AI。
 - 维护知识索引单元测试 3/3 通过，覆盖语义路由、增量向量复用、revision 缓存失效和归档排除。
 
+2026-08-30 完成面试收尾与批准知识闭环验证：
+
+- Agent Service 全量 119/119 通过；新增覆盖批准知识物化、candidate/PRD/hash provenance、托管知识删除保护、图索引失败时整体回滚，以及浏览器并发加载触发的 SQLite 兼容列迁移竞态回归。
+- `contracts/http/approved-knowledge-v1.schema.json`、扩展后的 publication deliverables 与 evidence source 契约通过解析和契约测试。
+- localhost-only 纵向验收扩展为 25 项并全部通过；新增验证批准候选生成受治理知识、后续问答命中 `origin_type=approved_knowledge`，且 candidate ID 与内容哈希一致。
+- Media Service 在 JDK 18 下保持 108/108；统一 Web 再次完成 TypeScript/Vite 生产构建。
+- V6 keyword、embedding、hybrid 保持 decision 98%、recall@3 97%、fact 97%，本轮 p95 分别为 28.5 ms、54.1 ms、41.2 ms，均通过 500 ms 门禁。
+- 真实本地三服务浏览器验收完成文档上传、六阶段分析、个人二次发布、知识批准、未来 RAG 再召回和重复请求缓存命中；浏览器控制台无 warning/error。服务端日志同时暴露并推动修复了并发兼容列迁移的 `duplicate column` 竞态；除确定性回归测试外，使用全新 SQLite 对工单与审计端点执行 20 并发、40 请求复测，40/40 返回 200。截图保存在 `docs/images/interview/`。
+- 本轮浏览器使用本地模板回答，证明授权、状态、证据、事务和降级链路，不作为外部模型质量证据。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

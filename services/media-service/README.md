@@ -1,6 +1,6 @@
-# 视频内容理解平台
+# Enterprise Insight Platform · Media Service
 
-一个围绕“大文件上传、异步 AI 处理和高并发削峰”构建的多用户视频内容理解平台。
+统一产品中的媒体子系统，围绕“大文件上传、异步 AI 处理和高并发削峰”提供可靠的视频证据生命周期。
 
 用户登录后可以通过普通上传、Redis 分片上传或 MinIO 对象存储直传提交视频。后台将上传转换为可追踪的任务，经 FFmpeg、Whisper 兼容接口和 LLM 兼容接口处理，最终返回转写、摘要、播放和历史记录。
 
@@ -174,7 +174,7 @@ mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskService
 node --check src/main/resources/static/app.js
 ```
 
-当前基线：95 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
+当前基线：108 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
 
 ## 关键设计取舍
 
@@ -233,4 +233,4 @@ docs/                        PERFORMANCE / OPERATIONS / DEMO_SCRIPT
 
 ## 一句话介绍
 
-> 这是一个多用户视频内容理解平台：用 Redis 分片会话和锁保证大文件上传可靠性，用 MinIO 直传降低应用服务器压力，用 RocketMQ 把流量峰值从 HTTP 失败转换为内部排队，再通过幂等、重试、补偿和指标保障 FFmpeg/Whisper/LLM 异步工作流可追踪、可恢复。
+> Media Service 是 Enterprise Insight Platform 的视频证据入口：用 Redis 分片会话和锁保证大文件上传可靠性，用 MinIO 直传降低应用服务器压力，用 RocketMQ 把流量峰值从 HTTP 失败转换为内部排队，再通过幂等、重试、补偿和指标保障 FFmpeg/Whisper/LLM 异步工作流可追踪、可恢复，最终用 outbox 把时间戳证据交给 Agent Service。

@@ -1,13 +1,17 @@
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app import database
 from app.analysis_pipeline import run_six_stage_analysis
 from app.main import app
-from app.retrievers import Chunk, clear_chunk_cache
+from app.publication_artifacts import decide_knowledge_candidate, get_publication_deliverables
+from app.rag import answer_question
+from app.retrievers import Chunk, RetrievalScope, clear_chunk_cache
 
 
 class SixStagePipelineTests(unittest.TestCase):
@@ -142,7 +146,34 @@ class AnalysisApiTests(unittest.TestCase):
             headers=headers, json={"approved": True},
         )
         self.assertEqual(decided.status_code, 200, decided.text)
-        self.assertEqual(decided.json()["status"], "APPROVED")
+        decided_candidate = decided.json()
+        self.assertEqual(decided_candidate["status"], "APPROVED")
+        self.assertTrue(decided_candidate["knowledge_document_id"].startswith("knowledge-"))
+        self.assertEqual(len(decided_candidate["knowledge_content_sha256"]), 64)
+        self.assertIsNotNone(decided_candidate["knowledge_published_at"])
+
+        documents = self.client.get("/documents", headers=headers).json()
+        managed = [item for item in documents if item["managed"]]
+        self.assertEqual([item["document_id"] for item in managed], [decided_candidate["knowledge_document_id"]])
+        self.assertEqual(managed[0]["source_type"], "knowledge")
+        protected = self.client.delete(
+            f"/documents/{decided_candidate['knowledge_document_id']}", headers=headers,
+        )
+        self.assertEqual(protected.status_code, 404)
+
+        clear_chunk_cache()
+        answer = answer_question(
+            "已批准业务知识",
+            answer_mode="local",
+            retriever_mode="keyword",
+            scope=RetrievalScope(tenant_id="tenant-a", owner_id="user-a"),
+        )
+        approved_source = next(
+            source for source in answer.sources if source.origin_type == "approved_knowledge"
+        )
+        self.assertEqual(approved_source.knowledge_candidate_id, candidate["candidate_id"])
+        self.assertEqual(approved_source.prd_version_id, candidate["version_id"])
+        self.assertEqual(approved_source.content_sha256, decided_candidate["knowledge_content_sha256"])
 
         action = deliverables["action_items"][0]
         drafted = self.client.post(
@@ -172,6 +203,51 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(repeated.status_code, 200, repeated.text)
         self.assertEqual(repeated.json()["pending_action_id"], pending_id)
         self.assertEqual(repeated.json()["action_item"]["status"], "TICKET_CREATED")
+
+    def test_knowledge_materialization_rolls_back_when_indexing_fails(self) -> None:
+        headers = {
+            "X-User-Role": "admin", "X-User-Id": "user-a",
+            "X-Tenant-Id": "tenant-a", "X-Workspace-Type": "personal",
+        }
+        created = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "验证知识沉淀事务", "asset_ids": ["asset-a"]},
+        ).json()
+        requested = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/request", headers=headers,
+        ).json()
+        self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve", headers=headers,
+            json={
+                "request_id": requested["publication"]["request_id"],
+                "approval_token": requested["publication"]["approval_token"],
+                "confirmation": "PUBLISH",
+            },
+        )
+        candidate_id = get_publication_deliverables(
+            created["session_id"], "tenant-a",
+        ).knowledge_candidates[0].candidate_id
+
+        with patch("app.publication_artifacts.index_document_graph", side_effect=RuntimeError("index failed")):
+            with self.assertRaisesRegex(RuntimeError, "index failed"):
+                decide_knowledge_candidate(
+                    candidate_id,
+                    tenant_id="tenant-a",
+                    actor_id="user-a",
+                    approved=True,
+                    decided_at=datetime.now(timezone.utc),
+                )
+
+        candidate = get_publication_deliverables(
+            created["session_id"], "tenant-a",
+        ).knowledge_candidates[0]
+        self.assertEqual(candidate.status, "PENDING")
+        self.assertIsNone(candidate.knowledge_document_id)
+        with database.connect() as conn:
+            count = conn.execute(
+                "select count(*) as c from documents where source_type = 'knowledge'"
+            ).fetchone()["c"]
+        self.assertEqual(count, 0)
 
     def test_team_publication_rejects_self_approval_and_accepts_second_member(self) -> None:
         author = {

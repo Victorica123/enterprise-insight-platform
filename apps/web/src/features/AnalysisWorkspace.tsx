@@ -170,12 +170,12 @@ export function AnalysisWorkspace(props: {
         </section> : null}
         {deliverables ? <section className="card publication-deliverables">
           <header><div><span className="eyebrow">PUBLISHED DELIVERY</span><h2><FileCheck2 size={19} />发布交付物</h2></div><code>v{deliverables.version.version_number} · {deliverables.version.content_sha256.slice(0, 12)}</code></header>
-          <p>PRD 已保存为不可变快照。知识与行动项仍保留人工决策门，不会直接写入生产知识或创建工单。</p>
+          <p>PRD 已保存为不可变快照。知识候选批准后才沉淀为可检索知识；行动项批准后才创建工单。</p>
           <div className="delivery-grid">
             <div><h3><BookCheck size={16} />知识候选</h3>{deliverables.knowledge_candidates.map((candidate) => {
               const canDecide = candidate.status === "PENDING" && viewer?.role !== "viewer"
                 && (viewer?.workspaceType === "personal" ? candidate.owner_id === viewer?.userId : candidate.created_by !== viewer?.userId);
-              return <article key={candidate.candidate_id}><strong>{candidate.requirement_id}</strong><p>{candidate.statement}</p><span className="task-status">{candidate.status}</span>{canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准知识</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}</article>;
+              return <article key={candidate.candidate_id}><strong>{candidate.requirement_id}</strong><p>{candidate.statement}</p><span className="task-status">{candidate.status}</span>{candidate.knowledge_document_id ? <p className="mono">已沉淀 · {candidate.knowledge_document_id.slice(0, 22)} · {candidate.knowledge_content_sha256?.slice(0, 12)}</p> : null}{canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准并沉淀</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}</article>;
             })}</div>
             <div><h3><ListTodo size={16} />行动项草稿</h3>{deliverables.action_items.map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><p>{item.description}</p><span className="task-status">{item.status}</span>{item.ticket_id ? <p className="mono">工单 {item.ticket_id}</p> : null}{item.status === "DRAFT" && item.owner_id === viewer?.userId ? <div className="delivery-actions"><button disabled={busy} onClick={() => void draftActionTicket(item.action_item_id)}>进入工单审批</button></div> : null}</article>)}</div>
           </div>

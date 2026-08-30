@@ -7,6 +7,7 @@
   "required": ["source_type", "document_id", "filename", "chunk_index", "score", "content", "title"],
   "properties": {
     "source_type": { "enum": ["document", "video"] },
+    "origin_type": { "enum": ["uploaded_document", "media_transcript", "approved_knowledge"] },
     "document_id": { "type": "string" },
     "filename": { "type": "string" },
     "chunk_index": { "type": "integer", "minimum": 0 },
@@ -17,7 +18,10 @@
     "segment_id": { "type": ["string", "null"] },
     "start_ms": { "type": ["integer", "null"], "minimum": 0 },
     "end_ms": { "type": ["integer", "null"], "minimum": 0 },
-    "speaker": { "type": ["string", "null"] }
+    "speaker": { "type": ["string", "null"] },
+    "knowledge_candidate_id": { "type": ["string", "null"] },
+    "prd_version_id": { "type": ["string", "null"] },
+    "content_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
   },
   "allOf": [
     {

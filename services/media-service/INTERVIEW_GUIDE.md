@@ -1,10 +1,10 @@
-# 视频内容理解平台：面试知识点
+# Enterprise Insight Platform · Media Service 面试深挖
 
 > 截至 2026-07-18。只讲已经实现或实际验证的内容；规划必须明确说是下一步。
 
 ## 1. 项目定位
 
-这是一个多用户视频内容理解平台。用户通过普通上传、Redis 分片上传或 MinIO 直传提交视频，系统创建异步任务，经 FFmpeg、Whisper 兼容接口和 LLM 兼容接口生成转写与摘要，并提供状态、播放、重试、删除和 Markdown 导出。
+这是 Enterprise Insight Platform 的媒体子系统，不作为第二个独立项目展示。用户通过普通上传、Redis 分片上传或 MinIO 直传提交视频，系统创建异步任务，经 FFmpeg、Whisper 兼容接口和 LLM 兼容接口生成带时间戳的转写与摘要，并把证据通过 outbox 交给 Agent Service。
 
 后端面试的主线不是“用了多少中间件”，而是：
 
@@ -168,7 +168,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 面试现场不依赖公网服务器，也能展示：
 
-- 95 个不依赖外部中间件的自动化测试（含真实 JWT 上传回归）；
+- 108 个不依赖外部中间件的自动化测试（含真实 JWT 与 Workspace 回归）；
 - `verify-full-stack.ps1` 的 Redis、MySQL、RocketMQ 真实链路；
 - MinIO 预签名直传、完成回调和播放；
 - 页面异步实验室的本地/MQ 同参数 A/B；
@@ -199,7 +199,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 ## 11. 已知边界
 
-已实现并验证：95 个自动化测试、真实 Redis/MySQL/RocketMQ 链路、MinIO 直传与播放、页面异步 A/B、重试/reaper、任务配额、媒体生命周期清理、Compose/Caddy/preflight。
+已实现并验证：108 个自动化测试、真实 Redis/MySQL/RocketMQ 链路、MinIO 直传与播放、页面异步 A/B、重试/reaper、任务配额、媒体生命周期清理、Compose/Caddy/preflight。
 
 仍需继续完善：
 
@@ -213,7 +213,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 ## 12. 一分钟回答模板
 
-> 我做的是一个多用户视频内容理解平台，重点不是 CRUD，而是大文件上传和异步 AI 工作流。上传侧有普通上传、Redis 分片断点续传和 MinIO 预签名直传；处理侧用本地异步或 RocketMQ 解耦，通过状态机 claim、内容级 single-flight、失败重试、用户任务配额和 stale-task reaper 保证可恢复。页面同参数 A/B 中，本地线程池只接收 54/80，RocketMQ 接收 80/80；两边都是 4 个 worker，单任务成本不变，差异来自削峰和补偿等待。任务删除采用持久化清理任务处理存储失败，过期分片会自动回收。项目有 95 个自动化测试和真实中间件 smoke，不依赖公网服务器也能完整复现。
+> 在 Enterprise Insight Platform 中，我负责的 Media Service 重点不是 CRUD，而是大文件上传和异步 AI 工作流。上传侧有普通上传、Redis 分片断点续传和 MinIO 预签名直传；处理侧用本地异步或 RocketMQ 解耦，通过状态机 claim、内容级 single-flight、失败重试、用户任务配额和 stale-task reaper 保证可恢复。页面同参数 A/B 中，本地线程池只接收 54/80，RocketMQ 接收 80/80；两边都是 4 个 worker，单任务成本不变，差异来自削峰和补偿等待。任务删除采用持久化清理任务处理存储失败，过期分片会自动回收。子系统有 108 个自动化测试和真实中间件 smoke，并通过 outbox 向 Agent Service 提供时间戳证据。
 
 ## 13. 安全加固轮新考点（2026-08-23）
 

@@ -70,7 +70,7 @@ TAG_METADATA = [
 ]
 
 app = FastAPI(
-    title="Enterprise AI Workflow Assistant API",
+    title="Enterprise Insight Platform Agent API",
     description=(
         "企业智能工单与知识助手平台 API。\n\n"
         "**鉴权**：生产环境只接受统一平台签发的 Bearer JWT，JWT 携带 tenant、用户和角色；"

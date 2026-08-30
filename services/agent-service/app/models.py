@@ -21,6 +21,8 @@ class DocumentSummary(BaseModel):
     filename: str
     chunk_count: int
     created_at: str
+    source_type: Literal["document", "video", "knowledge"] = "document"
+    managed: bool = False
 
 
 class CacheMetric(BaseModel):
@@ -160,6 +162,7 @@ class ChatRequest(BaseModel):
 
 class Source(BaseModel):
     source_type: Literal["document", "video"] = "document"
+    origin_type: Literal["uploaded_document", "media_transcript", "approved_knowledge"] = "uploaded_document"
     document_id: str
     filename: str
     chunk_index: int
@@ -171,6 +174,9 @@ class Source(BaseModel):
     start_ms: int | None = Field(default=None, ge=0)
     end_ms: int | None = Field(default=None, ge=0)
     speaker: str | None = None
+    knowledge_candidate_id: str | None = None
+    prd_version_id: str | None = None
+    content_sha256: str | None = None
 
     @model_validator(mode="after")
     def validate_video_location(self) -> "Source":

@@ -10,6 +10,8 @@ export type DocumentSummary = {
   filename: string;
   chunk_count: number;
   created_at: string;
+  source_type: "document" | "video" | "knowledge";
+  managed: boolean;
 };
 
 export type DocumentUploadResponse = {
@@ -62,7 +64,8 @@ export type SystemStatus = {
 };
 
 export type Source = {
-	 source_type: "document" | "video";
+  source_type: "document" | "video";
+  origin_type: "uploaded_document" | "media_transcript" | "approved_knowledge";
   document_id: string;
   filename: string;
   chunk_index: number;
@@ -74,6 +77,9 @@ export type Source = {
 	start_ms?: number | null;
 	end_ms?: number | null;
 	speaker?: string | null;
+  knowledge_candidate_id?: string | null;
+  prd_version_id?: string | null;
+  content_sha256?: string | null;
 };
 
 export type ToolCallRecord = {

@@ -28,7 +28,7 @@ Keep this repository a coherent product rather than two demos placed side by sid
 - Team writes require a write-capable role and governed approvals keep four-eyes separation. Never let tenant-wide visibility become self-approval authority.
 - Every material conclusion must retain evidence. Video evidence includes asset identity and a playable time range.
 - Model output is untrusted. Deterministic validation, authorization, idempotency and approval protect side effects.
-- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; derived action items enter the controlled tool approval queue.
+- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; approval must atomically materialize a managed, retrievable knowledge source with candidate/PRD/hash/evidence provenance. Ordinary document deletion cannot bypass this governance. Derived action items enter the controlled tool approval queue.
 - Media processing state and Agent analysis state are separate lifecycles, aggregated only for presentation.
 
 ## Grill the user at real decision points

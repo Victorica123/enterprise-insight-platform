@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 from app import database
+from app.graph_store import index_document_graph, init_graph_store
 from app.analysis_models import (
     ActionItemDraft,
     AnalysisSessionResponse,
@@ -64,6 +65,9 @@ def init_publication_artifact_store() -> None:
             )
             """
         )
+        database.ensure_column(conn, "knowledge_candidates", "knowledge_document_id", "text")
+        database.ensure_column(conn, "knowledge_candidates", "knowledge_content_sha256", "text")
+        database.ensure_column(conn, "knowledge_candidates", "knowledge_published_at", "text")
         conn.execute(
             """
             create index if not exists idx_knowledge_candidate_scope_status
@@ -255,15 +259,56 @@ def decide_knowledge_candidate(
     decided_at: datetime,
 ) -> KnowledgeCandidate | None:
     init_publication_artifact_store()
+    init_graph_store()
     status = "APPROVED" if approved else "REJECTED"
     with database.connect() as conn:
+        # Serialize the read-before-materialize decision. Without an immediate
+        # write reservation, two approvers can both observe PENDING and race to
+        # insert the same managed document before the final CAS update.
+        conn.execute("begin immediate")
+        candidate = conn.execute(
+            """
+            select * from knowledge_candidates
+            where candidate_id = ? and tenant_id = ? and status = 'PENDING'
+            """,
+            (candidate_id, tenant_id),
+        ).fetchone()
+        if candidate is None:
+            return None
+
+        knowledge_document_id: str | None = None
+        knowledge_content_sha256: str | None = None
+        knowledge_published_at: str | None = None
+        if approved:
+            knowledge_document_id = f"knowledge-{candidate_id}"
+            knowledge_content, knowledge_content_sha256, metadata = _build_approved_knowledge(candidate)
+            knowledge_published_at = decided_at.isoformat()
+            database.insert_document(
+                document_id=knowledge_document_id,
+                filename=f"approved-knowledge-{candidate_id[:8]}.md",
+                chunks=[(f"已批准知识 / {candidate['requirement_id']}", knowledge_content)],
+                conn=conn,
+                tenant_id=candidate["tenant_id"],
+                owner_id=candidate["owner_id"],
+                source_type="knowledge",
+                external_id=candidate_id,
+                source_version=1,
+                payload_sha256=knowledge_content_sha256,
+                metadata=metadata,
+            )
+            index_document_graph(knowledge_document_id, conn=conn)
+
         cursor = conn.execute(
             """
             update knowledge_candidates
-            set status = ?, decided_by = ?, decided_at = ?
+            set status = ?, decided_by = ?, decided_at = ?,
+                knowledge_document_id = ?, knowledge_content_sha256 = ?, knowledge_published_at = ?
             where candidate_id = ? and tenant_id = ? and status = 'PENDING'
             """,
-            (status, actor_id, decided_at.isoformat(), candidate_id, tenant_id),
+            (
+                status, actor_id, decided_at.isoformat(), knowledge_document_id,
+                knowledge_content_sha256, knowledge_published_at, candidate_id, tenant_id,
+            ),
         )
         if cursor.rowcount != 1:
             return None
@@ -272,6 +317,42 @@ def decide_knowledge_candidate(
             (candidate_id, tenant_id),
         ).fetchone()
     return _candidate_from_row(row) if row else None
+
+
+def _build_approved_knowledge(candidate: sqlite3.Row) -> tuple[str, str, dict[str, object]]:
+    evidence = json.loads(candidate["evidence_json"])
+    evidence_lines: list[str] = []
+    for item in evidence:
+        excerpt = " ".join(str(item.get("excerpt", "")).split())
+        location = item.get("filename", "")
+        if item.get("source_type") == "video":
+            location += f" [{item.get('start_ms', 0)}-{item.get('end_ms', 0)}ms]"
+        evidence_lines.append(
+            f"- {item.get('source_type', 'document')} · {location} · {excerpt}"
+        )
+    content = "\n".join([
+        f"# 已批准业务知识：{candidate['requirement_id']}",
+        "",
+        candidate["statement"],
+        "",
+        "## 可验证证据",
+        *evidence_lines,
+        "",
+        "## 治理来源",
+        f"- PRD version: {candidate['version_id']}",
+        f"- Analysis session: {candidate['session_id']}",
+        f"- Knowledge candidate: {candidate['candidate_id']}",
+    ])
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    metadata: dict[str, object] = {
+        "managed_type": "approved_knowledge",
+        "candidate_id": candidate["candidate_id"],
+        "analysis_session_id": candidate["session_id"],
+        "prd_version_id": candidate["version_id"],
+        "requirement_id": candidate["requirement_id"],
+        "evidence": evidence,
+    }
+    return content, digest, metadata
 
 
 def get_action_item(action_item_id: str, tenant_id: str) -> ActionItemDraft | None:

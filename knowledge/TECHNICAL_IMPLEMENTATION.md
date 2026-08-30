@@ -18,7 +18,7 @@ Browser / React 19 + TypeScript + Vite
        ├─ keyword + vector + hybrid retrieval
        ├─ six-stage analysis / checkpoint / resume
        ├─ PRD / approval / immutable deliverables
-       └─ knowledge and controlled action tools
+       └─ governed knowledge materialization and controlled action tools
 
 Engineering knowledge plane (not customer runtime data)
   Codex Skill -> semantic Top-K router -> generated knowledge index -> source documents
@@ -70,7 +70,18 @@ Engineering knowledge plane (not customer runtime data)
 - compare-and-set 状态、审计、canonical JSON SHA-256 版本、知识候选和行动草稿在同一 SQLite 事务提交；
 - 知识发布和外部工单仍有各自独立审批，PRD 通过不等于副作用自动执行。
 
-### 3.4 Workspace 协作
+### 3.4 批准知识物化与再召回
+
+PRD 发布只生成 `PENDING` 知识候选。授权用户点击“批准并沉淀”后，`publication_artifacts.py` 在一个 SQLite 事务内完成：
+
+1. compare-and-set 校验候选仍为 `PENDING`；
+2. 从 statement、原 requirement evidence、PRD version、analysis session 与 candidate ID 生成规范 Markdown；
+3. 计算 SHA-256，写入内部 `source_type=knowledge` 的托管 document 和 chunks；
+4. 同步建立图索引，并把 document ID、hash 与发布时间回写候选。
+
+任何一步失败都回滚，因此不会出现“状态已批准但检索不到知识”。通用文档删除拒绝托管知识，防止绕过治理。Retriever 在授权过滤后读取这类 chunk；公开 `Source` 为兼容旧客户端仍取 `source_type=document`，同时用 `origin_type=approved_knowledge` 和 candidate/PRD/hash 字段证明来源。该实现是“人工门禁后的知识演进”，不是模型自动修改 Skill 或提示规则。
+
+### 3.5 Workspace 协作
 
 Media Service 是成员关系和 active Workspace 令牌的唯一权威。OWNER 创建团队，OWNER/ADMIN 生成 15 分钟一次性邀请，服务端只保存邀请码 SHA-256；用户接受后默认成为 MEMBER。角色映射为 VIEWER→viewer、MEMBER→operator、ADMIN/OWNER→admin。
 
@@ -133,6 +144,7 @@ python scripts/update_knowledge.py --check
 - 事务 outbox：数据库事实和待投递事件同事务，避免业务成功但消息丢失。
 - 可恢复状态机：媒体任务可重试；Agent 会话可从 checkpoint 恢复；审批副作用独立治理。
 - 不可变发布：canonical JSON + SHA-256，发布版本不可覆盖。
+- 原子知识沉淀：候选 CAS、托管 document/chunk、图索引与 provenance 同事务，失败保持 `PENDING`。
 - 证据最小化：跨服务事件不携带 JWT、存储密钥或永久播放 URL。
 - 轻重模式分离：localhost mock/local 模式用于无外部依赖验收，不能代替 Redis、MQ、对象存储和真实模型 smoke。
 
@@ -155,7 +167,7 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 1. 不是把两个页面拼在一起，而是用统一身份、tenant/owner、版本化契约和一条业务纵向链路完成系统整合。
 2. RAG 不只“有向量库”：检索前授权、混合召回、RRF、可选 rerank、证据门控、引用验证和时间戳回放形成可信链。
-3. Agent 不是一次大 Prompt：六阶段结构化状态、等待/恢复、CAS 审批、不可变版本和受控工具把不确定生成与确定性副作用分开。
+3. Agent 不是一次大 Prompt：六阶段结构化状态、等待/恢复、CAS 审批、不可变版本、批准知识物化和受控工具把不确定生成与确定性副作用分开。
 4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避和可恢复检查点共同保证一致性。
 5. 缓存不是盲目存结果：所有缓存 key 都带模型/内容/数据 revision 或授权 scope，并明确缓存层和失效边界。
 6. 工程知识也可执行：Skill、语义索引、ADR、生成快照和 CI 漂移检查让后续 Agent 不必每次重新理解整个仓库。

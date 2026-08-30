@@ -245,7 +245,16 @@ def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition:
     if any(row["name"] == column for row in columns):
         return
 
-    conn.execute(f"alter table {table} add column {column} {definition}")
+    try:
+        conn.execute(f"alter table {table} add column {column} {definition}")
+    except sqlite3.OperationalError:
+        # Two request threads/processes may both observe an old schema before
+        # SQLite serializes ALTER TABLE. If the winner committed the same
+        # column while this statement waited, the migration is already done.
+        refreshed = conn.execute(f"pragma table_info({table})").fetchall()
+        if any(row["name"] == column for row in refreshed):
+            return
+        raise
 
 
 def insert_document(
@@ -417,24 +426,28 @@ def list_chunk_rows(
     predicates: list[str] = []
     parameters: list[object] = []
     if tenant_id is not None:
-        predicates.append("tenant_id = ?")
+        predicates.append("chunks.tenant_id = ?")
         parameters.append(tenant_id)
     if owner_id is not None:
-        predicates.append("owner_id = ?")
+        predicates.append("chunks.owner_id = ?")
         parameters.append(owner_id)
     if asset_ids:
         placeholders = ",".join("?" for _ in asset_ids)
-        predicates.append(f"asset_id in ({placeholders})")
+        predicates.append(f"chunks.asset_id in ({placeholders})")
         parameters.extend(asset_ids)
     where_clause = f"where {' and '.join(predicates)}" if predicates else ""
     with connect() as conn:
         return conn.execute(
             f"""
-            select document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title,
-                   tenant_id, owner_id, source_type, asset_id, segment_id, start_ms, end_ms, speaker
+            select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content,
+                   chunks.embedding, chunks.embedding_v2, chunks.chunk_title,
+                   chunks.tenant_id, chunks.owner_id, chunks.source_type, chunks.asset_id,
+                   chunks.segment_id, chunks.start_ms, chunks.end_ms, chunks.speaker,
+                   documents.external_id, documents.payload_sha256, documents.metadata_json
             from chunks
+            join documents on documents.id = chunks.document_id
             {where_clause}
-            order by created_at asc, chunk_index asc
+            order by chunks.created_at asc, chunks.chunk_index asc
             """,
             parameters,
         ).fetchall()
@@ -513,10 +526,12 @@ def delete_document(
         parameters.append(owner_id)
     with connect() as conn:
         existing = conn.execute(
-            f"select id from documents where {' and '.join(predicates)}",
+            f"select id, source_type from documents where {' and '.join(predicates)}",
             parameters,
         ).fetchone()
         if existing is None:
+            return False
+        if existing["source_type"] == "knowledge":
             return False
 
         conn.execute("delete from chunks where document_id = ?", (document_id,))

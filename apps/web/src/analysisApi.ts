@@ -89,6 +89,9 @@ export type KnowledgeCandidate = {
   created_at: string;
   decided_by: string | null;
   decided_at: string | null;
+  knowledge_document_id: string | null;
+  knowledge_content_sha256: string | null;
+  knowledge_published_at: string | null;
 };
 
 export type ActionItemDraft = {
