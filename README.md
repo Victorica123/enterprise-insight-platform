@@ -51,7 +51,7 @@ flowchart LR
 | --- | --- | --- |
 | ![知识候选批准并沉淀](docs/images/interview/knowledge-materialization.png) | ![已批准知识作为来源证据](docs/images/interview/approved-knowledge-source.png) | ![授权 Chunk 缓存命中](docs/images/interview/cache-hit.png) |
 
-完整现场顺序、提问文本和失败兜底见 [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)。
+完整现场顺序、提问文本和失败兜底见 [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)；可直接开口练习的一分钟介绍、逐分钟话术和三段项目故事见 [`docs/INTERVIEW_REHEARSAL.md`](docs/INTERVIEW_REHEARSAL.md)。
 
 ## 一键无服务器验收
 
@@ -78,6 +78,7 @@ python scripts/local_acceptance.py
 - [`docs/PROJECT_CLOSEOUT.md`](docs/PROJECT_CLOSEOUT.md)：正式收尾结论、封板证据、面试前检查和重新打开规则。
 - [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：一分钟介绍、架构取舍、高频追问、证据与不能夸大的边界。
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟主链路演示与无 UI 兜底方案。
+- [`docs/INTERVIEW_REHEARSAL.md`](docs/INTERVIEW_REHEARSAL.md)：可计时练习的口述稿、逐分钟演示、三段完整故事和追问速答。
 - [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)：完整代码框架、数据流、RAG、缓存和 Agent 工程说明。
 - [`knowledge/decisions/`](knowledge/decisions/)：重要决策的背景、选型与后果。
 

@@ -20,6 +20,7 @@
 | 架构、数据流与技术实现 | `knowledge/ARCHITECTURE.md`、`knowledge/TECHNICAL_IMPLEMENTATION.md` |
 | 面试叙事与高频追问 | `docs/INTERVIEW_GUIDE.md` |
 | 8 分钟现场演示与失败兜底 | `docs/DEMO_SCRIPT.md` |
+| 计时演练、三段故事与追问速答 | `docs/INTERVIEW_REHEARSAL.md` |
 | 本地无服务器验收 | `scripts/local_acceptance.py`、`docs/LOCAL_RELEASE_RUNBOOK.md` |
 | 测试与浏览器证据 | `knowledge/QUALITY.md`、`docs/images/interview/` |
 | 长期维护入口 | `skills/enterprise-insight-maintainer/`、`knowledge/INDEX.md` |
@@ -33,15 +34,15 @@
 - Web：TypeScript 与 Vite 生产构建通过。
 - 浏览器：真实完成文档上传、六阶段分析、发布、知识沉淀、未来 RAG 召回和缓存命中。
 - 并发迁移复测：20 并发、40 请求，40/40 返回 200。
-- 维护知识：36 个批准来源、196 个 chunk；增量向量复用、revision 查询缓存和漂移检查通过。
+- 维护知识：37 个批准来源、212 个 chunk；增量向量复用、revision 查询缓存和漂移检查通过。
 
 具体命令、环境与不能外推的边界以 `knowledge/QUALITY.md` 为准。
 
 ## 面试前最后准备
 
 1. 提前运行 `python scripts/local_acceptance.py`，保留 PASS 输出。
-2. 按 `docs/DEMO_SCRIPT.md` 只演示一条主线，不现场安装模型或中间件。
-3. 准备三个故事：业务闭环、并发迁移缺陷修复、两后端与授权缓存的架构取舍。
+2. 按 `docs/INTERVIEW_REHEARSAL.md` 计时练习一分钟介绍、8 分钟主线和追问；现场操作细节以 `docs/DEMO_SCRIPT.md` 为准。
+3. 熟练讲出三个故事：业务闭环、并发迁移缺陷修复、两后端与授权缓存的架构取舍。
 4. 明确个人贡献，区分原媒体能力、迁移整合与新增 Agent/知识治理能力。
 5. 主动说明 localhost/mock 证明的是工程链路，不代表生产吞吐、真实模型质量或业务 ROI。
 
