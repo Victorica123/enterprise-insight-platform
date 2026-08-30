@@ -66,6 +66,10 @@ export type AnalysisSession = {
   asset_ids: string[];
   status: "RUNNING" | "WAITING_CONFIRMATION" | "DRAFT_READY" | "PUBLISH_PENDING" | "PUBLISHED" | "FAILED";
   current_stage: number;
+  checkpoint_version: number;
+  evidence_revision: number;
+  evidence_snapshot_sha256: string;
+  retrieval_mode: "hybrid";
   resume_token: string | null;
   stages: AnalysisStage[];
   open_questions: AnalysisQuestion[];

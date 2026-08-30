@@ -117,6 +117,21 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(schema["properties"]["version"]["$ref"], "#/$defs/version")
 
+    def test_analysis_session_schema_requires_checkpoint_provenance(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "analysis-session-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+
+        self.assertTrue(schema["$id"].endswith("/analysis-session-v1.schema.json"))
+        self.assertTrue({
+            "checkpoint_version", "evidence_revision", "evidence_snapshot_sha256",
+            "retrieval_mode",
+        }.issubset(schema["required"]))
+        self.assertEqual(schema["properties"]["retrieval_mode"]["const"], "hybrid")
+        self.assertEqual(schema["properties"]["stages"]["maxItems"], 6)
+
     def test_workspace_collaboration_schema_is_versioned_and_machine_readable(self) -> None:
         contract = (
             Path(__file__).resolve().parents[3]

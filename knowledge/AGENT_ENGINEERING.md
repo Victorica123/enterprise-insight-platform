@@ -11,7 +11,9 @@
 
 阶段是可观测的业务节点，不等同于必须绑定某个 Agent 框架。每一阶段接受结构化状态并产生可校验输出。
 
-当前实现位于独立的 `analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。`analysis_pipeline` 是同步、确定性的规则基线：它从授权 scope 加载 chunk，依次构造六类结构化结果，当前不调度独立领域 Agent、不并行执行，也不调用生成模型。事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，但会使用当前授权证据和累计答案重新执行该确定性函数，再生成带证据与假设标记的 DRAFT PRD。
+当前实现位于独立的 `analysis_evidence`、`analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。创建会话时，`analysis_evidence` 先在 JWT 限定的 tenant/owner/asset scope 内用 hybrid 检索按 objective 排序，最多冻结 24 个正分 chunk；canonical JSON、content revision 与 SHA-256 随 session 持久化。`analysis_pipeline` 仍是无外部模型的确定性基线，但领域阶段现在通过进程共享、最多 4 worker 的线程池并行执行业务、数据与安全、技术与集成、规则与合规四个 specialist；结果按固定声明顺序合并，单维失败进入人工复核，显式冲突进入 `domain_conflict`。这些 specialist 是有界领域执行器，不声称是独立 LLM Agent。
+
+事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，读取创建时的冻结证据，保留阶段 1–4，只重新执行收敛和 PRD 阶段。目标、证据排序、早期结论和恢复输入因此可以复现，不受等待期间新摄取材料影响。
 
 ## 证据策略
 
@@ -34,9 +36,9 @@
 
 ## 等待与恢复
 
-分析会话持久化 session、阶段结果、结构化问题、答案、恢复令牌和 PRD。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`；用户补充后恢复同一业务会话。当前这是业务状态级恢复，不是执行栈或节点 continuation：确认接口会重新运行确定性六阶段函数，早期结果随当前证据重算；当前也没有 AppServer/WebSocket 传输层或独立专家渠道。
+分析会话持久化 session、阶段结果、结构化问题、答案、恢复令牌、PRD，以及证据 revision/hash 和检查点版本。遇到真实信息缺口时进入 `WAITING_CONFIRMATION`；用户补充后恢复同一业务会话。当前这是阶段级业务检查点，不是 Python 执行栈或框架节点 continuation：进程崩溃时不能从某次模型调用中间继续，当前也没有 AppServer/WebSocket 传输层或企业 IM 专家渠道。
 
-当前 `resume_token` 会在 API 层做相等性校验，并在仍需确认时轮换，但确认保存使用普通 upsert，尚未通过数据库 compare-and-set 原子消费同一 token。两个并发确认可能在失效前同时通过读取校验，正式强化需要按 `session_id + status + resume_token` 条件更新并增加并发回归测试。
+`resume_token` 先在 API 做常量时间比较，最终以 `session_id + tenant_id + owner_id + WAITING_CONFIRMATION + resume_token` 条件执行数据库 compare-and-set；一次成功会提升 `checkpoint_version` 并使旧 token 失效。并发回归测试用两个请求竞争同一 token，结果严格为一个 200、一个 409。若仍有缺口，新 token 只在成功 CAS 中轮换。
 
 当前状态机已实现 `WAITING_CONFIRMATION → DRAFT_READY → PUBLISH_PENDING → PUBLISHED`。发布逻辑独立放在 `publication_service.py`，交付物投影放在 `publication_artifacts.py`，避免继续膨胀分析路由或既有 `agentic_rag.py`。个人空间要求 OWNER 二次明确确认；团队空间要求不同成员四眼审批。两条路径都使用一次性 token、compare-and-set 状态转换，并在同一事务内写入审计、不可变版本和初始交付物。
 
@@ -54,3 +56,7 @@
 - 改进：优先修复确定性系统问题，再调整提示或模型路由。
 - 知识：发布 PRD 生成保留证据的候选；候选经过独立人工决定后才以托管文档进入未来 RAG。候选状态、文档/chunk 与图索引同事务提交，不把 PRD 审批等同于知识审批，也不让 Agent 自动改写规则。
 - 门禁：任何影响 Agent 行为的变更必须有对应评测案例，不能仅凭演示判断提升。
+
+## PRD 专项评测
+
+`quality/agent-evals/evaluate_prd.py` 使用 12 个冻结手工场景，不调用外部 LLM，评价 decision、问题召回与精确率、objective Top-1、冲突升级、证据完整性、受支持结论、验收可测试性、检查点稳定性和 specialist 顺序。当前本地基线各质量项为 100%，P95 约 22 ms。它是代码回归门禁，不代表真实访谈分布、开放域语义质量或生产延迟；后续需要匿名真实坏案例、holdout 与独立人工评审。

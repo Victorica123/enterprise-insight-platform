@@ -25,7 +25,7 @@ flowchart LR
 2. 带时间段的转写通过事务 outbox 幂等进入 Agent Service。
 3. 用户跨视频/文档提问，答案引用可点击回放的证据。
 4. Agent 经过意图、干系人、领域、风险、收敛、PRD 六阶段分析。
-5. 信息不足时进入持久化等待；人工补充后恢复同一业务会话，并用授权证据与确认事实重新计算确定性阶段结果。
+5. objective 驱动授权 hybrid 检索并冻结证据；信息不足时持久化等待，人工补充后保留阶段 1–4，仅重算收敛与 PRD，并以 CAS 一次性消费恢复 token。
 6. personal Workspace 使用 OWNER 二次确认发布；team Workspace 必须不同成员四眼审批。
 7. 发布生成不可变 PRD、知识候选和行动项；知识与工单分别经过独立审批。
 8. 批准知识以版本、哈希和原始证据物化，并被后续 RAG 检索命中。
@@ -34,10 +34,10 @@ flowchart LR
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 119 个自动化用例，覆盖检索、分析、审批、隔离、工具、缓存、知识物化和并发迁移幂等 |
+| Agent Service | 127 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识物化 |
 | Media Service | JDK 17/18 下 108 个自动化用例 |
-| Agent 质量 | V6 keyword / embedding / hybrid 黄金集门禁 |
-| 平台纵向链路 | 25 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
+| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例两套独立黄金集门禁 |
+| 平台纵向链路 | 28 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
 | Web | TypeScript project build + Vite production build |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 

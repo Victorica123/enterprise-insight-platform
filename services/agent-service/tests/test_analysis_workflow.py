@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -7,7 +8,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app import database
-from app.analysis_pipeline import run_six_stage_analysis
+from app import analysis_pipeline
+from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis
 from app.main import app
 from app.publication_artifacts import decide_knowledge_candidate, get_publication_deliverables
 from app.rag import answer_question
@@ -42,6 +44,86 @@ class SixStagePipelineTests(unittest.TestCase):
         self.assertEqual(requirement.evidence[0].asset_id, "asset-1")
         self.assertEqual(requirement.evidence[0].start_ms, 1200)
         self.assertEqual(requirement.acceptance_criteria, ["审批提交后 2 秒内展示结果"])
+
+    def test_domain_specialists_merge_deterministically_and_surface_conflicts(self) -> None:
+        chunks = [Chunk(
+            document_id="doc-1", filename="meeting.md", chunk_index=0,
+            content=(
+                "产品负责人要求 P0 上线审批 API，验收标准为 2 秒内完成。"
+                "但材料存在两种口径冲突：业务要求保存全部数据，合规则禁止保存隐私字段。"
+            ),
+        )]
+
+        run = run_six_stage_analysis("生成审批 PRD", chunks)
+
+        self.assertEqual(
+            [result.key for result in run.specialist_results],
+            ["business", "data", "technology", "rules"],
+        )
+        self.assertIn("domain_conflict", {item.question_id for item in run.open_questions})
+        self.assertTrue(any(item.startswith("[冲突]") for item in run.stages[2].findings))
+
+    def test_one_specialist_failure_is_isolated_and_requires_review(self) -> None:
+        original = analysis_pipeline._run_one_specialist
+
+        def fail_data(config, chunks):
+            if config.key == "data":
+                raise RuntimeError("simulated")
+            return original(config, chunks)
+
+        with patch("app.analysis_pipeline._run_one_specialist", side_effect=fail_data):
+            run = run_six_stage_analysis("生成 PRD", [Chunk(
+                document_id="doc-1", filename="meeting.md", chunk_index=0,
+                content="产品负责人要求 P0 上线，验收标准为 2 秒内完成。",
+            )])
+
+        self.assertEqual(len(run.specialist_results), 4)
+        self.assertEqual(run.specialist_results[1].error, "RuntimeError")
+        self.assertIn("specialist_review", {item.question_id for item in run.open_questions})
+
+    def test_resume_preserves_completed_business_checkpoint(self) -> None:
+        original_chunks = [Chunk(
+            document_id="doc-old", filename="old.md", chunk_index=0,
+            content="客户希望简化流程。",
+        )]
+        waiting = run_six_stage_analysis("生成流程 PRD", original_chunks)
+        frozen = [stage.model_dump(mode="json") for stage in waiting.stages[:4]]
+
+        resumed = resume_six_stage_analysis(
+            "生成流程 PRD",
+            original_chunks,
+            waiting.stages,
+            {
+                "decision_maker": "产品负责人",
+                "acceptance_criteria": "2 秒内完成",
+                "priority_rule": "P0 优先",
+            },
+        )
+
+        self.assertEqual(
+            [stage.model_dump(mode="json") for stage in resumed.stages[:4]], frozen,
+        )
+        self.assertIsNotNone(resumed.prd)
+
+    def test_text_confirmation_cannot_replace_a_missing_evidence_snapshot(self) -> None:
+        waiting = run_six_stage_analysis("生成权益 PRD", [])
+
+        resumed = resume_six_stage_analysis(
+            "生成权益 PRD",
+            [],
+            waiting.stages,
+            {
+                "evidence_scope": "使用某个未绑定的文档",
+                "decision_maker": "产品负责人",
+                "acceptance_criteria": "2 秒内完成",
+                "priority_rule": "P0 优先",
+            },
+        )
+
+        self.assertIsNone(resumed.prd)
+        self.assertEqual(
+            [question.question_id for question in resumed.open_questions], ["evidence_scope"],
+        )
 
 
 class AnalysisApiTests(unittest.TestCase):
@@ -79,6 +161,9 @@ class AnalysisApiTests(unittest.TestCase):
         payload = created.json()
         self.assertEqual(payload["status"], "DRAFT_READY")
         self.assertEqual(len(payload["stages"]), 6)
+        self.assertEqual(payload["checkpoint_version"], 1)
+        self.assertEqual(payload["retrieval_mode"], "hybrid")
+        self.assertEqual(len(payload["evidence_snapshot_sha256"]), 64)
         self.assertEqual(payload["prd"]["requirements"][0]["evidence"][0]["asset_id"], "asset-a")
 
         hidden = self.client.get(
@@ -86,6 +171,148 @@ class AnalysisApiTests(unittest.TestCase):
             headers={**headers, "X-Tenant-Id": "tenant-b"},
         )
         self.assertEqual(hidden.status_code, 404)
+
+    def test_snapshot_is_objective_ranked_after_authorization_filtering(self) -> None:
+        database.insert_document(
+            "doc-refund", "refund.md",
+            [("", "退款产品负责人要求 P0 优先，验收标准是退款申请 2 秒内受理。")],
+            tenant_id="tenant-a", owner_id="user-a",
+        )
+        database.insert_document(
+            "doc-hiring", "hiring.md",
+            [("", "招聘负责人要求 P0 优先，验收标准是三天内完成简历筛选。")],
+            tenant_id="tenant-a", owner_id="user-a",
+        )
+        database.insert_document(
+            "doc-other-tenant", "refund-secret.md",
+            [("", "退款产品负责人要求 P0 优先，验收标准是退款申请 1 秒内受理。")],
+            tenant_id="tenant-b", owner_id="user-b",
+        )
+        headers = {"X-User-Role": "operator", "X-User-Id": "user-a", "X-Tenant-Id": "tenant-a"}
+
+        response = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "生成退款受理 PRD", "asset_ids": []},
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        payload = response.json()
+        self.assertEqual(
+            payload["prd"]["requirements"][0]["evidence"][0]["document_id"],
+            "doc-refund",
+        )
+        all_ids = {
+            evidence["document_id"]
+            for stage in payload["stages"]
+            for evidence in stage["evidence"]
+        }
+        self.assertNotIn("doc-other-tenant", all_ids)
+
+    def test_objective_ranked_snapshot_stays_frozen_across_resume(self) -> None:
+        database.insert_document(
+            "doc-checkpoint", "checkout-review.mp4", [("", "客户希望优化结算体验。")],
+            tenant_id="tenant-a", owner_id="user-a", source_type="video",
+            external_id="asset-checkpoint",
+            chunk_metadata=[{
+                "asset_id": "asset-checkpoint", "segment_id": "segment-checkpoint",
+                "start_ms": 1000, "end_ms": 4000, "speaker": "客户",
+            }],
+        )
+        headers = {"X-User-Role": "operator", "X-User-Id": "user-a", "X-Tenant-Id": "tenant-a"}
+        created_response = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "生成结算体验 PRD", "asset_ids": ["asset-checkpoint"]},
+        )
+        self.assertEqual(created_response.status_code, 201, created_response.text)
+        created = created_response.json()
+        self.assertEqual(created["status"], "WAITING_CONFIRMATION")
+        first_four = created["stages"][:4]
+
+        database.insert_document(
+            "doc-late", "late.mp4", [("", "产品负责人要求 P0，验收标准 1 秒；这是稍后写入的新事实。")],
+            tenant_id="tenant-a", owner_id="user-a", source_type="video",
+            external_id="asset-checkpoint", source_version=2,
+            chunk_metadata=[{
+                "asset_id": "asset-checkpoint", "segment_id": "segment-late",
+                "start_ms": 5000, "end_ms": 9000, "speaker": "产品负责人",
+            }],
+        )
+        answers = {
+            question["question_id"]: {
+                "decision_maker": "产品负责人",
+                "acceptance_criteria": "提交后 2 秒内完成",
+                "priority_rule": "P0 优先",
+                "domain_conflict": "以合规要求为准",
+                "specialist_review": "产品负责人复核",
+                "evidence_scope": "使用冻结视频证据",
+            }[question["question_id"]]
+            for question in created["open_questions"]
+        }
+        resumed_response = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/confirm", headers=headers,
+            json={"resume_token": created["resume_token"], "answers": answers},
+        )
+
+        self.assertEqual(resumed_response.status_code, 200, resumed_response.text)
+        resumed = resumed_response.json()
+        self.assertEqual(resumed["status"], "DRAFT_READY")
+        self.assertEqual(resumed["checkpoint_version"], 2)
+        self.assertEqual(resumed["evidence_revision"], created["evidence_revision"])
+        self.assertEqual(resumed["evidence_snapshot_sha256"], created["evidence_snapshot_sha256"])
+        self.assertEqual(resumed["stages"][:4], first_four)
+        evidence_ids = {
+            evidence["document_id"]
+            for requirement in resumed["prd"]["requirements"]
+            for evidence in requirement["evidence"]
+        }
+        self.assertEqual(evidence_ids, {"doc-checkpoint"})
+
+    def test_resume_token_is_consumed_once_with_database_cas(self) -> None:
+        database.insert_document(
+            "doc-cas", "cas.mp4", [("", "客户希望优化退款流程。")],
+            tenant_id="tenant-a", owner_id="user-a", source_type="video", external_id="asset-cas",
+            chunk_metadata=[{
+                "asset_id": "asset-cas", "segment_id": "segment-cas",
+                "start_ms": 0, "end_ms": 3000, "speaker": "客户",
+            }],
+        )
+        headers = {"X-User-Role": "operator", "X-User-Id": "user-a", "X-Tenant-Id": "tenant-a"}
+        created = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "生成退款 PRD", "asset_ids": ["asset-cas"]},
+        ).json()
+        answer_values = {
+            "decision_maker": "产品负责人",
+            "acceptance_criteria": "退款申请 2 秒内受理",
+            "priority_rule": "P0 优先",
+            "domain_conflict": "以合规口径为准",
+            "specialist_review": "产品负责人复核",
+            "evidence_scope": "使用冻结证据",
+        }
+        payload = {
+            "resume_token": created["resume_token"],
+            "answers": {
+                item["question_id"]: answer_values[item["question_id"]]
+                for item in created["open_questions"]
+            },
+        }
+
+        def confirm_once() -> int:
+            with TestClient(app) as client:
+                return client.post(
+                    f"/analysis/sessions/{created['session_id']}/confirm",
+                    headers=headers, json=payload,
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            statuses = sorted(executor.map(lambda _: confirm_once(), range(2)))
+
+        self.assertEqual(statuses, [200, 409])
+        stored = self.client.get(
+            f"/analysis/sessions/{created['session_id']}", headers=headers,
+        ).json()
+        self.assertEqual(stored["checkpoint_version"], 2)
+        self.assertEqual(stored["status"], "DRAFT_READY")
 
     def test_personal_owner_uses_two_explicit_steps_and_receives_audit_chain(self) -> None:
         headers = {

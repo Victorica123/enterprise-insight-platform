@@ -24,6 +24,10 @@ Use for a local defect or isolated refactor. Run the closest unit or component t
 
 Use when a service contract, persistence behavior, authentication, queueing or Agent node changes. Run the complete affected service tests, static/type checks and relevant Agent evaluation gates.
 
+For six-stage analysis, objective retrieval, evidence snapshots or resume behavior, the relevant gates are `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_prd.py`. Also run V6 when shared retriever behavior changes.
+
+For six-stage analysis, objective retrieval, evidence snapshots or resume behavior, the relevant gates are `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_prd.py`. Also run V6 when shared retriever behavior changes.
+
 ### Platform
 
 Use for cross-service contracts, unified authentication, end-to-end workflow, deployment or release work. Run:

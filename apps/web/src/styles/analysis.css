@@ -12,6 +12,8 @@
 .analysis-history button span { color: var(--muted); font-size: 11px; }
 .analysis-main { display: grid; gap: 14px; }
 .analysis-header { display: flex; justify-content: space-between; align-items: center; }
+.analysis-provenance { display: grid; justify-items: end; gap: 4px; color: var(--text-secondary); font-size: 12px; }
+.analysis-provenance code { color: var(--muted); font-size: 11px; }
 .stage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .stage-card { padding: 14px !important; }
 .stage-card.waiting { border-color: var(--warning); }

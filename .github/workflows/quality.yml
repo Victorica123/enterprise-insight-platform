@@ -22,6 +22,9 @@ jobs:
       - run: python quality/agent-evals/evaluate_v6.py
         env:
           LLM_ROUTER_ENABLED: "0"
+      - run: python quality/agent-evals/evaluate_prd.py
+        env:
+          LLM_ROUTER_ENABLED: "0"
       - run: python -m unittest discover -s scripts/tests -q
       - run: python scripts/update_knowledge.py --check
 

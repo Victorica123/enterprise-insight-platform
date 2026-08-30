@@ -59,6 +59,7 @@ Agent Service
 - 媒体任务状态：排队、处理中、完成、失败，可重试。
 - Agent 分析状态：运行、等待确认、草稿就绪、待发布审批、已发布、失败，可恢复。
 - 发布状态采用服务端 compare-and-set：`DRAFT_READY → PUBLISH_PENDING → PUBLISHED`，状态变更与审计事件在同一 SQLite 事务提交，避免并发重复批准。
+- 分析创建先执行授权后 objective-aware hybrid 检索并固化证据 revision/hash；确认只使用冻结快照，保留阶段 1–4，并以 session/status/resume token 的数据库 compare-and-set 推进检查点。等待期间新增证据不会静默改写旧阶段结论。
 - 发布版本按 canonical JSON 的 SHA-256 标识且不可覆盖；知识候选使用独立 CAS 决策。批准后生成内部 `source_type=knowledge` 的托管文档，公开证据保持兼容的 `source_type=document` 并用 `origin_type=approved_knowledge` 暴露治理来源。行动项通过幂等工具草稿进入审批，并把终态与真实 `ticket_id` 投影回交付物。
 - 跨服务投递采用版本化事件、`event_id` 幂等和可重放设计。
 - Media 在任务完成事务内写入 `integration_event_outbox`，本地调度器通过 HTTP/1.1 投递；瞬时失败指数退避，契约冲突进入 DEAD，Agent 端继续执行事件级与语义级双重幂等。

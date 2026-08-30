@@ -13,8 +13,8 @@
 | 业务闭环 | 8.5/10 | 从视频/文档到证据、PRD、知识和工单，主线完整且可演示 |
 | 全栈工程 | 8/10 | Spring、FastAPI、React、契约、鉴权和本地验收形成纵向链路 |
 | 安全与可靠性 | 8/10 | tenant/owner、四眼审批、outbox、双重幂等和事务物化都能落到代码 |
-| Agent 工作流深度 | 6/10 | RAG 编排有工程内容，但六阶段交付仍是同步确定性规则基线 |
-| Agent 评测严谨度 | 6.5/10 | 有黄金集和门禁，但语料小、闭集、LLM 关闭，且没有 PRD 语义质量评测 |
+| Agent 工作流深度 | 7.5/10 | objective 驱动冻结证据、四类有界并行 specialist 和阶段级恢复已落地，但仍是无 LLM 的确定性基线 |
+| Agent 评测严谨度 | 7.5/10 | RAG 与 PRD 有独立黄金门禁；仍是小样本闭集、LLM 关闭、没有真实客户 holdout |
 | 生产成熟度 | 5/10 | localhost 证据扎实，但正式 IdP、迁移、真实流量、告警、灾备和容量未知 |
 | 简历可信度 | 取决于讲法 | 如实讲“方法迁移、独立实现”会加分；声称“复刻实习系统”会直接伤害信用 |
 
@@ -34,21 +34,22 @@
 
 打开 `services/agent-service/app/analysis_pipeline.py` 后，面试官会看到：
 
-- `run_six_stage_analysis` 是一个同步 Python 函数；
+- API 入口仍同步等待 `run_six_stage_analysis` 返回；
 - 干系人、风险和缺口主要由关键词/正则判断；
-- 领域结果取授权 chunk 的前若干项；
-- PRD 基本按前 8 个 chunk 投影需求；
-- 该路径没有 Main Agent 调度、领域 Agent 并行或模型调用。
+- objective 先驱动授权 hybrid 检索并冻结最多 24 个 chunk；
+- 领域阶段通过共享 4-worker 池并行执行四个确定性 specialist，固定顺序合并并升级显式冲突；
+- PRD 仍按目标排序后的前 8 个 chunk 投影需求；
+- 该路径没有 Main LLM Agent、专家 Prompt 或生成模型调用。
 
-因此不能回答“我在个人项目里复刻了实习中的多 Agent 六阶段编排”。准确说法是：迁移了阶段划分、人机确认和治理方法，用确定性基线先验证业务状态与副作用；问答路径另有 Agentic RAG，但交付六阶段尚未升级为模型驱动的并行执行器。
+因此仍不能回答“我在个人项目里复刻了实习中的多 LLM Agent 编排”。准确说法是：迁移了阶段划分、人机确认和治理方法，独立实现了 objective-aware 证据快照、有界领域执行、冲突升级与业务 checkpoint；问答路径另有 Agentic RAG，但交付 specialist 目前不是模型角色。
 
 ### 2. “从 checkpoint 恢复”目前是业务恢复，不是执行恢复
 
-`POST /analysis/sessions/{id}/confirm` 会读取持久化会话、校验 token，然后再次调用 `run_six_stage_analysis(...)`。这证明页面刷新后业务状态仍在、人工答案能回到同一 session，但早期阶段会被确定性重算。
+`POST /analysis/sessions/{id}/confirm` 会读取持久化会话与创建时冻结的证据快照，校验 token，然后调用 `resume_six_stage_analysis(...)`。它原样保留阶段 1–4，只重算收敛和 PRD；响应暴露检查点版本、证据 revision 与 hash，页面刷新后可以重新 GET 验证。
 
 它不同于简历里的 Codex AppServer + WebSocket：当前没有常驻执行上下文、节点级 continuation、实时流重连或服务端推送。前端使用 HTTP，媒体任务使用轮询。
 
-更进一步，同一 `resume_token` 的并发确认目前不是数据库 CAS 消费：两个请求可能都在 token 失效前读到同一状态，最终形成 last-write-wins。这是代码层真实缺口，不能把 token 称为严格的一次性并发门禁。
+同一 `resume_token` 最终通过 `session + tenant + owner + status + token` 条件更新原子消费。并发回归用两个请求竞争同一 token，结果为一个 200、一个 409。边界仍然是：当前不能从某次模型调用或 Python 栈的中间位置继续，也没有服务端实时推送。
 
 ### 3. “Skill/Knowledge 自进化”只实现了治理后的子集
 
@@ -67,7 +68,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 ### 5. 测试数量不能替代生产事实
 
-119、108 和 25/25 是可信的工程证据，但面试官会继续问：
+127、108 和 28/28 是可信的工程证据，但面试官会继续问：
 
 - 数据量和并发量是多少？
 - MySQL、Redis、RocketMQ、对象存储和真实模型是否在统一链路跑过？
@@ -83,15 +84,15 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 | 简历技术 | 本项目对应 | 实现强度 | 面试安全说法 | 禁止说法 |
 | --- | --- | --- | --- | --- |
 | 意图、相关方、领域、风险、收敛、PRD 六阶段 | 同名六阶段、结构化结果、证据与待确认项 | 部分独立实现 | “迁移了六阶段方法，用确定性规则基线验证状态和治理” | “复刻了实习多 Agent” |
-| Main Agent 调度领域 Agent 并行分析 | 六阶段函数内按顺序构造结果；问答另有 Router/Planner/Retriever 等节点 | 交付路径未实现 | “个人项目尚未实现领域 Agent 并行，避免用概念冒充运行时” | “多个领域 Agent 已并行冲突消解” |
+| Main Agent 调度领域 Agent 并行分析 | 4-worker 池并行业务/数据安全/技术集成/规则合规 specialist；固定顺序合并、失败隔离、显式冲突转人工问题 | 实现了确定性有界变体 | “并行的是本地规则 specialist，不是公司里的 LLM Agent Runtime” | “完整复刻了多 Agent 调度与智能冲突消解” |
 | 钉钉领域专家补充 | 工作台由当前授权用户填写结构化确认 | 只实现人机确认语义 | “实现了等待人工补充，未接企业 IM 或专家路由” | “已经接入钉钉专家” |
-| 状态文件保存进度与结论 | SQLite `analysis_sessions` 保存状态、阶段、问题、答案和 PRD | 已实现业务状态持久化 | “刷新后可读回同一业务会话” | “恢复原执行栈和内存上下文” |
+| 状态文件保存进度与结论 | SQLite 保存状态、阶段、问题、答案、冻结证据 hash/revision、checkpoint version 和 PRD | 已实现阶段级业务检查点 | “刷新后可读回，恢复时保留阶段 1–4” | “恢复原执行栈和内存上下文” |
 | 业务地图、技术知识库、流程规则、PRD 模板共同支撑 | 授权 RAG、图谱、仓库知识和确定性 PRD 投影分别存在 | 部分整合 | “具备这些能力的公开替代物，但六阶段尚未做完整多源 context fan-in” | “与公司上下文系统一比一一致” |
 | Bad Case → 根因 → 规则的 Skill 自进化 | 维护 Skill、语义 Top-K、增量向量、漂移检查；规则仍需人工维护 | 部分实现 | “实现了知识可检索和门禁，没有自动改规则” | “坏案例会自动升级 Skill” |
 | 确认 PRD → Wiki 对照 → 自动发布知识 | PRD → 候选 → 人工审批 → 托管知识 → 后续 RAG | 较强的独立变体 | “把自动发布改成显式治理，保留 candidate/PRD/hash/evidence” | “已做 Wiki 自动 diff 与发布” |
 | Codex AppServer 统一会话与执行状态 | FastAPI HTTP API + SQLite 会话 | 未复刻 | “实习方法启发了状态分离，项目运行时不同” | “项目也用了 AppServer” |
 | WebSocket 恢复历史与同步输出 | HTTP 请求；媒体状态 2 秒轮询 | 未实现 | “实时流是下一层传输优化，当前只证明业务状态恢复” | “刷新后靠 WebSocket 无缝续跑” |
-| 可等待、可恢复确认流程 | `WAITING_CONFIRMATION`、resume token、答案持久化 | 业务级部分实现 | “同一 session 可等待和恢复，但确认时会重算确定性阶段” | “节点级 checkpoint continuation” |
+| 可等待、可恢复确认流程 | `WAITING_CONFIRMATION`、冻结证据、阶段 1–4 复用、resume token CAS | 业务阶段级实现 | “同一 session 可等待，竞争 token 仅一次成功；只重算收敛/PRD” | “模型节点或执行栈 continuation” |
 
 最容易被怀疑的问题是“个人项目为什么和实习项目六阶段一模一样”。建议直接回答：
 
@@ -140,13 +141,13 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 继续追问：
 
 1. 模型调用在哪里？Prompt 在哪里？
-2. Main Agent 和领域 Agent 并行在哪里？
+2. 四个 specialist 并行在哪里，为什么仍不叫多 LLM Agent？
 3. 领域冲突怎么检测和合并？
-4. objective 为什么没有用于语义检索？
+4. objective 如何参与检索，为什么要冻结 Top-24？
 5. 为什么前 8 个 chunk 可以直接等于 8 条需求？
 6. 这段代码和普通 workflow 有什么区别，为什么叫 Agent？
 
-优秀回答要点：承认六阶段交付路径是确定性 baseline，不是完整多 Agent；项目的 Agentic RAG 位于问答链路，交付路径先验证 evidence/state/governance。指出升级方案：stage executor 接口、objective-aware retrieval、并行领域任务、持久化每阶段输入输出、冲突合并与独立 PRD eval。
+优秀回答要点：承认六阶段交付路径仍是确定性 baseline，不是完整多 LLM Agent；指出 objective-aware hybrid、canonical snapshot、共享 4-worker、固定合并、失败隔离、冲突问题和 PRD V1 门禁的具体代码。解释为何 Phase 1 选择无外部模型可复现，并把模型专家收益留给真实数据 A/B，而不是先加 Prompt。
 
 危险回答：“规则只是 fallback，实际都是大模型。”当前代码不支持这个说法。
 
@@ -168,7 +169,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 ### 第四轮：打穿等待恢复语义
 
-**面试官：** 你说从 checkpoint 恢复，但确认接口第 118 行又调用了完整分析函数，这不是重跑吗？
+**面试官：** 你说从 checkpoint 恢复，究竟保存了什么，哪些阶段还会重跑？
 
 继续追问：
 
@@ -179,7 +180,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 5. token 是否真正一次性消费？
 6. 如果人工确认等待 7 天，旧证据发生变化怎么办？
 
-优秀回答要点：当前是业务会话恢复，不是执行栈恢复；SQLite 保存 session/stages/questions/answers/PRD，HTTP 重新读取。确认会基于当前授权证据重算确定性阶段；同 token 并发消费缺少 DB CAS，是已识别缺口。真正修复需要 `UPDATE ... WHERE status='WAITING_CONFIRMATION' AND resume_token=?`、证据 revision/snapshot 和阶段级 checkpoint。
+优秀回答要点：当前是业务阶段恢复，不是执行栈恢复；SQLite 保存 session/stages/questions/answers/PRD 与冻结 evidence snapshot/hash/revision。确认保留阶段 1–4，只重算 convergence/PRD，并用 `UPDATE ... WHERE status='WAITING_CONFIRMATION' AND resume_token=?` CAS 推进版本。两个竞争请求一个 200、一个 409；等待 7 天期间新证据不会进入旧 session，若要纳入必须新建分析或未来显式 rebase。
 
 危险回答：“token 是一次性的，所以不会并发。”API 比较 token 不等于数据库原子消费。
 
@@ -215,7 +216,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 6. 六阶段 PRD 的完整性、冲突识别、引用正确性在哪里评测？
 7. 如何防止你针对黄金集调规则？
 
-优秀回答要点：准确说 42 个闭集案例、41/42 decision、36/37 recall/fact，LLM 关闭；数字只作为确定性回归门禁。承认没有 holdout/真实分布和 PRD 语义门禁，后续需要冻结测试集、加入真实匿名坏案例、阶段级评分和独立评审。
+优秀回答要点：准确说 RAG 是 42 个闭集案例、41/42 decision、36/37 recall/fact；PRD 是另一个 12 例闭集，当前十项质量指标 100%、本机验证 P95 约 17～25 ms。两者都关闭 LLM，只作为确定性回归门禁。承认 PRD 集与规则共同维护、没有 holdout/真实分布，下一步需要匿名真实坏案例、独立评审和人工修改率。
 
 危险回答：“模型准确率 98%，所以效果很好。”这是最容易被当场判定夸大的说法。
 
@@ -293,15 +294,17 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 | 面试官打开的文件 | 会问什么 | 必须能说清 |
 | --- | --- | --- |
-| `services/agent-service/app/analysis_pipeline.py` | 六阶段为何是规则函数、chunk 上限为何是 200/12/8 | 当前 baseline、复杂度预算、证据质量缺口和升级路径 |
-| `services/agent-service/app/routes/analysis.py` | confirm 为什么完整重算、token 是否原子消费 | 业务恢复与执行恢复的差异、并发 CAS 缺口 |
-| `services/agent-service/app/analysis_store.py` | session upsert 与发布 CAS 为什么不同 | 普通保存和确定性副作用的不同一致性要求；确认路径仍需补 CAS |
+| `services/agent-service/app/analysis_evidence.py` | objective 怎么影响证据、快照为什么不保存 embedding | 授权先于排序、稳定 revision、Top-24、canonical hash 和数据最小化 |
+| `services/agent-service/app/analysis_pipeline.py` | 四个 specialist 是否真是 Agent、为什么 PRD 只取前 8 | 共享 4-worker、固定合并/失败隔离/冲突升级；仍是规则 baseline |
+| `services/agent-service/app/routes/analysis.py` | confirm 到底恢复哪一层 | 读取冻结快照，保留阶段 1–4，只重算 convergence/PRD |
+| `services/agent-service/app/analysis_store.py` | token 如何原子消费、快照如何校验一致性 | 条件 CAS、checkpoint version、revision/hash 与 200/409 并发回归；同库 hash 能发现意外漂移，不防数据库管理员同时改正文和 hash |
 | `services/agent-service/app/publication_service.py` | personal 二次确认和 team 四眼怎么统一 | policy、一次性批准 token、expected status 和审计事务 |
 | `services/agent-service/app/publication_artifacts.py` | 批准知识如何防双写与半成功 | `BEGIN IMMEDIATE`、candidate CAS、document/chunk/graph/provenance 回滚 |
 | `services/agent-service/app/retrievers.py` | 授权发生在哪里、hybrid 和缓存怎么组合 | tenant/owner/asset 下推、RRF、绝对分门控、revision/scope key |
 | `services/media-service/.../integration/AgentOutboxDispatcher.java` | 为什么不会丢事件、为什么还会重复 | 同事务 outbox、HTTP 重试、双端幂等和冲突策略 |
-| `scripts/local_acceptance.py` | 25 项到底覆盖什么、没覆盖什么 | 双用户业务闭环；不覆盖真实模型、生产中间件、容量与 ROI |
+| `scripts/local_acceptance.py` | 28 项到底覆盖什么、没覆盖什么 | 双用户闭环、证据快照与旧 token 拒绝；不覆盖真实模型、生产中间件、容量与 ROI |
 | `quality/agent-evals/evaluate_v6.py` | 98% 的分母和 judge 是什么 | 42 例、4 文档、LLM off、子串裁判、闭集回归边界 |
+| `quality/agent-evals/evaluate_prd.py` | 100% 是否可信、为什么只有 12 例 | 十项确定性门禁、内联冻结场景；无 holdout、无真实分布、不能外推 |
 | `apps/web/src/features/AnalysisWorkspace.tsx` | 页面刷新和实时更新如何实现 | HTTP 重新读取；没有 AppServer/WebSocket；媒体任务使用轮询 |
 
 ## 六、回答任何追问都使用这套结构
@@ -314,7 +317,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 示例：
 
-> 目前不是执行栈级 checkpoint，而是业务会话级恢复。代码把 session、阶段结果、待确认问题和答案存在 SQLite，确认接口验证 token 后重新执行确定性分析；25 项验收证明刷新后链路可继续，但不证明长时模型任务能从节点中断点续跑。正式升级会先给 token 消费加数据库 CAS，再持久化 stage input/output 与 evidence revision。
+> 目前不是执行栈级 checkpoint，而是业务阶段级恢复。代码把 session、阶段结果、待确认问题、答案与冻结 evidence revision/hash 存在 SQLite；确认时保留阶段 1–4，只重算收敛和 PRD，并用数据库 CAS 一次性消费 token。28 项纵向验收和双请求回归证明链路可恢复且旧 token 被拒绝，但不证明长时模型任务能从节点中间续跑。
 
 ## 七、面试官最终可能给出的三种评价
 
@@ -334,11 +337,10 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 如果只为近期面试，优先级不是继续堆功能，而是：
 
-1. **P0 叙事修正**：统一使用“业务会话级恢复”“六阶段确定性 baseline”“人工门禁后的知识演进”。
-2. **P0 并发正确性**：resume token 使用数据库 CAS 原子消费，并增加双请求并发回归测试。
-3. **P1 Agent 深度**：让 objective 驱动授权检索，抽象 stage executor，持久化 stage 输入输出；需要时再并行领域分析。
-4. **P1 质量门禁**：新增六阶段/PRD 黄金集，分别评价证据覆盖、冲突识别、假设标记、验收可测试性和引用正确性。
-5. **P1 知识生命周期**：补 approved knowledge 的 supersede/revoke、缓存/图谱失效和审计化回滚。
-6. **P2 生产证据**：只有在真实试点或明确岗位要求下，再做 IdP、正式迁移、统一中间件故障注入、容量和告警。
+1. **面试必做，已完成**：统一使用“业务阶段级恢复”“有界确定性 specialist”“人工门禁后的知识演进”，并能现场指到 objective snapshot、CAS 和 PRD eval。
+2. **下一批真实反馈驱动**：收集匿名坏案例和 PRD 人工修改记录，把 12 例开发集外再冻结 holdout，并由第二人独立标注。
+3. **P1 知识生命周期**：补 approved knowledge 的 supersede/revoke、缓存/图谱失效和审计化回滚。
+4. **P1 模型化实验**：只有真实坏案例证明规则上限后，再给 specialist 增加 schema-constrained LLM 实现，与当前基线做质量/延迟/成本 A/B。
+5. **P2 生产证据**：真实试点或岗位明确要求时，再做 IdP、正式迁移、统一中间件故障注入、容量和告警。
 
-在 P0 叙事修正完成后，项目可以安全用于面试；在 P0 并发缺口与 P1 PRD 评测补齐后，Agent 工程说服力会有明显提升。
+当前可以正式收尾并用于面试：并发正确性、目标检索、冻结证据、阶段恢复、领域并行和 PRD 门禁都有代码证据。剩余主要风险不再是“仓库里缺一段好看的 Agent 代码”，而是真实数据代表性、知识撤回生命周期和生产运行证据。

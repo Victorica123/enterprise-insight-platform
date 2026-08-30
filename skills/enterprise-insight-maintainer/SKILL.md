@@ -28,6 +28,8 @@ Keep this repository a coherent product rather than two demos placed side by sid
 - Team writes require a write-capable role and governed approvals keep four-eyes separation. Never let tenant-wide visibility become self-approval authority.
 - Every material conclusion must retain evidence. Video evidence includes asset identity and a playable time range.
 - Model output is untrusted. Deterministic validation, authorization, idempotency and approval protect side effects.
+- Analysis creation ranks evidence by objective only after tenant/owner/asset authorization, then freezes the selected facts with a revision and SHA-256. Confirmation preserves completed stages 1-4 and atomically consumes the resume token with database compare-and-set. Do not silently re-query current evidence or regress to whole-pipeline recomputation.
+- Analysis creation ranks evidence by objective only after tenant/owner/asset authorization, then freezes the selected facts with a revision and SHA-256. Confirmation preserves completed stages 1-4 and atomically consumes the resume token with database compare-and-set. Do not silently re-query current evidence or regress to whole-pipeline recomputation.
 - Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; approval must atomically materialize a managed, retrievable knowledge source with candidate/PRD/hash/evidence provenance. Ordinary document deletion cannot bypass this governance. Derived action items enter the controlled tool approval queue.
 - Media processing state and Agent analysis state are separate lifecycles, aggregated only for presentation.
 
@@ -44,6 +46,8 @@ Do not pause for discoverable implementation details, reversible refactors, test
 - Prefer an end-to-end vertical slice over broad scaffolding with no user-visible path.
 - Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate.
 - Add a regression test for a defect and an evaluation case for a changed Agent behavior.
+- Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
+- Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
 - Use an ADR for a material architectural decision; do not silently rewrite prior decisions.
 
 Read [references/maintenance-workflow.md](references/maintenance-workflow.md) for task routing, verification levels, knowledge ownership and handoff requirements.

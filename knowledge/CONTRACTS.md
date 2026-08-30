@@ -52,7 +52,7 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 - `PATCH /api/workspaces/{tenantId}/members/{userId}`：OWNER 调整非 OWNER 成员为 VIEWER/MEMBER/ADMIN。
 - `POST /api/workspaces/{tenantId}/switch`：服务端重新查询成员关系并签发该 active Workspace 的 V2 JWT。
 
-六阶段分析使用 `POST /analysis/sessions` 创建会话，`POST /analysis/sessions/{id}/confirm` 携带当前 `resume_token` 和结构化答案恢复。读取与恢复都按服务端 JWT 的 tenant/owner 定位；错误租户返回不存在，避免泄漏资源是否存在。
+六阶段分析使用 `POST /analysis/sessions` 创建会话，`POST /analysis/sessions/{id}/confirm` 携带当前 `resume_token` 和结构化答案恢复。读取与恢复都按服务端 JWT 的 tenant/owner 定位；错误租户返回不存在，避免泄漏资源是否存在。响应由 `contracts/http/analysis-session-v1.schema.json` 约束，并返回 `checkpoint_version`、`evidence_revision`、`evidence_snapshot_sha256` 与固定的 `retrieval_mode=hybrid`。快照正文不通过该契约公开；同一 token 的竞争确认只有一次 CAS 能成功，其余返回 409。
 
 PRD 发布契约：
 

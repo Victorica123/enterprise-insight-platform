@@ -28,12 +28,15 @@
 - 日志对令牌、凭证、个人敏感字段和大段原始转写做脱敏或截断。
 - 模型供应商接收数据前必须经过租户策略检查；相关保留期限和退出策略在生产发布前明确。
 - 维护 Skill 的语义索引只扫描版本库内批准的工程文档，不读取客户 SQLite、媒体、`runtime/` 或密钥文件。维护查询缓存只以 query SHA-256 作为 key，不持久化原始问题；生成索引不构成新的业务数据源。
+- 分析 evidence snapshot 会在 Agent SQLite 内复制最多 24 个已授权 chunk 的必要事实，以保证等待恢复不漂移；不复制 embedding，也不通过 HTTP 返回快照正文，只返回 revision/hash。读取仍先校验 session 的 tenant/owner/team 语义。当前快照随 session 生命周期保留，正式保留/删除期限仍属于生产数据策略，不能把 hash 当成加密或脱敏。
 
 ## 人工审批边界
 
 以下动作默认需要人确认：发布 PRD 为正式版本、把新事实合并进共享知识、创建或更新外部工单、通知外部联系人，以及任何具有不可逆业务影响的工具调用。
 
 PRD 发布已经执行差异化职责分离：个人 Workspace 的 OWNER 必须先申请、再用一次性 token 明确确认；team Workspace 必须由同租户另一位具备写权限的成员批准。状态比较更新、审计事件、不可变 PRD 版本和派生交付物同事务提交；跨租户审批统一返回 404。
+
+分析恢复也使用一次性状态门禁，但不等同于发布审批：`resume_token` 只推进同一业务 checkpoint，数据库按 session/tenant/owner/status/token compare-and-set，竞争失败返回 409；它不会直接发布知识或触发外部写操作。
 
 知识候选不会因 PRD 发布而自动进入正式知识：个人 Workspace 需要 OWNER 单独决定，team Workspace 需要不同写角色成员决定。批准时，候选 CAS、托管知识 document/chunk、图索引和 provenance 同事务提交；失败会整体回滚到 `PENDING`。托管知识不能通过普通文档删除接口移除，后续若支持撤回必须走新的审计化治理流程。行动项只会生成受控工具的 pending action，审批成功后才创建工单。团队工单按 tenant 共享读取但保留创建者 `owner_id`；个人工单仍按 owner 私有。
 

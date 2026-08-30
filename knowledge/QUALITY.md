@@ -46,6 +46,18 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 真实本地三服务浏览器验收完成文档上传、六阶段分析、个人二次发布、知识批准、未来 RAG 再召回和重复请求缓存命中；浏览器控制台无 warning/error。服务端日志同时暴露并推动修复了并发兼容列迁移的 `duplicate column` 竞态；除确定性回归测试外，使用全新 SQLite 对工单与审计端点执行 20 并发、40 请求复测，40/40 返回 200。截图保存在 `docs/images/interview/`。
 - 本轮浏览器使用本地模板回答，证明授权、状态、证据、事务和降级链路，不作为外部模型质量证据。
 
+2026-08-30 完成六阶段 Phase 1 强化验证：
+
+- Agent Service 全量 127/127 通过。新增回归覆盖 objective 排序与跨租户过滤、冻结证据等待期间不漂移、阶段 1–4 原样恢复、无证据时文字确认不能扩大快照、四类 specialist 固定合并、单维失败隔离、显式冲突升级，以及两个请求竞争同一 resume token 时严格一个 200、一个 409。
+- Media Service 在受支持的 Temurin JDK 18.0.2.1 下保持 108/108；默认 JDK 25 仍因现有 Mockito inline/ByteBuddy 不支持而报加载错误，该已知工具链边界不作为产品失败或通过证据。
+- `contracts/http/analysis-session-v1.schema.json` 与 ADR-0009 固化 checkpoint version、evidence revision/hash、hybrid 检索、内部快照最小暴露和 CAS 语义；契约测试通过。
+- V6 keyword/embedding/hybrid 保持 decision 98%、recall@3 97%、fact 97%，本轮 P95 分别为 14.9/29.0/19.2 ms。
+- 新增 PRD V1 12 例门禁：decision、问题召回与精确率、objective Top-1、冲突、证据完整性、受支持结论、验收可测试性、检查点稳定和 specialist 顺序均为 100%，本轮多次验证 P95 为 17.22～25.08 ms。该集合无 holdout，不能外推真实 PRD 接受率。
+- 统一 Web 完成 TypeScript 与 Vite 生产构建；分析页可查看 checkpoint version、evidence revision 与 hash 摘要。
+- localhost-only 纵向验收扩展为 28 项并全部通过；新增 objective 证据快照、阶段恢复稳定和旧 resume token 409，原个人/团队发布、知识再召回、工单与播放链路保持通过。
+- 仓库版与安装版 `enterprise-insight-maintainer` Skill 均通过 Skill Creator quick validation，并新增分析快照/CAS 不变量及 PRD 评测路由。
+- 维护知识更新为 40 个批准来源、250 个 chunk；本轮复用 189 个未变化向量、重算 61 个变化 chunk，3/3 索引测试和漂移检查通过。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。
@@ -59,10 +71,10 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 
 - V6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。
 - `evaluate_v6.py` 显式关闭 LLM Router，使用确定性回答路径；judge 检查是否答/拒、Top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。
-- 当前黄金集不评价六阶段 PRD 的语义质量、冲突消解、假设完整性或领域 Agent 并行。`test_analysis_workflow.py` 验证等待、恢复、证据结构和发布治理，但不能替代代表性 PRD 人工评测。
-- 六阶段确认接口可以恢复同一持久化业务 session，但会重新执行确定性分析函数；同一 resume token 的并发数据库 CAS 消费尚未实现，也没有对应并发回归证据。
+- PRD V1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective Top-1、跨租户过滤、显式冲突、视频时间定位、引用支持、验收可测试性、阶段稳定和 specialist 固定顺序。当前质量项均为 100%，首次本机 P95 为 22.28 ms；样本规模小、与规则共同维护且没有真实客户 holdout，因此只能作为确定性回归门禁，不能外推 PRD 业务接受率或开放域模型能力。
+- 六阶段确认接口使用创建时的冻结证据并保留阶段 1–4；同一 resume token 的两个并发请求已有确定性回归，验证一次数据库 CAS 成功、另一次返回 409。它仍是业务阶段 checkpoint，不是模型调用中断后的执行栈恢复。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 黄金集 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 RAG 黄金集 + PRD V1 黄金集 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

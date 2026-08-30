@@ -115,6 +115,10 @@ class AnalysisSessionResponse(BaseModel):
     asset_ids: list[str]
     status: AnalysisStatus
     current_stage: int = Field(ge=1, le=6)
+    checkpoint_version: int = Field(default=1, ge=1)
+    evidence_revision: int = Field(default=0, ge=0)
+    evidence_snapshot_sha256: str = Field(min_length=64, max_length=64)
+    retrieval_mode: Literal["hybrid"] = "hybrid"
     resume_token: str | None = None
     stages: list[AnalysisStageResult]
     open_questions: list[OpenQuestion]

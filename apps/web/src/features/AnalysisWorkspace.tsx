@@ -148,7 +148,7 @@ export function AnalysisWorkspace(props: {
     </aside>
     <section className="analysis-main">
       {!active ? <div className="card empty-state"><FileCheck2 size={34} /><p>选择证据并启动分析。系统会在事实不足时停下来向你确认。</p></div> : <>
-        <section className="card analysis-header"><div><span className="eyebrow">{active.status}</span><h2>{active.objective}</h2></div><span>阶段 {active.current_stage}/6</span></section>
+        <section className="card analysis-header"><div><span className="eyebrow">{active.status}</span><h2>{active.objective}</h2></div><div className="analysis-provenance"><span>阶段 {active.current_stage}/6 · 检查点 v{active.checkpoint_version}</span><code title={active.evidence_snapshot_sha256}>hybrid · rev {active.evidence_revision} · {active.evidence_snapshot_sha256.slice(0, 12)}</code></div></section>
         <div className="stage-grid">{active.stages.map((stage) => <article className={`card stage-card ${stage.status === "WAITING_CONFIRMATION" ? "waiting" : ""}`} key={stage.stage}>
           <header>{stage.status === "COMPLETED" ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}<strong>{STAGE_NAMES[stage.stage]}</strong></header>
           <p>{stage.summary}</p>

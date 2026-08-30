@@ -14,7 +14,7 @@
 python scripts/local_acceptance.py
 ```
 
-脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；25 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、工单交付、VIEWER 只读和缓存安全边界。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；28 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、工单交付、VIEWER 只读、缓存安全边界，以及 objective 证据快照、阶段恢复稳定和旧 resume token 的 CAS 拒绝。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
 
 维护知识索引使用以下命令，不依赖外部 embedding 服务：
 
@@ -66,7 +66,7 @@ npm run dev
 
 - 媒体任务可安全重试，不能重复创建资产。
 - 转写事件可重放，Agent 消费必须幂等。
-- Agent 业务会话、阶段结果和人工答案可持久化读回；确认后当前实现重新执行确定性六阶段函数，不宣称执行栈级 checkpoint continuation。
+- Agent 业务会话、阶段结果、人工答案和冻结证据 revision/hash 可持久化读回；确认保留阶段 1–4，只重算收敛与 PRD，并以数据库 CAS 原子消费 token。它仍不宣称执行栈级 checkpoint continuation。
 - 发布 PRD、知识合并和外部写操作使用幂等键及审计记录；知识批准与 document/chunk/图索引同事务，失败回滚为 `PENDING`。
 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
 

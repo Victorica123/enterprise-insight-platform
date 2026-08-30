@@ -54,7 +54,7 @@ python scripts/local_acceptance.py
 - 优先级规则：合规阻塞项优先；
 - 证据范围：仅使用当前视频。
 
-强调当前恢复的是同一持久化业务 session，而不是恢复模型执行栈：接口校验 resume token，合并人工答案，再用当前授权证据重新执行确定性六阶段函数。不要把它讲成实习系统中的 AppServer/WebSocket continuation。
+强调当前恢复的是同一持久化业务阶段 checkpoint，而不是模型执行栈：接口读取创建时冻结的证据，校验并 CAS 消费 resume token，合并人工答案，保留阶段 1–4，只重算收敛与 PRD。页面展示 checkpoint version、evidence revision 与 hash；不要把它讲成实习系统中的 AppServer/WebSocket continuation。
 
 ### 3:15-4:30 PRD 与审批
 
@@ -101,13 +101,14 @@ python scripts/local_acceptance.py
 python scripts/local_acceptance.py
 ```
 
-按输出解释 25 项检查中的五组：
+按输出解释 28 项检查中的六组：
 
 1. 身份与个人/团队隔离；
 2. 视频、outbox、Agent 摄取和时间戳证据；
-3. 六阶段等待恢复与 PRD 审批；
-4. 知识物化检索与工单审批；
-5. VIEWER 只读、缓存鉴权和播放 Range。
+3. objective 证据快照、阶段稳定与旧 resume token 拒绝；
+4. 六阶段等待恢复与 PRD 审批；
+5. 知识物化检索与工单审批；
+6. VIEWER 只读、缓存鉴权和播放 Range。
 
 ## 演示禁区
 

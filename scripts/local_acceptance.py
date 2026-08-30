@@ -223,20 +223,39 @@ def main() -> int:
                 payload={"objective": "生成本地验收视频的需求 PRD", "asset_ids": [task["videoId"]]},
             )
             assert analysis["status"] == "WAITING_CONFIRMATION" and analysis["resume_token"]
+            assert analysis["retrieval_mode"] == "hybrid"
+            assert analysis["checkpoint_version"] == 1
+            assert len(analysis["evidence_snapshot_sha256"]) == 64
+            frozen_revision = analysis["evidence_revision"]
+            frozen_sha256 = analysis["evidence_snapshot_sha256"]
+            frozen_stages = analysis["stages"][:4]
+            resume_token = analysis["resume_token"]
             answer_defaults = {
                 "decision_maker": "本地验收负责人",
                 "acceptance_criteria": "主链路全部自动检查通过",
                 "priority_rule": "阻塞主链路的问题优先",
                 "evidence_scope": "仅使用本次上传视频",
+                "domain_conflict": "以合规口径为准",
+                "specialist_review": "由本地验收负责人复核",
             }
             answers = {question["question_id"]: answer_defaults[question["question_id"]]
                        for question in analysis["open_questions"]}
             _, analysis = request_json(
                 f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/confirm",
                 method="POST", token=token,
-                payload={"resume_token": analysis["resume_token"], "answers": answers},
+                payload={"resume_token": resume_token, "answers": answers},
             )
             assert analysis["status"] == "DRAFT_READY" and len(analysis["stages"]) == 6
+            assert analysis["checkpoint_version"] == 2
+            assert analysis["evidence_revision"] == frozen_revision
+            assert analysis["evidence_snapshot_sha256"] == frozen_sha256
+            assert analysis["stages"][:4] == frozen_stages
+            stale_status, _ = request_json_with_errors(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/confirm",
+                method="POST", token=token,
+                payload={"resume_token": resume_token, "answers": answers},
+            )
+            assert stale_status == 409
             prd_evidence = analysis["prd"]["requirements"][0]["evidence"][0]
             assert prd_evidence["asset_id"] == task["videoId"] and prd_evidence["start_ms"] == 0
 
@@ -517,7 +536,9 @@ def main() -> int:
                            "team_agent_retrieval", "team_four_eyes_publication",
                            "team_knowledge_and_ticket_delivery", "viewer_read_only",
                            "cache_metrics_auth_boundary", "cache_scope_after_retrieval",
-                           "approved_knowledge_materialized", "approved_knowledge_retrieval"],
+                           "approved_knowledge_materialized", "approved_knowledge_retrieval",
+                           "objective_evidence_snapshot", "checkpoint_resume_stability",
+                           "resume_token_cas"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

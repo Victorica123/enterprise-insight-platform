@@ -1,0 +1,15 @@
+{
+  "cases": 12,
+  "decision_accuracy": 1.0,
+  "question_recall": 1.0,
+  "question_precision": 1.0,
+  "objective_recall1": 1.0,
+  "conflict_accuracy": 1.0,
+  "evidence_integrity": 1.0,
+  "supported_claim_rate": 1.0,
+  "acceptance_testability": 1.0,
+  "checkpoint_stability": 1.0,
+  "specialist_determinism": 1.0,
+  "avg_latency_ms": 20.08,
+  "p95_latency_ms": 22.28
+}

@@ -28,14 +28,15 @@
 
 ## 封板质量证据
 
-- Agent Service：119/119。
+- Agent Service：127/127。
 - Media Service：JDK 18 下 108/108。
 - Agent V6：keyword、embedding、hybrid 均为 decision 98%、recall@3 97%、fact 97%。
-- 平台：25/25 localhost-only 纵向检查。
+- PRD V1：12 个手工场景的 decision、问题召回与精确率、objective Top-1、冲突、证据、支持率、验收、检查点和 specialist 顺序均为 100%；该闭集不外推真实业务效果。
+- 平台：28/28 localhost-only 纵向检查。
 - Web：TypeScript 与 Vite 生产构建通过。
 - 浏览器：真实完成文档上传、六阶段分析、发布、知识沉淀、未来 RAG 召回和缓存命中。
 - 并发迁移复测：20 并发、40 请求，40/40 返回 200。
-- 维护知识：38 个批准来源、239 个 chunk；增量向量复用、revision 查询缓存和漂移检查通过。
+- 维护知识：40 个批准来源、250 个 chunk；本轮增量复用 189 个既有向量、计算 61 个变化 chunk，revision 查询缓存和漂移检查通过。
 
 具体命令、环境与不能外推的边界以 `knowledge/QUALITY.md` 为准。
 

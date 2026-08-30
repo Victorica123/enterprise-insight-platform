@@ -11,10 +11,11 @@ from app.analysis_models import (
     KnowledgeCandidateDecisionRequest, PublicationApprovalRequest,
     PublicationDeliverables,
 )
-from app.analysis_pipeline import run_six_stage_analysis
+from app.analysis_evidence import build_analysis_evidence_snapshot
+from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis
 from app.analysis_store import (
-    get_session, get_session_for_tenant, list_audit_events,
-    list_pending_publications, list_sessions, save_session, utc_now,
+    get_evidence_snapshot, get_session, get_session_for_tenant, list_audit_events,
+    list_pending_publications, list_sessions, save_session, transition_confirmation, utc_now,
 )
 from app.auth import ActorPrincipal, current_principal, require_write_role
 from app.publication_service import (
@@ -26,7 +27,7 @@ from app.publication_artifacts import (
     get_publication_deliverables,
     mark_action_ticket_pending,
 )
-from app.retrievers import RetrievalScope, load_chunks
+from app.retrievers import RetrievalScope
 from app.tools import execute_tool
 
 
@@ -45,18 +46,23 @@ def create_analysis_session(
         owner_id=principal.retrieval_owner_id,
         asset_ids=tuple(asset_ids),
     )
-    run = run_six_stage_analysis(request.objective, load_chunks(scope))
+    snapshot = build_analysis_evidence_snapshot(request.objective, scope)
+    run = run_six_stage_analysis(request.objective, list(snapshot.chunks))
     now = utc_now()
     session = AnalysisSessionResponse(
         session_id=str(uuid.uuid4()), tenant_id=principal.tenant_id, owner_id=principal.user_id,
         objective=request.objective.strip(), asset_ids=asset_ids,
         status="WAITING_CONFIRMATION" if run.open_questions else "DRAFT_READY",
         current_stage=5 if run.open_questions else 6,
+        checkpoint_version=1,
+        evidence_revision=snapshot.revision,
+        evidence_snapshot_sha256=snapshot.sha256,
+        retrieval_mode="hybrid",
         resume_token=secrets.token_urlsafe(24) if run.open_questions else None,
         stages=run.stages, open_questions=run.open_questions, confirmations={}, prd=run.prd,
         created_at=now, updated_at=now,
     )
-    save_session(session)
+    save_session(session, snapshot)
     return session
 
 
@@ -110,21 +116,21 @@ def confirm_analysis_session(
     if not existing.resume_token or not secrets.compare_digest(existing.resume_token, request.resume_token):
         raise HTTPException(status_code=409, detail="Invalid or stale analysis resume token.")
     answers = {**existing.confirmations, **{key: value.strip() for key, value in request.answers.items()}}
-    scope = RetrievalScope(
-        tenant_id=principal.tenant_id,
-        owner_id=principal.retrieval_owner_id,
-        asset_ids=tuple(existing.asset_ids),
+    snapshot = get_evidence_snapshot(existing.session_id, existing.tenant_id)
+    run = resume_six_stage_analysis(
+        existing.objective, list(snapshot.chunks), existing.stages, answers,
     )
-    run = run_six_stage_analysis(existing.objective, load_chunks(scope), answers)
     existing.confirmations = answers
     existing.stages = run.stages
     existing.open_questions = run.open_questions
     existing.prd = run.prd
     existing.status = "WAITING_CONFIRMATION" if run.open_questions else "DRAFT_READY"
     existing.current_stage = 5 if run.open_questions else 6
+    existing.checkpoint_version += 1
     existing.resume_token = secrets.token_urlsafe(24) if run.open_questions else None
     existing.updated_at = utc_now()
-    save_session(existing)
+    if not transition_confirmation(existing, expected_resume_token=request.resume_token):
+        raise HTTPException(status_code=409, detail="Invalid or stale analysis resume token.")
     return existing
 
 

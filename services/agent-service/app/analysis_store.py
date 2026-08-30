@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app import database
+from app.analysis_evidence import (
+    AnalysisEvidenceSnapshot, empty_snapshot_sha256, restore_analysis_evidence_snapshot,
+)
 from app.analysis_models import AnalysisAuditEvent, AnalysisSessionResponse, PublicationDeliverables
 from app.publication_artifacts import (
     init_publication_artifact_store,
@@ -24,6 +27,11 @@ def init_analysis_store() -> None:
                 asset_ids_json text not null,
                 status text not null,
                 current_stage integer not null,
+                checkpoint_version integer not null default 1,
+                evidence_revision integer not null default 0,
+                evidence_snapshot_sha256 text not null default '',
+                evidence_snapshot_json text not null default '[]',
+                retrieval_mode text not null default 'hybrid',
                 resume_token text,
                 stages_json text not null,
                 open_questions_json text not null,
@@ -43,6 +51,26 @@ def init_analysis_store() -> None:
         )
         database.ensure_column(
             conn, table="analysis_sessions", column="publication_json", definition="text"
+        )
+        database.ensure_column(
+            conn, table="analysis_sessions", column="checkpoint_version",
+            definition="integer not null default 1",
+        )
+        database.ensure_column(
+            conn, table="analysis_sessions", column="evidence_revision",
+            definition="integer not null default 0",
+        )
+        database.ensure_column(
+            conn, table="analysis_sessions", column="evidence_snapshot_sha256",
+            definition="text not null default ''",
+        )
+        database.ensure_column(
+            conn, table="analysis_sessions", column="evidence_snapshot_json",
+            definition="text not null default '[]'",
+        )
+        database.ensure_column(
+            conn, table="analysis_sessions", column="retrieval_mode",
+            definition="text not null default 'hybrid'",
         )
         conn.execute(
             """
@@ -67,7 +95,10 @@ def init_analysis_store() -> None:
         )
 
 
-def save_session(session: AnalysisSessionResponse) -> None:
+def save_session(
+    session: AnalysisSessionResponse,
+    evidence_snapshot: AnalysisEvidenceSnapshot,
+) -> None:
     init_analysis_store()
     payload = session.model_dump(mode="json")
     with database.connect() as conn:
@@ -75,12 +106,15 @@ def save_session(session: AnalysisSessionResponse) -> None:
             """
             insert into analysis_sessions (
                 session_id, tenant_id, owner_id, objective, asset_ids_json, status,
-                current_stage, resume_token, stages_json, open_questions_json,
+                current_stage, checkpoint_version, evidence_revision,
+                evidence_snapshot_sha256, evidence_snapshot_json, retrieval_mode,
+                resume_token, stages_json, open_questions_json,
                 confirmations_json, prd_json, publication_json, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(session_id) do update set
                 status=excluded.status,
                 current_stage=excluded.current_stage,
+                checkpoint_version=excluded.checkpoint_version,
                 resume_token=excluded.resume_token,
                 stages_json=excluded.stages_json,
                 open_questions_json=excluded.open_questions_json,
@@ -92,7 +126,10 @@ def save_session(session: AnalysisSessionResponse) -> None:
             (
                 session.session_id, session.tenant_id, session.owner_id, session.objective,
                 json.dumps(session.asset_ids, ensure_ascii=False), session.status,
-                session.current_stage, session.resume_token,
+                session.current_stage, session.checkpoint_version,
+                session.evidence_revision, session.evidence_snapshot_sha256,
+                evidence_snapshot.payload_json,
+                session.retrieval_mode, session.resume_token,
                 json.dumps(payload["stages"], ensure_ascii=False),
                 json.dumps(payload["open_questions"], ensure_ascii=False),
                 json.dumps(session.confirmations, ensure_ascii=False),
@@ -145,6 +182,60 @@ def get_session_for_tenant(session_id: str, tenant_id: str) -> AnalysisSessionRe
             (session_id, tenant_id),
         ).fetchone()
     return _from_row(row) if row else None
+
+
+def get_evidence_snapshot(session_id: str, tenant_id: str) -> AnalysisEvidenceSnapshot:
+    init_analysis_store()
+    with database.connect() as conn:
+        row = conn.execute(
+            """
+            select evidence_revision, evidence_snapshot_sha256,
+                   evidence_snapshot_json, retrieval_mode
+            from analysis_sessions where session_id = ? and tenant_id = ?
+            """,
+            (session_id, tenant_id),
+        ).fetchone()
+    if row is None:
+        raise LookupError("Analysis session not found.")
+    return restore_analysis_evidence_snapshot(
+        row["evidence_snapshot_json"],
+        revision=int(row["evidence_revision"]),
+        expected_sha256=row["evidence_snapshot_sha256"],
+        retrieval_mode=row["retrieval_mode"],
+    )
+
+
+def transition_confirmation(
+    session: AnalysisSessionResponse,
+    *,
+    expected_resume_token: str,
+) -> bool:
+    """Atomically consume one resume token and persist the next business checkpoint."""
+
+    init_analysis_store()
+    payload = session.model_dump(mode="json")
+    with database.connect() as conn:
+        cursor = conn.execute(
+            """
+            update analysis_sessions set
+                status = ?, current_stage = ?, checkpoint_version = ?, resume_token = ?,
+                stages_json = ?, open_questions_json = ?, confirmations_json = ?,
+                prd_json = ?, publication_json = ?, updated_at = ?
+            where session_id = ? and tenant_id = ? and owner_id = ?
+              and status = 'WAITING_CONFIRMATION' and resume_token = ?
+            """,
+            (
+                session.status, session.current_stage, session.checkpoint_version,
+                session.resume_token, json.dumps(payload["stages"], ensure_ascii=False),
+                json.dumps(payload["open_questions"], ensure_ascii=False),
+                json.dumps(session.confirmations, ensure_ascii=False),
+                json.dumps(payload["prd"], ensure_ascii=False) if payload["prd"] else None,
+                json.dumps(payload["publication"], ensure_ascii=False) if payload["publication"] else None,
+                session.updated_at.isoformat(), session.session_id, session.tenant_id,
+                session.owner_id, expected_resume_token,
+            ),
+        )
+        return cursor.rowcount == 1
 
 
 def list_pending_publications(
@@ -254,6 +345,20 @@ def _from_row(row: Any) -> AnalysisSessionResponse:
         "asset_ids": json.loads(row["asset_ids_json"]),
         "status": row["status"],
         "current_stage": row["current_stage"],
+        "checkpoint_version": (
+            int(row["checkpoint_version"]) if "checkpoint_version" in row.keys() else 1
+        ),
+        "evidence_revision": (
+            int(row["evidence_revision"]) if "evidence_revision" in row.keys() else 0
+        ),
+        "evidence_snapshot_sha256": (
+            row["evidence_snapshot_sha256"]
+            if "evidence_snapshot_sha256" in row.keys() and row["evidence_snapshot_sha256"]
+            else empty_snapshot_sha256()
+        ),
+        "retrieval_mode": (
+            row["retrieval_mode"] if "retrieval_mode" in row.keys() else "hybrid"
+        ),
         "resume_token": row["resume_token"],
         "stages": json.loads(row["stages_json"]),
         "open_questions": json.loads(row["open_questions_json"]),

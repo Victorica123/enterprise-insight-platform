@@ -61,9 +61,11 @@ Engineering knowledge plane (not customer runtime data)
 
 ### 3.3 六阶段分析和发布治理
 
-分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段输出结构化 Pydantic 结果，而不是依赖不可检查的长对话。当前 `analysis_pipeline.py` 是同步确定性规则基线，不包含独立领域 Agent 并行或生成模型调用；它用于先验证证据、状态与治理主链路。
+分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段输出结构化 Pydantic 结果，而不是依赖不可检查的长对话。创建会话时，`analysis_evidence.py` 先把 objective 送入 hybrid Retriever；tenant/owner/asset 过滤发生在排序前，最多保留 24 个正分 chunk。系统在检索前后读取持久化 content revision，只有稳定读才把排名、分数、query 命中和必要 chunk 事实固化为 canonical JSON，并记录 SHA-256。embedding 向量不复制进会话快照。
 
-证据不足时，会话进入 `WAITING_CONFIRMATION` 并保存 session、阶段结果、问题、答案和恢复 token；用户补充后恢复同一业务会话，并以当前授权证据与累计答案重新执行确定性函数。它不是执行栈级 checkpoint continuation，且当前 token 消费尚未使用数据库 CAS 防止并发重复确认。PRD 从 `DRAFT_READY` 进入 `PUBLISH_PENDING` 后：
+`analysis_pipeline.py` 仍不调用生成模型，但领域阶段通过进程共享的 4-worker 线程池并行执行四个固定 specialist：业务、数据与安全、技术与集成、规则与合规。每个 specialist 最多投影 4 个证据片段；主线程按声明顺序而非完成顺序合并。单个任务异常被隔离为 `specialist_review`，显式“冲突/矛盾/口径不一致”被合并为风险并产生 `domain_conflict`，没有无限 loop 或无界 fan-out。这里的 specialist 是本地确定性领域执行器，不冒充独立 LLM Agent。
+
+证据不足时，会话进入 `WAITING_CONFIRMATION` 并保存 session、阶段结果、问题、答案、恢复 token、证据 revision/hash 和 `checkpoint_version`。用户补充后从内部快照恢复，原样保留阶段 1–4，只重算收敛和 PRD。保存使用 `WHERE session_id + tenant_id + owner_id + status=WAITING_CONFIRMATION + resume_token` 的 compare-and-set；一次成功后检查点版本递增，竞争请求得到 409。它是可重放的业务阶段 checkpoint，不是执行栈级 continuation，也没有 AppServer/WebSocket。PRD 从 `DRAFT_READY` 进入 `PUBLISH_PENDING` 后：
 
 - personal Workspace 由 OWNER 使用一次性 token 做第二次明确确认；
 - team Workspace 必须由不同的写成员批准，提交者不能自批；
@@ -142,7 +144,7 @@ python scripts/update_knowledge.py --check
 - 越权隐藏：跨 scope 资源统一按不存在处理，避免枚举资源身份。
 - 幂等：上传内容、媒体事件、语义 transcript version、发布 CAS 和工具 action 都有稳定 key。
 - 事务 outbox：数据库事实和待投递事件同事务，避免业务成功但消息丢失。
-- 可恢复业务状态：媒体任务可重试；Agent 会话状态和人工答案可持久化读回，确认后确定性重算；审批副作用独立治理。
+- 可恢复业务状态：媒体任务可重试；Agent 会话冻结授权证据并持久化阶段/答案，确认保留前四阶段、CAS 推进检查点；审批副作用独立治理。
 - 不可变发布：canonical JSON + SHA-256，发布版本不可覆盖。
 - 原子知识沉淀：候选 CAS、托管 document/chunk、图索引与 provenance 同事务，失败保持 `PENDING`。
 - 证据最小化：跨服务事件不携带 JWT、存储密钥或永久播放 URL。
@@ -158,7 +160,7 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 - Media Service：JUnit/Spring 集成测试覆盖认证、上传、任务、播放、outbox、租户与团队协作。
 - Agent Service：unittest/pytest 覆盖摄取、检索、向量回退、分析、发布、工具、隔离与观测。
-- Agent 评测：黄金集分别验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟门禁。
+- Agent 评测：V6 黄金集验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟；PRD V1 黄金集另行验证目标排序、授权隔离、缺口/冲突、引用支持、验收可测试性、检查点和 specialist 顺序。
 - Web：TypeScript project build + Vite production build，并补真实浏览器业务操作。
 - 平台：`scripts/local_acceptance.py` 使用随机 localhost 端口、H2、SQLite、本地文件和 mock AI 跑双用户完整纵向链路。
 - 知识：生成器漂移检查、维护索引单元测试和 Skill quick validation。
@@ -167,8 +169,8 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 1. 不是把两个页面拼在一起，而是用统一身份、tenant/owner、版本化契约和一条业务纵向链路完成系统整合。
 2. RAG 不只“有向量库”：检索前授权、混合召回、RRF、可选 rerank、证据门控、引用验证和时间戳回放形成可信链。
-3. Agent 不等于一次大 Prompt：Agentic RAG 负责受限检索编排，六阶段当前使用结构化规则基线；等待/恢复、CAS 审批、不可变版本、批准知识物化和受控工具把不确定生成与确定性副作用分开。
-4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避和持久化业务会话共同保证可恢复性；节点级执行恢复仍是后续能力。
+3. Agent 不等于一次大 Prompt：Agentic RAG 负责受限检索编排；六阶段用 objective-aware 冻结证据、四类有界确定性 specialist 和阶段 checkpoint 构成可测试基线。等待恢复 CAS、发布审批、不可变版本、批准知识物化和受控工具把分析与副作用分开。
+4. 可靠性不是只靠重试：transactional outbox、双重幂等、冲突保留旧事实、指数退避、冻结证据与一次性 resume CAS 共同保证可恢复性；模型调用中断后的节点级执行恢复仍是后续能力。
 5. 缓存不是盲目存结果：所有缓存 key 都带模型/内容/数据 revision 或授权 scope，并明确缓存层和失效边界。
 6. 工程知识也可执行：Skill、语义索引、ADR、生成快照和 CI 漂移检查让后续 Agent 不必每次重新理解整个仓库。
 

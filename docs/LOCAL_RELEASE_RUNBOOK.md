@@ -90,6 +90,9 @@ The automated localhost runner verifies:
 23. authenticated retrieval exposes scope-safe Chunk cache metrics;
 24. an approved candidate materializes a managed knowledge document with PRD/candidate/hash provenance;
 25. future RAG retrieves that approved knowledge and returns matching provenance.
+26. analysis exposes an objective-ranked hybrid evidence snapshot with revision and SHA-256;
+27. confirmation increments the checkpoint while preserving stages 1-4 and the frozen evidence fingerprint;
+28. reusing the consumed resume token returns HTTP 409.
 
 ## Rollback
 
