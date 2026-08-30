@@ -6,7 +6,7 @@
 | [engineering-optimization.md](engineering-optimization.md) | 工程化落地优化路线（生产化升级清单） |
 | [v1-guide.md](v1-guide.md) | V1 学习与开发说明 |
 | [enterprise-ai-workflow-assistant-plan.md](enterprise-ai-workflow-assistant-plan.md) | 原始项目规划 |
-| [sample-project-delay-cn.pdf](sample-project-delay-cn.pdf) | 演示语料（`scripts/seed_demo.py` 使用） |
+| `quality/agent-evals/golden/fixtures/customer-a-project.md` | 当前轻量演示语料；原 17 MB PDF 仍可从 Git 历史恢复 |
 
 `archive/` 目录保存开发过程中的内部交接与排查记录（session handoff、故障日志等），
 与当前代码状态可能不同步，仅供追溯。

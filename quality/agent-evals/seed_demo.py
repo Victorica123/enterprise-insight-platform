@@ -27,8 +27,8 @@ from app.rag import delete_document, ingest_document  # noqa: E402
 from app.ticket_store import create_ticket, delete_ticket, init_ticket_store, list_tickets  # noqa: E402
 
 
-# 演示语料：字段连排的脏文本，用于展示图谱抽取对真实 PDF 的兼容
-CORPUS = [ROOT / "docs" / "archive" / "agent-docs" / "sample-project-delay-cn.pdf"]
+# 演示语料：字段连排的确定性 Markdown fixture；PDF 解析由 parser 测试单独覆盖。
+CORPUS = [ROOT / "quality" / "agent-evals" / "golden" / "fixtures" / "customer-a-project.md"]
 
 DEMO_TICKETS = [
     {

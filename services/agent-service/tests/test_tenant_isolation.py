@@ -6,7 +6,8 @@ from unittest.mock import patch
 from app import database
 from app.graph_store import get_graph_overview, init_graph_store, list_entities
 from app.rag import ingest_document
-from app.ticket_store import create_ticket, list_tickets, record_tool_call, list_tool_call_logs
+from app.ticket_store import create_ticket, list_tickets
+from app.tool_observability_store import list_tool_call_logs, record_tool_call
 
 
 class LegacyStoreTenantIsolationTests(unittest.TestCase):

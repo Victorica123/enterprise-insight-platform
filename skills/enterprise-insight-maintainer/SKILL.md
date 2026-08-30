@@ -12,7 +12,7 @@ Keep this repository a coherent product rather than two demos placed side by sid
 ## Start every task
 
 1. Resolve the repository root and read `AGENTS.md`.
-2. Read `knowledge/INDEX.md`, then load only the references it routes to for the task.
+2. Read `knowledge/INDEX.md`, then load only the references it routes to for the task. For onboarding, broad review, or safe slimming, read `docs/START_HERE.md` before opening implementation files.
 3. For cross-service, architectural, RAG, unfamiliar, or broad tasks, run `python scripts/query_project_knowledge.py "<task>" --repo <root>` from this Skill directory. Read the returned source ranges; never treat index previews as truth. A known single-file task can use the manual route directly.
 4. Inspect the affected service and its tests before changing code. Treat the original repositories as read-only migration sources.
 5. Check the working tree and preserve unrelated user changes.
@@ -43,6 +43,9 @@ Do not pause for discoverable implementation details, reversible refactors, test
 - For a cross-service change, update or add the versioned contract before implementations.
 - Keep HTTP handlers thin and domain logic testable without external infrastructure.
 - Keep PRD delivery projection in `publication_artifacts.py`; keep governed knowledge schema, migration, materialization and lifecycle transactions in `knowledge_lifecycle_store.py` so Phase 2 does not grow back into a monolith.
+- Keep document/chunk persistence in `database.py` and chat metrics/log/replay behavior in `chat_observability_store.py`. Keep deterministic graph extraction in `graph_extraction.py` and SQLite graph persistence/query in `graph_store.py`.
+- Keep ticket and pending-action state in `ticket_store.py`; keep tool-call audit logs and aggregate tool metrics in `tool_observability_store.py`. Tool policy and execution orchestration remain in `tools.py`.
+- Keep `apps/web/src/api.ts` as a compatibility barrel. Add requests to the matching `*Api.ts` domain module and shared transport only to `apiClient.ts`.
 - Prefer an end-to-end vertical slice over broad scaffolding with no user-visible path.
 - Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate.
 - Add a regression test for a defect and an evaluation case for a changed Agent behavior.

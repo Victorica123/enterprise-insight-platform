@@ -38,6 +38,8 @@ Engineering knowledge plane (not customer runtime data)
 | `scripts` | localhost 全链路验收、备份恢复、知识快照和语义索引。 |
 | `skills/enterprise-insight-maintainer` | 项目专用维护 Skill、语义检索入口和渐进式参考资料。 |
 
+第一次阅读代码应先看 `docs/START_HERE.md`。Agent Service 的核心持久化已按变化原因拆分：`database.py` 只负责 document/chunk、摄取回执、embedding 与 content revision；`chat_observability_store.py` 负责问答指标、请求日志、反馈和历史来源状态；`graph_extraction.py` 是无数据库依赖的规则抽取；`graph_store.py` 负责 SQLite 图谱 schema、原子重建和查询；`ticket_store.py` 负责工单与待审批动作；`tool_observability_store.py` 负责工具调用审计和聚合指标。这样改抽取规则不会碰迁移代码，改日志回放或指标也不会扩大核心业务状态模块。
+
 ## 3. 核心业务纵向链路
 
 ### 3.1 视频到证据
@@ -155,6 +157,8 @@ python scripts/update_knowledge.py --check
 ## 7. 前端实现
 
 React 应用只保存一个 active Workspace session。切换后覆盖本地 JWT/session，并清空文档、工单、工具调用、聊天响应和选中媒体等 scope 相关状态；Analysis 与 Graph 使用 tenant key 强制重建，防止旧 Workspace 组件状态串入新空间。
+
+前端请求按业务域拆分：`apiClient.ts` 只处理 JWT、错误映射和 JSON transport，`analysisApi.ts`、`mediaApi.ts`、`graphApi.ts`、`ticketApi.ts`、`observabilityApi.ts` 各自持有领域 DTO 与请求；`api.ts` 作为兼容 barrel 保留旧导入入口。新增接口不再继续堆入单一总文件。
 
 Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因为 sticky header 的 `backdrop-filter` 会创建新的 containing block，使嵌套的 `position: fixed` 相对 header 而非 viewport 定位。真实浏览器测试在 1280×720 下捕获并验证了该问题。
 

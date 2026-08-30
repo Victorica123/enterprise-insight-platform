@@ -9,6 +9,7 @@ from typing import Callable
 
 from app.auth import OPERATOR_ROLES, WRITE_ROLES
 from app.publication_artifacts import settle_action_ticket
+from app.tool_observability_store import record_tool_call, update_tool_call
 from app.ticket_store import (
     PendingAction,
     claim_pending_action,
@@ -18,10 +19,8 @@ from app.ticket_store import (
     get_pending_action,
     get_ticket,
     list_tickets,
-    record_tool_call,
     reject_pending_action,
     update_ticket_status,
-    update_tool_call,
     utc_now,
 )
 

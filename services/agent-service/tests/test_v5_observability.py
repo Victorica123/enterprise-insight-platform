@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.database import get_chat_metrics_summary, record_chat_metric
+from app.chat_observability_store import get_chat_metrics_summary, record_chat_metric
 from app.main import app
 from app.models import Source
 from app.rag import build_answer, build_local_usage, estimate_tokens, ingest_document

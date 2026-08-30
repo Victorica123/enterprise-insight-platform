@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import ActorPrincipal, current_principal, require_operator_role
-from app.database import (
+from app.chat_observability_store import (
     get_chat_log,
     get_chat_metrics_summary,
     list_chat_logs,
@@ -21,7 +21,7 @@ from app.models import (
     ToolCallLogResponse,
     ToolMetricsSummary,
 )
-from app.ticket_store import get_tool_metrics_summary, list_tool_call_logs
+from app.tool_observability_store import get_tool_metrics_summary, list_tool_call_logs
 
 
 router = APIRouter(tags=["observability"])

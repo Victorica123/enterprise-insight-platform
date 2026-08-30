@@ -53,7 +53,7 @@ def main() -> int:
     # 旧版直读开发库，全新克隆里库为空会让"该回答"用例全部误判为拒答。
     with tempfile.TemporaryDirectory() as temp_dir:
         with patch("app.database.DB_PATH", Path(temp_dir) / "v2-evaluation.sqlite3"):
-            corpus = ROOT / "docs" / "archive" / "agent-docs" / "sample-project-delay-cn.pdf"
+            corpus = ROOT / "quality" / "agent-evals" / "golden" / "fixtures" / "customer-a-project.md"
             ingest_document(corpus.name, parse_document(filename=corpus.name, raw=corpus.read_bytes()))
             return _run_cases()
 

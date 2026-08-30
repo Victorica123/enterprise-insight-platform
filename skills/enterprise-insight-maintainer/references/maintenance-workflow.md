@@ -12,7 +12,20 @@
 - Local runtime, deployment and incidents: `knowledge/OPERATIONS.md`
 - Local release and recovery: `docs/LOCAL_RELEASE_RUNBOOK.md`; objectives: `docs/SLO.md`
 - Interview narrative, truthful claims and demo order: `docs/INTERVIEW_GUIDE.md` and `docs/DEMO_SCRIPT.md`
+- First-time comprehension, module ownership and symptom routing: `docs/START_HERE.md`
 - Accepted architecture choices: `knowledge/decisions/`
+
+## Safe slimming and comprehension
+
+Use behavior-preserving slimming when the repository is hard to navigate but the approved business scope is already complete:
+
+- Measure tracked size and large source files first; optimize cognitive coupling, not line count alone.
+- Keep public HTTP/event contracts, security boundaries, ADRs, current golden gates and localhost acceptance evidence.
+- Split by a stable reason to change. Preserve a compatibility import/barrel when doing so avoids noisy call-site churn.
+- Keep business state separate from observability state: ticket/pending-action persistence belongs in `ticket_store.py`, while tool-call audit and aggregate metrics belong in `tool_observability_store.py`.
+- Replace oversized demo binaries with small deterministic fixtures only after every active caller is migrated and the affected gate passes. Git history is the recovery path for removed tracked archives.
+- Put the shortest truthful reading route in `docs/START_HERE.md`; keep history under `docs/archive/` and out of the semantic index.
+- Do not combine feature removal, contract changes or data-retention changes with a slimming refactor. Those require a separate user decision.
 
 ## Verification levels
 

@@ -9,7 +9,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "agent-service"))
 
-from app.ticket_store import get_pending_action, get_tool_metrics_summary, list_tickets  # noqa: E402
+from app.ticket_store import get_pending_action, list_tickets  # noqa: E402
+from app.tool_observability_store import get_tool_metrics_summary  # noqa: E402
 from app.tools import execute_tool, resolve_tool_action  # noqa: E402
 
 

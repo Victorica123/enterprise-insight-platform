@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.agentic_rag import answer_agentic_question
 from app.auth import ActorPrincipal, current_principal
-from app.database import record_chat_log, record_chat_metric
+from app.chat_observability_store import record_chat_log, record_chat_metric
 from app.models import ChatRequest, ChatResponse
 from app.rag import answer_question
 from app.retrievers import RetrievalScope

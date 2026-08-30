@@ -68,6 +68,14 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 历史引用回放只对升级后保存了来源快照的新日志完整生效；升级前 `sources_json` 为空的旧日志无法逆向恢复引用，不应包装成已迁移数据。
 - 维护知识更新为 42 个批准来源、259 个 chunk；索引单测 3/3、语义查询命中 ADR-0010、仓库/安装 Skill quick validation 与知识漂移检查通过。
 
+2026-08-31 完成行为保持的安全瘦身与理解入口验证：
+
+- 未删除业务能力、HTTP/事件契约、安全边界、审批语义或质量门禁。持久化按变化原因拆分：`database.py` 的非空行由 1008 降至 584，`graph_store.py` 由 992 降至 792，`ticket_store.py` 由 800 降至 647；聊天观测、纯图谱抽取、工具审计分别进入独立模块。
+- Web 的兼容入口 `api.ts` 非空行由 532 降至 188；JWT/transport、图谱、工单、观测请求进入领域 API 模块，现有调用方仍可从兼容 barrel 导入。新增 `docs/START_HERE.md`，按服务边界、症状和最小门禁给出十分钟阅读路径。
+- 删除 Git 中 17,796,962 字节的历史演示 PDF；V2 seed/eval 已迁移到小型确定性 Markdown fixture，原二进制仍可从 Git 历史恢复。V2 的意图、回答/拒答、检索轮次与引用覆盖均为 100%，门禁通过。
+- Agent Service 全量 130/130、Media Service 在 JDK 18 下 108/108、Web TypeScript/Vite 生产构建通过；V3 受控工具安全检查 100%、恰好一次违规 0，V6 三种检索模式保持 decision 98%、recall@3 97%、fact 97%，PRD V1 十项指标 100%，Knowledge Lifecycle V1 九项指标 100%。
+- localhost-only 纵向验收 33/33 通过，仍只依赖临时 H2/SQLite、本机文件、随机 localhost 端口和 mock/local AI。仓库版与安装版维护 Skill quick validation 通过；语义知识查询已验证 revision 下的 miss→hit 缓存复用。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

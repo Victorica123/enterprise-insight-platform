@@ -11,11 +11,10 @@ from app.ticket_store import (
     create_ticket,
     delete_ticket,
     get_pending_action,
-    get_tool_metrics_summary,
     list_pending_actions,
     list_tickets,
-    list_tool_call_logs,
 )
+from app.tool_observability_store import get_tool_metrics_summary, list_tool_call_logs
 from app.tools import execute_tool, resolve_tool_action
 
 

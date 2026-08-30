@@ -17,6 +17,7 @@
 | 交付物 | 入口 |
 | --- | --- |
 | 产品定位与主链路 | `README.md`、`knowledge/PRODUCT.md` |
+| 10 分钟理解与按症状找代码 | `docs/START_HERE.md` |
 | 架构、数据流与技术实现 | `knowledge/ARCHITECTURE.md`、`knowledge/TECHNICAL_IMPLEMENTATION.md` |
 | 面试叙事与高频追问 | `docs/INTERVIEW_GUIDE.md` |
 | 8 分钟现场演示与失败兜底 | `docs/DEMO_SCRIPT.md` |

@@ -5,8 +5,8 @@
 ## Workspace inventory
 
 - Media Service: 84 production Java files; 26 test files; 108 `@Test` methods.
-- Agent Service: 42 application Python files; 20 test files; 130 pytest test functions.
-- React Web: 23 TypeScript/TSX/CSS source files.
+- Agent Service: 45 application Python files; 20 test files; 130 pytest test functions.
+- React Web: 27 TypeScript/TSX/CSS source files.
 - Machine-readable contracts: 10 files.
 - Local localhost-only acceptance runner: present.
 
