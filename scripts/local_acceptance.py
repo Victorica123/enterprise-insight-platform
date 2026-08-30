@@ -313,6 +313,74 @@ def main() -> int:
             assert approved_sources, knowledge_chat
             assert approved_sources[0]["knowledge_candidate_id"] == candidate["candidate_id"]
             assert approved_sources[0]["content_sha256"] == candidate["knowledge_content_sha256"]
+            lifecycle_path = (
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}"
+                f"/knowledge-candidates/{candidate['candidate_id']}/lifecycle-requests"
+            )
+            _, supersede_request = request_json(
+                lifecycle_path, method="POST", token=token,
+                payload={
+                    "action": "SUPERSEDE",
+                    "reason": "本地验收修订知识口径",
+                    "replacement_statement": "本地验收替代知识：审批结果必须在 1 秒内展示。",
+                    "replacement_evidence": candidate["evidence"],
+                },
+            )
+            assert supersede_request["status"] == "PENDING"
+            _, supersede_decision = request_json(
+                f"{lifecycle_path}/{supersede_request['request_id']}/decision",
+                method="POST", token=token, payload={"approved": True},
+            )
+            assert supersede_decision["status"] == "APPROVED"
+            _, superseded_deliverables = request_json(
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}/deliverables",
+                token=token,
+            )
+            assert [item["status"] for item in superseded_deliverables["knowledge_versions"]] == [
+                "SUPERSEDED", "ACTIVE",
+            ]
+            _, historical_log = request_json(
+                f"http://127.0.0.1:{agent_port}/chat-logs/{knowledge_chat['log_id']}",
+                token=token,
+            )
+            historical_knowledge = next(
+                source for source in historical_log["sources"]
+                if source.get("knowledge_candidate_id") == candidate["candidate_id"]
+            )
+            assert historical_knowledge["knowledge_lifecycle_status"] == "SUPERSEDED"
+            _, replacement_chat = request_json(
+                f"http://127.0.0.1:{agent_port}/chat", method="POST", token=token,
+                payload={
+                    "question": "本地验收替代知识是什么？",
+                    "answer_mode": "local", "retriever_mode": "keyword",
+                    "workflow_mode": "standard",
+                },
+            )
+            assert any(
+                source.get("knowledge_version_number") == 2
+                for source in replacement_chat["sources"]
+            )
+            _, revoke_request = request_json(
+                lifecycle_path, method="POST", token=token,
+                payload={"action": "REVOKE", "reason": "本地验收确认规则停止生效"},
+            )
+            _, revoke_decision = request_json(
+                f"{lifecycle_path}/{revoke_request['request_id']}/decision",
+                method="POST", token=token, payload={"approved": True},
+            )
+            assert revoke_decision["status"] == "APPROVED"
+            _, revoked_chat = request_json(
+                f"http://127.0.0.1:{agent_port}/chat", method="POST", token=token,
+                payload={
+                    "question": "本地验收替代知识是什么？",
+                    "answer_mode": "local", "retriever_mode": "keyword",
+                    "workflow_mode": "standard",
+                },
+            )
+            assert not any(
+                source.get("knowledge_candidate_id") == candidate["candidate_id"]
+                for source in revoked_chat["sources"]
+            )
             action_item = deliverables["action_items"][0]
             _, ticket_draft = request_json(
                 f"http://127.0.0.1:{agent_port}/analysis/sessions/{analysis['session_id']}"
@@ -483,6 +551,28 @@ def main() -> int:
                 method="POST", token=member_team["token"], payload={"approved": True},
             )
             assert team_candidate["status"] == "APPROVED"
+            team_lifecycle_path = (
+                f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}"
+                f"/knowledge-candidates/{team_candidate['candidate_id']}/lifecycle-requests"
+            )
+            _, team_lifecycle = request_json(
+                team_lifecycle_path, method="POST", token=owner_team["token"],
+                payload={
+                    "action": "SUPERSEDE", "reason": "团队二次评审修订",
+                    "replacement_statement": "团队替代知识：协作审批必须保留审计。",
+                    "replacement_evidence": team_candidate["evidence"],
+                },
+            )
+            team_self_status, _ = request_json_with_errors(
+                f"{team_lifecycle_path}/{team_lifecycle['request_id']}/decision",
+                method="POST", token=owner_team["token"], payload={"approved": True},
+            )
+            assert team_self_status == 403
+            _, team_lifecycle_decision = request_json(
+                f"{team_lifecycle_path}/{team_lifecycle['request_id']}/decision",
+                method="POST", token=member_team["token"], payload={"approved": True},
+            )
+            assert team_lifecycle_decision["status"] == "APPROVED"
 
             _, team_ticket_draft = request_json(
                 f"http://127.0.0.1:{agent_port}/analysis/sessions/{team_analysis['session_id']}"
@@ -538,7 +628,9 @@ def main() -> int:
                            "cache_metrics_auth_boundary", "cache_scope_after_retrieval",
                            "approved_knowledge_materialized", "approved_knowledge_retrieval",
                            "objective_evidence_snapshot", "checkpoint_resume_stability",
-                           "resume_token_cas"],
+                           "resume_token_cas", "knowledge_supersede_lineage",
+                           "knowledge_revoke_future_retrieval", "historical_citation_status",
+                           "knowledge_lifecycle_approval", "team_lifecycle_four_eyes"],
             }, ensure_ascii=False, indent=2))
             return 0
         finally:

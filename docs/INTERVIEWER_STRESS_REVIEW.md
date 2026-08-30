@@ -58,7 +58,7 @@
 - 业务 Knowledge：PRD 发布产生候选，人工再次批准后原子物化 document/chunk/graph/provenance，并进入未来 RAG；
 - 工程 Skill：仓库知识生成语义路由索引，复用未变化向量，用 corpus revision 让查询缓存失效。
 
-当前没有自动从线上 Bad Case 诊断根因并生成/合并 Skill 规则，也没有对照 Wiki 自动生成变更并发布。批准知识还缺少正式撤回、替代和重新审批生命周期。因此可以说“实现了受治理的知识演进”，不能说“完整复刻了自动自进化”。
+当前没有自动从线上 Bad Case 诊断根因并生成/合并 Skill 规则，也没有对照 Wiki 自动生成变更并发布。批准知识已经实现申请、重新审批、supersede/revoke、缓存 revision、图谱失效和历史引用状态，但仍是人工门禁的业务知识演进。因此可以说“实现了受治理的知识演进”，不能说“完整复刻了自动自进化”。
 
 ### 4. 98% 不是通用模型准确率
 
@@ -68,7 +68,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 ### 5. 测试数量不能替代生产事实
 
-127、108 和 28/28 是可信的工程证据，但面试官会继续问：
+130、108 和 33/33 是可信的工程证据，但面试官会继续问：
 
 - 数据量和并发量是多少？
 - MySQL、Redis、RocketMQ、对象存储和真实模型是否在统一链路跑过？
@@ -198,7 +198,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 6. Skill 自进化和业务 Knowledge 是不是同一套向量？
 7. Bad Case 会自动修改规则吗？
 
-优秀回答要点：解释候选/版本/hash/evidence/provenance、原子物化和未来召回；说明两套索引完全隔离。主动承认撤回/supersede 生命周期尚未实现，Skill 规则仍需人工证据与门禁。
+优秀回答要点：解释候选/版本/hash/evidence/provenance、原子物化和未来召回；替代生成新 document/version 并软失效旧版，撤回只影响未来检索，content revision 使 Chunk 缓存失效，图谱在同一事务按 scope 重建；旧聊天保存来源快照并在回放时刷新当前状态。说明两套索引完全隔离，并承认升级前旧日志无法补齐来源、Skill 规则仍需人工证据与门禁。
 
 危险回答：“系统会自动学习并越来越聪明。”当前实现的核心恰恰是禁止无审批自动污染知识。
 
@@ -299,10 +299,10 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 | `services/agent-service/app/routes/analysis.py` | confirm 到底恢复哪一层 | 读取冻结快照，保留阶段 1–4，只重算 convergence/PRD |
 | `services/agent-service/app/analysis_store.py` | token 如何原子消费、快照如何校验一致性 | 条件 CAS、checkpoint version、revision/hash 与 200/409 并发回归；同库 hash 能发现意外漂移，不防数据库管理员同时改正文和 hash |
 | `services/agent-service/app/publication_service.py` | personal 二次确认和 team 四眼怎么统一 | policy、一次性批准 token、expected status 和审计事务 |
-| `services/agent-service/app/publication_artifacts.py` | 批准知识如何防双写与半成功 | `BEGIN IMMEDIATE`、candidate CAS、document/chunk/graph/provenance 回滚 |
+| `services/agent-service/app/publication_artifacts.py`、`knowledge_lifecycle_store.py` | 批准知识如何防双写与半成功，又如何避免模块继续臃肿 | 交付物编排与生命周期事务拆分；`BEGIN IMMEDIATE`、candidate CAS、document/chunk/graph/provenance 回滚 |
 | `services/agent-service/app/retrievers.py` | 授权发生在哪里、hybrid 和缓存怎么组合 | tenant/owner/asset 下推、RRF、绝对分门控、revision/scope key |
 | `services/media-service/.../integration/AgentOutboxDispatcher.java` | 为什么不会丢事件、为什么还会重复 | 同事务 outbox、HTTP 重试、双端幂等和冲突策略 |
-| `scripts/local_acceptance.py` | 28 项到底覆盖什么、没覆盖什么 | 双用户闭环、证据快照与旧 token 拒绝；不覆盖真实模型、生产中间件、容量与 ROI |
+| `scripts/local_acceptance.py` | 33 项到底覆盖什么、没覆盖什么 | 双用户闭环、证据快照、知识生命周期与旧 token 拒绝；不覆盖真实模型、生产中间件、容量与 ROI |
 | `quality/agent-evals/evaluate_v6.py` | 98% 的分母和 judge 是什么 | 42 例、4 文档、LLM off、子串裁判、闭集回归边界 |
 | `quality/agent-evals/evaluate_prd.py` | 100% 是否可信、为什么只有 12 例 | 十项确定性门禁、内联冻结场景；无 holdout、无真实分布、不能外推 |
 | `apps/web/src/features/AnalysisWorkspace.tsx` | 页面刷新和实时更新如何实现 | HTTP 重新读取；没有 AppServer/WebSocket；媒体任务使用轮询 |
@@ -317,7 +317,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 示例：
 
-> 目前不是执行栈级 checkpoint，而是业务阶段级恢复。代码把 session、阶段结果、待确认问题、答案与冻结 evidence revision/hash 存在 SQLite；确认时保留阶段 1–4，只重算收敛和 PRD，并用数据库 CAS 一次性消费 token。28 项纵向验收和双请求回归证明链路可恢复且旧 token 被拒绝，但不证明长时模型任务能从节点中间续跑。
+> 目前不是执行栈级 checkpoint，而是业务阶段级恢复。代码把 session、阶段结果、待确认问题、答案与冻结 evidence revision/hash 存在 SQLite；确认时保留阶段 1–4，只重算收敛和 PRD，并用数据库 CAS 一次性消费 token。33 项纵向验收和双请求回归证明链路可恢复且旧 token 被拒绝，但不证明长时模型任务能从节点中间续跑。
 
 ## 七、面试官最终可能给出的三种评价
 
@@ -339,8 +339,8 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 1. **面试必做，已完成**：统一使用“业务阶段级恢复”“有界确定性 specialist”“人工门禁后的知识演进”，并能现场指到 objective snapshot、CAS 和 PRD eval。
 2. **下一批真实反馈驱动**：收集匿名坏案例和 PRD 人工修改记录，把 12 例开发集外再冻结 holdout，并由第二人独立标注。
-3. **P1 知识生命周期**：补 approved knowledge 的 supersede/revoke、缓存/图谱失效和审计化回滚。
+3. **P1 知识生命周期，已完成**：approved knowledge 的 supersede/revoke、缓存/图谱失效、历史引用状态和审计化回滚已经实现并进入独立黄金门禁。
 4. **P1 模型化实验**：只有真实坏案例证明规则上限后，再给 specialist 增加 schema-constrained LLM 实现，与当前基线做质量/延迟/成本 A/B。
 5. **P2 生产证据**：真实试点或岗位明确要求时，再做 IdP、正式迁移、统一中间件故障注入、容量和告警。
 
-当前可以正式收尾并用于面试：并发正确性、目标检索、冻结证据、阶段恢复、领域并行和 PRD 门禁都有代码证据。剩余主要风险不再是“仓库里缺一段好看的 Agent 代码”，而是真实数据代表性、知识撤回生命周期和生产运行证据。
+当前可以正式收尾并用于面试：并发正确性、目标检索、冻结证据、阶段恢复、领域并行、知识生命周期和三套 Agent 门禁都有代码证据。剩余主要风险不再是“仓库里缺一段好看的 Agent 代码”，而是真实数据代表性、生产运行证据和大规模图谱增量失效能力。

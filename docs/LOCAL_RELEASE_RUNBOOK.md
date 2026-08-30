@@ -93,6 +93,11 @@ The automated localhost runner verifies:
 26. analysis exposes an objective-ranked hybrid evidence snapshot with revision and SHA-256;
 27. confirmation increments the checkpoint while preserving stages 1-4 and the frozen evidence fingerprint;
 28. reusing the consumed resume token returns HTTP 409.
+29. approved knowledge supersession creates an immutable predecessor/successor chain;
+30. revocation removes the current knowledge from future retrieval without deleting history;
+31. a historical chat replay preserves its original citation and reports the current lifecycle status;
+32. lifecycle requests require a separate explicit decision;
+33. a team lifecycle requester cannot approve the same request, while another write member can.
 
 ## Rollback
 

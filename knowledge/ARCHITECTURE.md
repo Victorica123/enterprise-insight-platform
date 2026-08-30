@@ -45,6 +45,7 @@ Agent Service
 - 对模型输出执行结构验证、证据校验、权限检查和审批门禁。
 - 在 PRD 发布 CAS 与审计的同一事务写入内容哈希版本、知识候选和行动项草稿。
 - 在知识候选 CAS 的同一事务写入受治理知识文档、chunk、图索引和 provenance；任一写入失败时保持候选 `PENDING`。
+- 在知识生命周期申请 CAS 的同一事务写入新版本或软撤回、候选当前指针、document 活跃状态、content revision 与 scope 图谱替换；历史 chunk 不删除。
 - 视频引用只持有媒体逻辑身份和时间范围，播放授权仍由 Media Service 颁发。
 - 摄取同时按 `event_id` 和 `tenant_id + asset_id + transcript_version` 两级去重；相同键内容冲突返回 409 并保留旧事实。
 
@@ -60,7 +61,7 @@ Agent Service
 - Agent 分析状态：运行、等待确认、草稿就绪、待发布审批、已发布、失败，可恢复。
 - 发布状态采用服务端 compare-and-set：`DRAFT_READY → PUBLISH_PENDING → PUBLISHED`，状态变更与审计事件在同一 SQLite 事务提交，避免并发重复批准。
 - 分析创建先执行授权后 objective-aware hybrid 检索并固化证据 revision/hash；确认只使用冻结快照，保留阶段 1–4，并以 session/status/resume token 的数据库 compare-and-set 推进检查点。等待期间新增证据不会静默改写旧阶段结论。
-- 发布版本按 canonical JSON 的 SHA-256 标识且不可覆盖；知识候选使用独立 CAS 决策。批准后生成内部 `source_type=knowledge` 的托管文档，公开证据保持兼容的 `source_type=document` 并用 `origin_type=approved_knowledge` 暴露治理来源。行动项通过幂等工具草稿进入审批，并把终态与真实 `ticket_id` 投影回交付物。
+- 发布版本按 canonical JSON 的 SHA-256 标识且不可覆盖；知识候选使用独立 CAS 决策。批准后生成内部 `source_type=knowledge` 的托管文档；替代生成新文档版本并把旧版软标记 `SUPERSEDED`，撤回把当前版本软标记 `REVOKED`。Retriever 与图谱只消费 `ACTIVE` 文档，历史聊天来源在回放时解析当前生命周期。公开证据保持兼容的 `source_type=document` 并用 `origin_type=approved_knowledge` 暴露治理来源。行动项通过幂等工具草稿进入审批，并把终态与真实 `ticket_id` 投影回交付物。
 - 跨服务投递采用版本化事件、`event_id` 幂等和可重放设计。
 - Media 在任务完成事务内写入 `integration_event_outbox`，本地调度器通过 HTTP/1.1 投递；瞬时失败指数退避，契约冲突进入 DEAD，Agent 端继续执行事件级与语义级双重幂等。
 - 外部基础设施的 light/mock 模式仅用于开发；生产声明必须由真实集成 smoke 支撑。

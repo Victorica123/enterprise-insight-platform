@@ -13,7 +13,7 @@ from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analy
 from app.main import app
 from app.publication_artifacts import decide_knowledge_candidate, get_publication_deliverables
 from app.rag import answer_question
-from app.retrievers import Chunk, RetrievalScope, clear_chunk_cache
+from app.retrievers import Chunk, RetrievalScope, clear_chunk_cache, load_chunks
 
 
 class SixStagePipelineTests(unittest.TestCase):
@@ -149,6 +149,38 @@ class AnalysisApiTests(unittest.TestCase):
         database._INITIALIZED_DB_PATH = None
         clear_chunk_cache()
         self.temp.cleanup()
+
+    def _publish_personal_candidate(self) -> tuple[dict[str, str], dict, dict]:
+        headers = {
+            "X-User-Role": "admin", "X-User-Id": "user-a",
+            "X-Tenant-Id": "tenant-a", "X-Workspace-Type": "personal",
+        }
+        created = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "治理知识生命周期 PRD", "asset_ids": ["asset-a"]},
+        ).json()
+        requested = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/request", headers=headers,
+        ).json()
+        published = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/publication/approve", headers=headers,
+            json={
+                "request_id": requested["publication"]["request_id"],
+                "approval_token": requested["publication"]["approval_token"],
+                "confirmation": "PUBLISH",
+            },
+        )
+        self.assertEqual(published.status_code, 200, published.text)
+        deliverables = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/deliverables", headers=headers,
+        ).json()
+        candidate = deliverables["knowledge_candidates"][0]
+        decided = self.client.post(
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/{candidate['candidate_id']}/decision",
+            headers=headers, json={"approved": True},
+        )
+        self.assertEqual(decided.status_code, 200, decided.text)
+        return headers, created, decided.json()
 
     def test_creates_draft_and_enforces_tenant_owner_lookup(self) -> None:
         headers = {"X-User-Role": "operator", "X-User-Id": "user-a", "X-Tenant-Id": "tenant-a"}
@@ -476,6 +508,208 @@ class AnalysisApiTests(unittest.TestCase):
             ).fetchone()["c"]
         self.assertEqual(count, 0)
 
+    def test_personal_supersede_and_revoke_preserve_lineage_and_historical_citations(self) -> None:
+        headers, created, candidate = self._publish_personal_candidate()
+        session_id = created["session_id"]
+        candidate_id = candidate["candidate_id"]
+        self.assertEqual(candidate["knowledge_status"], "ACTIVE")
+        self.assertEqual(candidate["knowledge_version_number"], 1)
+
+        historical = self.client.post(
+            "/chat", headers=headers,
+            json={
+                "question": "已批准业务知识",
+                "answer_mode": "local", "retriever_mode": "keyword",
+                "workflow_mode": "standard",
+            },
+        ).json()
+        original_source = next(
+            source for source in historical["sources"]
+            if source.get("knowledge_candidate_id") == candidate_id
+        )
+        self.assertEqual(original_source["knowledge_lifecycle_status"], "ACTIVE")
+        original_document_id = original_source["document_id"]
+        original_revision = database.get_content_revision()
+
+        lifecycle_path = (
+            f"/analysis/sessions/{session_id}/knowledge-candidates/{candidate_id}/lifecycle-requests"
+        )
+        requested = self.client.post(
+            lifecycle_path,
+            headers=headers,
+            json={
+                "action": "SUPERSEDE",
+                "reason": "验收口径已由业务负责人修订",
+                "replacement_statement": "替代版本唯一标记：审批结果必须在 1 秒内展示。",
+                "replacement_evidence": candidate["evidence"],
+            },
+        )
+        self.assertEqual(requested.status_code, 201, requested.text)
+        lifecycle = requested.json()
+        pending_bundle = self.client.get(
+            f"/analysis/sessions/{session_id}/deliverables", headers=headers,
+        ).json()
+        self.assertEqual(
+            pending_bundle["knowledge_candidates"][0]["pending_lifecycle_request_id"],
+            lifecycle["request_id"],
+        )
+
+        approved = self.client.post(
+            f"{lifecycle_path}/{lifecycle['request_id']}/decision",
+            headers=headers, json={"approved": True},
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertEqual(approved.json()["status"], "APPROVED")
+        repeated = self.client.post(
+            f"{lifecycle_path}/{lifecycle['request_id']}/decision",
+            headers=headers, json={"approved": True},
+        )
+        self.assertEqual(repeated.status_code, 409)
+
+        superseded_bundle = self.client.get(
+            f"/analysis/sessions/{session_id}/deliverables", headers=headers,
+        ).json()
+        versions = superseded_bundle["knowledge_versions"]
+        self.assertEqual([item["status"] for item in versions], ["SUPERSEDED", "ACTIVE"])
+        self.assertEqual(versions[1]["predecessor_version_id"], versions[0]["knowledge_version_id"])
+        self.assertEqual(versions[0]["successor_version_id"], versions[1]["knowledge_version_id"])
+        current_candidate = superseded_bundle["knowledge_candidates"][0]
+        self.assertEqual(current_candidate["knowledge_version_number"], 2)
+        self.assertGreater(database.get_content_revision(), original_revision)
+        clear_chunk_cache()
+        authorized_chunks = load_chunks(RetrievalScope(tenant_id="tenant-a", owner_id="user-a"))
+        self.assertNotIn(original_document_id, {chunk.document_id for chunk in authorized_chunks})
+        self.assertIn(
+            current_candidate["knowledge_document_id"],
+            {chunk.document_id for chunk in authorized_chunks},
+        )
+
+        replay = self.client.get(
+            f"/chat-logs/{historical['log_id']}", headers=headers,
+        )
+        self.assertEqual(replay.status_code, 200, replay.text)
+        replay_source = next(
+            source for source in replay.json()["sources"]
+            if source.get("knowledge_candidate_id") == candidate_id
+        )
+        self.assertEqual(replay_source["document_id"], original_document_id)
+        self.assertEqual(replay_source["knowledge_lifecycle_status"], "SUPERSEDED")
+        self.assertEqual(
+            replay_source["superseded_by_document_id"],
+            current_candidate["knowledge_document_id"],
+        )
+
+        current_history = self.client.post(
+            "/chat", headers=headers,
+            json={
+                "question": "替代版本唯一标记",
+                "answer_mode": "local", "retriever_mode": "keyword",
+                "workflow_mode": "standard",
+            },
+        ).json()
+        self.assertTrue(any(
+            source.get("knowledge_version_number") == 2
+            for source in current_history["sources"]
+        ))
+        revoke = self.client.post(
+            lifecycle_path,
+            headers=headers,
+            json={"action": "REVOKE", "reason": "业务负责人确认该规则不再适用"},
+        )
+        self.assertEqual(revoke.status_code, 201, revoke.text)
+        def decide_revoke() -> int:
+            with TestClient(app) as client:
+                return client.post(
+                    f"{lifecycle_path}/{revoke.json()['request_id']}/decision",
+                    headers=headers, json={"approved": True},
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            revoke_statuses = sorted(executor.map(lambda _: decide_revoke(), range(2)))
+        self.assertEqual(revoke_statuses, [200, 409])
+        final_bundle = self.client.get(
+            f"/analysis/sessions/{session_id}/deliverables", headers=headers,
+        ).json()
+        self.assertEqual(final_bundle["knowledge_candidates"][0]["knowledge_status"], "REVOKED")
+        self.assertIsNone(final_bundle["knowledge_candidates"][0]["active_knowledge_version_id"])
+        self.assertEqual(
+            [item["status"] for item in final_bundle["knowledge_versions"]],
+            ["SUPERSEDED", "REVOKED"],
+        )
+        clear_chunk_cache()
+        self.assertNotIn(
+            candidate_id,
+            {chunk.knowledge_candidate_id for chunk in load_chunks(
+                RetrievalScope(tenant_id="tenant-a", owner_id="user-a"),
+            )},
+        )
+        current_replay = self.client.get(
+            f"/chat-logs/{current_history['log_id']}", headers=headers,
+        ).json()
+        current_replay_source = next(
+            source for source in current_replay["sources"]
+            if source.get("knowledge_candidate_id") == candidate_id
+        )
+        self.assertEqual(current_replay_source["knowledge_lifecycle_status"], "REVOKED")
+        with database.connect() as conn:
+            retained = conn.execute(
+                "select count(*) as c from documents where external_id = ? and source_type = 'knowledge'",
+                (candidate_id,),
+            ).fetchone()["c"]
+            graph_refs = conn.execute(
+                "select count(*) as c from graph_relations where document_id in (?, ?)",
+                (versions[0]["document_id"], versions[1]["document_id"]),
+            ).fetchone()["c"]
+        self.assertEqual(retained, 2)
+        self.assertEqual(graph_refs, 0)
+
+    def test_lifecycle_transaction_rolls_back_when_graph_rebuild_fails(self) -> None:
+        headers, created, candidate = self._publish_personal_candidate()
+        lifecycle_path = (
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/"
+            f"{candidate['candidate_id']}/lifecycle-requests"
+        )
+        requested = self.client.post(
+            lifecycle_path, headers=headers,
+            json={
+                "action": "SUPERSEDE", "reason": "测试原子回滚",
+                "replacement_statement": "替代版本用于验证事务回滚。",
+                "replacement_evidence": candidate["evidence"],
+            },
+        ).json()
+
+        with patch(
+            "app.publication_artifacts.rebuild_graph_scope",
+            side_effect=RuntimeError("graph rebuild failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "graph rebuild failed"):
+                self.client.post(
+                    f"{lifecycle_path}/{requested['request_id']}/decision",
+                    headers=headers, json={"approved": True},
+                )
+
+        bundle = get_publication_deliverables(created["session_id"], "tenant-a")
+        self.assertIsNotNone(bundle)
+        assert bundle is not None
+        self.assertEqual([item.status for item in bundle.knowledge_versions], ["ACTIVE"])
+        self.assertEqual(bundle.knowledge_lifecycle_requests[-1].status, "PENDING")
+        self.assertEqual(bundle.knowledge_candidates[0].knowledge_version_number, 1)
+        rejected = self.client.post(
+            f"{lifecycle_path}/{requested['request_id']}/decision",
+            headers=headers, json={"approved": False},
+        )
+        self.assertEqual(rejected.status_code, 200, rejected.text)
+        self.assertEqual(rejected.json()["status"], "REJECTED")
+        after_rejection = get_publication_deliverables(created["session_id"], "tenant-a")
+        assert after_rejection is not None
+        self.assertEqual(after_rejection.knowledge_candidates[0].knowledge_status, "ACTIVE")
+        self.assertIsNone(after_rejection.knowledge_candidates[0].pending_lifecycle_request_id)
+        retry = self.client.post(
+            lifecycle_path, headers=headers,
+            json={"action": "REVOKE", "reason": "拒绝后允许重新发起治理"},
+        )
+        self.assertEqual(retry.status_code, 201, retry.text)
+
     def test_team_publication_rejects_self_approval_and_accepts_second_member(self) -> None:
         author = {
             "X-User-Role": "operator", "X-User-Id": "user-a",
@@ -548,6 +782,40 @@ class AnalysisApiTests(unittest.TestCase):
         )
         self.assertEqual(reviewed.status_code, 200, reviewed.text)
         self.assertEqual(reviewed.json()["decided_by"], "user-b")
+
+        lifecycle_path = (
+            f"/analysis/sessions/{created['session_id']}/knowledge-candidates/"
+            f"{candidate_id}/lifecycle-requests"
+        )
+        lifecycle = self.client.post(
+            lifecycle_path,
+            headers=author,
+            json={
+                "action": "SUPERSEDE", "reason": "团队验收口径修订",
+                "replacement_statement": "团队知识替代版本：审批结果 1 秒内展示。",
+                "replacement_evidence": reviewed.json()["evidence"],
+            },
+        )
+        self.assertEqual(lifecycle.status_code, 201, lifecycle.text)
+        self_review = self.client.post(
+            f"{lifecycle_path}/{lifecycle.json()['request_id']}/decision",
+            headers=author, json={"approved": True},
+        )
+        self.assertEqual(self_review.status_code, 403)
+        cross_tenant_review = self.client.post(
+            f"{lifecycle_path}/{lifecycle.json()['request_id']}/decision",
+            headers={**reviewer, "X-Tenant-Id": "tenant-b"}, json={"approved": True},
+        )
+        self.assertEqual(cross_tenant_review.status_code, 404)
+        second_review = self.client.post(
+            f"{lifecycle_path}/{lifecycle.json()['request_id']}/decision",
+            headers=reviewer, json={"approved": True},
+        )
+        self.assertEqual(second_review.status_code, 200, second_review.text)
+        lineage = self.client.get(
+            f"/analysis/sessions/{created['session_id']}/deliverables", headers=reviewer,
+        ).json()["knowledge_versions"]
+        self.assertEqual([item["status"] for item in lineage], ["SUPERSEDED", "ACTIVE"])
 
 
 if __name__ == "__main__":

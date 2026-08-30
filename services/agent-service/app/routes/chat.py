@@ -156,6 +156,13 @@ def safe_record_chat_metric(
             estimated_cost_usd=usage.estimated_cost_usd if usage else 0.0,
             answer_preview=response.answer[:400] if response else "",
             trace=[step.model_dump() for step in response.trace] if response else [],
+            sources=[
+                {
+                    **source.model_dump(mode="json"),
+                    "content": source.content[:1000],
+                }
+                for source in response.sources
+            ] if response else [],
             tenant_id=tenant_id,
             owner_id=owner_id,
         )

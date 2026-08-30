@@ -1,0 +1,3 @@
+{"id":"personal_supersede","workspace_type":"personal","action":"SUPERSEDE","expected_versions":["SUPERSEDED","ACTIVE"],"expected_history_status":"SUPERSEDED","expected_active_version":2}
+{"id":"personal_revoke","workspace_type":"personal","action":"REVOKE","expected_versions":["REVOKED"],"expected_history_status":"REVOKED","expected_active_version":null}
+{"id":"team_supersede","workspace_type":"team","action":"SUPERSEDE","expected_versions":["SUPERSEDED","ACTIVE"],"expected_history_status":"SUPERSEDED","expected_active_version":2}

@@ -20,7 +20,11 @@
     "decided_at",
     "knowledge_document_id",
     "knowledge_content_sha256",
-    "knowledge_published_at"
+    "knowledge_published_at",
+    "knowledge_status",
+    "active_knowledge_version_id",
+    "knowledge_version_number",
+    "pending_lifecycle_request_id"
   ],
   "properties": {
     "candidate_id": { "type": "string", "format": "uuid" },
@@ -45,7 +49,11 @@
       "type": ["string", "null"],
       "pattern": "^[a-f0-9]{64}$"
     },
-    "knowledge_published_at": { "type": ["string", "null"], "format": "date-time" }
+    "knowledge_published_at": { "type": ["string", "null"], "format": "date-time" },
+    "knowledge_status": { "enum": ["NONE", "ACTIVE", "REVOKED"] },
+    "active_knowledge_version_id": { "type": ["string", "null"], "format": "uuid" },
+    "knowledge_version_number": { "type": "integer", "minimum": 0 },
+    "pending_lifecycle_request_id": { "type": ["string", "null"], "format": "uuid" }
   },
   "allOf": [
     {

@@ -26,7 +26,7 @@ Use when a service contract, persistence behavior, authentication, queueing or A
 
 For six-stage analysis, objective retrieval, evidence snapshots or resume behavior, the relevant gates are `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_prd.py`. Also run V6 when shared retriever behavior changes.
 
-For six-stage analysis, objective retrieval, evidence snapshots or resume behavior, the relevant gates are `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_prd.py`. Also run V6 when shared retriever behavior changes.
+For approved-knowledge materialization, supersede/revoke, historical citation state, or managed-document visibility, run `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_knowledge_lifecycle.py`. Run V6 when active-document filtering or shared retrieval changes.
 
 ### Platform
 
@@ -61,6 +61,7 @@ Never reinterpret an unsupported local toolchain failure as an application regre
 | Endpoint, event or shared DTO | `CONTRACTS.md` and machine-readable contract |
 | Auth, tenancy, retention, approval | `DATA_AND_SECURITY.md` and usually an ADR |
 | Prompt, model routing, evidence policy, tool behavior | `AGENT_ENGINEERING.md` plus evaluation data |
+| Approved knowledge approval, supersede/revoke or historical citations | `DATA_AND_SECURITY.md`, `AGENT_ENGINEERING.md`, lifecycle contract and an ADR |
 | Embedding, cache, Skill routing or framework explanation | `TECHNICAL_IMPLEMENTATION.md`, `AGENT_ENGINEERING.md` and usually ADR-0007 |
 | Tests, metrics or verified claim | `QUALITY.md` |
 | Startup, configuration, deployment or recovery | `OPERATIONS.md` |

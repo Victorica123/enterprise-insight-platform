@@ -96,6 +96,47 @@ export type KnowledgeCandidate = {
   knowledge_document_id: string | null;
   knowledge_content_sha256: string | null;
   knowledge_published_at: string | null;
+  knowledge_status: "NONE" | "ACTIVE" | "REVOKED";
+  active_knowledge_version_id: string | null;
+  knowledge_version_number: number;
+  pending_lifecycle_request_id: string | null;
+};
+
+export type GovernedKnowledgeVersion = {
+  knowledge_version_id: string;
+  candidate_id: string;
+  tenant_id: string;
+  owner_id: string;
+  version_number: number;
+  statement: string;
+  evidence: AnalysisEvidence[];
+  document_id: string;
+  content_sha256: string;
+  status: "ACTIVE" | "SUPERSEDED" | "REVOKED";
+  predecessor_version_id: string | null;
+  successor_version_id: string | null;
+  approved_by: string;
+  approved_at: string;
+  invalidated_by: string | null;
+  invalidated_at: string | null;
+  invalidation_reason: string | null;
+};
+
+export type KnowledgeLifecycleRequest = {
+  request_id: string;
+  candidate_id: string;
+  tenant_id: string;
+  owner_id: string;
+  action: "REVOKE" | "SUPERSEDE";
+  reason: string;
+  replacement_statement: string | null;
+  replacement_evidence: AnalysisEvidence[];
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requested_by: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  resulting_version_id: string | null;
 };
 
 export type ActionItemDraft = {
@@ -126,6 +167,8 @@ export type PublicationDeliverables = {
     published_at: string;
   };
   knowledge_candidates: KnowledgeCandidate[];
+  knowledge_versions: GovernedKnowledgeVersion[];
+  knowledge_lifecycle_requests: KnowledgeLifecycleRequest[];
   action_items: ActionItemDraft[];
 };
 
@@ -183,6 +226,37 @@ export function decideKnowledgeCandidate(
 ): Promise<KnowledgeCandidate> {
   return agentRequest<KnowledgeCandidate>(
     `/analysis/sessions/${sessionId}/knowledge-candidates/${candidateId}/decision`,
+    {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved }),
+    },
+  );
+}
+
+export function requestKnowledgeLifecycle(
+  sessionId: string,
+  candidateId: string,
+  payload: {
+    action: "REVOKE" | "SUPERSEDE";
+    reason: string;
+    replacement_statement?: string;
+    replacement_evidence?: AnalysisEvidence[];
+  },
+): Promise<KnowledgeLifecycleRequest> {
+  return agentRequest<KnowledgeLifecycleRequest>(
+    `/analysis/sessions/${sessionId}/knowledge-candidates/${candidateId}/lifecycle-requests`,
+    {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function decideKnowledgeLifecycle(
+  sessionId: string, candidateId: string, requestId: string, approved: boolean,
+): Promise<KnowledgeLifecycleRequest> {
+  return agentRequest<KnowledgeLifecycleRequest>(
+    `/analysis/sessions/${sessionId}/knowledge-candidates/${candidateId}/lifecycle-requests/${requestId}/decision`,
     {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approved }),

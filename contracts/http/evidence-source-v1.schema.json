@@ -21,7 +21,11 @@
     "speaker": { "type": ["string", "null"] },
     "knowledge_candidate_id": { "type": ["string", "null"] },
     "prd_version_id": { "type": ["string", "null"] },
-    "content_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+    "content_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "knowledge_version_id": { "type": ["string", "null"], "format": "uuid" },
+    "knowledge_version_number": { "type": ["integer", "null"], "minimum": 1 },
+    "knowledge_lifecycle_status": { "type": ["string", "null"], "enum": ["ACTIVE", "SUPERSEDED", "REVOKED", null] },
+    "superseded_by_document_id": { "type": ["string", "null"] }
   },
   "allOf": [
     {

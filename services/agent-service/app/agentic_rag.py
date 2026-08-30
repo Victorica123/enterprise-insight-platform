@@ -642,6 +642,10 @@ def hits_to_sources(
             knowledge_candidate_id=hit.chunk.knowledge_candidate_id,
             prd_version_id=hit.chunk.prd_version_id,
             content_sha256=hit.chunk.content_sha256,
+            knowledge_version_id=hit.chunk.knowledge_version_id,
+            knowledge_version_number=hit.chunk.knowledge_version_number,
+            knowledge_lifecycle_status=hit.chunk.knowledge_lifecycle_status,
+            superseded_by_document_id=hit.chunk.superseded_by_document_id,
         )
         for hit in ranked
     ]

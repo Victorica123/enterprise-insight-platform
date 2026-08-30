@@ -11,6 +11,14 @@
       "type": "array",
       "items": { "$ref": "#/$defs/knowledgeCandidate" }
     },
+    "knowledge_versions": {
+      "type": "array",
+      "items": { "$ref": "knowledge-lifecycle-v1.schema.json#/$defs/knowledgeVersion" }
+    },
+    "knowledge_lifecycle_requests": {
+      "type": "array",
+      "items": { "$ref": "knowledge-lifecycle-v1.schema.json#/$defs/lifecycleRequest" }
+    },
     "action_items": {
       "type": "array",
       "items": { "$ref": "#/$defs/actionItem" }
@@ -61,6 +69,10 @@
         "statement": { "type": "string", "minLength": 1 },
         "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence" } },
         "status": { "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "knowledge_status": { "enum": ["NONE", "ACTIVE", "REVOKED"] },
+        "active_knowledge_version_id": { "type": ["string", "null"], "format": "uuid" },
+        "knowledge_version_number": { "type": "integer", "minimum": 0 },
+        "pending_lifecycle_request_id": { "type": ["string", "null"], "format": "uuid" },
         "created_by": { "type": "string", "minLength": 1 },
         "created_at": { "type": "string", "format": "date-time" },
         "decided_by": { "type": ["string", "null"] },

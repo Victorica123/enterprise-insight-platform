@@ -36,7 +36,7 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 
 引用中不包含永久公开 URL。前端使用资产身份向 Media Service 申请短期播放授权。
 
-批准知识为了兼容既有客户端，对外仍使用 `source_type=document`，同时增加 `origin_type=approved_knowledge`，并可返回 `knowledge_candidate_id`、`prd_version_id` 和 `content_sha256`。这些可选 provenance 字段由 `contracts/http/evidence-source-v1.schema.json` 约束；普通上传文档使用 `origin_type=uploaded_document`，视频使用 `origin_type=media_transcript`。
+批准知识为了兼容既有客户端，对外仍使用 `source_type=document`，同时增加 `origin_type=approved_knowledge`，并可返回 `knowledge_candidate_id`、`prd_version_id`、`content_sha256`、知识版本和当前生命周期状态。历史回放还可返回 `superseded_by_document_id`。这些可选 provenance 字段由 `contracts/http/evidence-source-v1.schema.json` 约束；普通上传文档使用 `origin_type=uploaded_document`，视频使用 `origin_type=media_transcript`。
 
 统一访问令牌 V1 声明由 `contracts/identity/jwt-claims-v1.schema.json` 定义；V2 契约 `contracts/identity/jwt-claims-v2.schema.json` 新增必填 `workspace_type` 与 `identity_version=2`。Agent 的生产模式校验 HS256 算法、签名、issuer、audience、时间窗口、`token_use=access`、tenant、subject、role 与 jti；开发兼容身份头不会在 production 模式启动。兼容 V1 令牌读取时缺失 `workspace_type` 按 team 处理，使自批权限失败关闭。
 
@@ -60,7 +60,9 @@ PRD 发布契约：
 - `POST /analysis/sessions/{id}/publication/approve`：校验 request ID、token、明确 `confirmation=PUBLISH`、Workspace 类型和职责分离后进入 `PUBLISHED`。
 - `GET /analysis/publication-queue`：只向 team Workspace 的写角色返回其他提交者的待审批 PRD。
 - `GET /analysis/sessions/{id}/audit`：返回发布申请与批准的 actor、role、策略和时间，不返回审批 token。
-- `GET /analysis/sessions/{id}/deliverables`：读取已发布 PRD 的不可变版本、知识候选和行动项草稿，响应契约为 `contracts/http/publication-deliverables-v1.schema.json`。
+- `GET /analysis/sessions/{id}/deliverables`：读取已发布 PRD 的不可变版本、知识候选、知识版本链、生命周期申请和行动项草稿，响应契约为 `contracts/http/publication-deliverables-v1.schema.json`。
+- `POST /analysis/sessions/{id}/knowledge-candidates/{candidateId}/lifecycle-requests`：申请 `SUPERSEDE` 或 `REVOKE`；替代必须携带新陈述和证据。
+- `POST /analysis/sessions/{id}/knowledge-candidates/{candidateId}/lifecycle-requests/{requestId}/decision`：决定生命周期申请；team 请求者不得自批。请求与版本响应由 `contracts/http/knowledge-lifecycle-v1.schema.json` 约束。
 - `POST /analysis/sessions/{id}/knowledge-candidates/{candidate_id}/decision`：对仍为 `PENDING` 的候选做一次性批准/拒绝；个人 owner 明确决定，team 由不同写角色成员决定。批准响应以 `contracts/http/approved-knowledge-v1.schema.json` 为契约，必须返回非空 `knowledge_document_id`、`knowledge_content_sha256` 和 `knowledge_published_at`；拒绝响应保持这些字段为空。
 - `POST /analysis/sessions/{id}/action-items/{action_item_id}/ticket-draft`：只生成受控工具的 pending action，不直接创建工单；重复请求返回同一关联。审批结果会把行动项投影为 `TICKET_CREATED/REJECTED/FAILED`，成功时保存 `ticket_id`。
 

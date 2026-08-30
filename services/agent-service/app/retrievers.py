@@ -37,6 +37,10 @@ class Chunk:
     knowledge_candidate_id: str | None = None
     prd_version_id: str | None = None
     content_sha256: str | None = None
+    knowledge_version_id: str | None = None
+    knowledge_version_number: int | None = None
+    knowledge_lifecycle_status: str | None = None
+    superseded_by_document_id: str | None = None
 
 
 @dataclass
@@ -380,6 +384,20 @@ def _load_chunks_cached(
             prd_version_id=metadata.get("prd_version_id") if isinstance(metadata, dict) else None,
             content_sha256=(
                 row["payload_sha256"] if source_type == "knowledge" and "payload_sha256" in row.keys() else None
+            ),
+            knowledge_version_id=(
+                metadata.get("knowledge_version_id") if source_type == "knowledge" and isinstance(metadata, dict) else None
+            ),
+            knowledge_version_number=(
+                metadata.get("knowledge_version_number") if source_type == "knowledge" and isinstance(metadata, dict) else None
+            ),
+            knowledge_lifecycle_status=(
+                row["lifecycle_status"] if source_type == "knowledge" and "lifecycle_status" in row.keys() else None
+            ),
+            superseded_by_document_id=(
+                row["superseded_by_document_id"]
+                if source_type == "knowledge" and "superseded_by_document_id" in row.keys()
+                else None
             ),
         ))
     return tuple(chunks)

@@ -507,8 +507,10 @@ def index_document_graph(
 def _index_document_graph_rows(conn: sqlite3.Connection, document_id: str) -> dict[str, int]:
     rows = conn.execute(
         """
-        select document_id, filename, chunk_index, content, tenant_id, owner_id
-        from chunks where document_id = ?
+        select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content,
+               chunks.tenant_id, chunks.owner_id
+        from chunks join documents on documents.id = chunks.document_id
+        where chunks.document_id = ? and documents.lifecycle_status = 'ACTIVE'
         """,
         (document_id,),
     ).fetchall()
@@ -549,7 +551,11 @@ def rebuild_graph(
         conn.execute("begin immediate")
         if owner_id is None:
             owner_rows = conn.execute(
-                "select distinct owner_id from chunks where tenant_id = ?",
+                """
+                select distinct chunks.owner_id from chunks
+                join documents on documents.id = chunks.document_id
+                where chunks.tenant_id = ? and documents.lifecycle_status = 'ACTIVE'
+                """,
                 (tenant_id,),
             ).fetchall()
             owners = {str(row["owner_id"]) for row in owner_rows}
@@ -567,9 +573,11 @@ def rebuild_graph(
             for scope_owner in sorted(owners):
                 rows = conn.execute(
                     """
-                    select document_id, filename, chunk_index, content from chunks
-                    where tenant_id = ? and owner_id = ?
-                    order by created_at asc, chunk_index asc
+                    select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content
+                    from chunks join documents on documents.id = chunks.document_id
+                    where chunks.tenant_id = ? and chunks.owner_id = ?
+                      and documents.lifecycle_status = 'ACTIVE'
+                    order by chunks.created_at asc, chunks.chunk_index asc
                     """,
                     (tenant_id, scope_owner),
                 ).fetchall()
@@ -582,9 +590,11 @@ def rebuild_graph(
             return overview
         rows = conn.execute(
             """
-            select document_id, filename, chunk_index, content from chunks
-            where tenant_id = ? and owner_id = ?
-            order by created_at asc, chunk_index asc
+            select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content
+            from chunks join documents on documents.id = chunks.document_id
+            where chunks.tenant_id = ? and chunks.owner_id = ?
+              and documents.lifecycle_status = 'ACTIVE'
+            order by chunks.created_at asc, chunks.chunk_index asc
             """,
             (tenant_id, owner_id),
         ).fetchall()
@@ -595,6 +605,28 @@ def rebuild_graph(
         overview = get_graph_overview(conn=conn, tenant_id=tenant_id, owner_id=owner_id)
     overview["duration_ms"] = round((perf_counter() - started_at) * 1000, 2)
     return overview
+
+
+def rebuild_graph_scope(
+    *,
+    conn: sqlite3.Connection,
+    tenant_id: str,
+    owner_id: str,
+) -> None:
+    """Replace one authorization scope from currently active documents in the caller's transaction."""
+    rows = conn.execute(
+        """
+        select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content
+        from chunks join documents on documents.id = chunks.document_id
+        where chunks.tenant_id = ? and chunks.owner_id = ?
+          and documents.lifecycle_status = 'ACTIVE'
+        order by chunks.created_at asc, chunks.chunk_index asc
+        """,
+        (tenant_id, owner_id),
+    ).fetchall()
+    _replace_graph(
+        conn, rows, include_tickets=True, tenant_id=tenant_id, owner_id=owner_id,
+    )
 
 
 def _replace_graph(
@@ -729,9 +761,11 @@ def delete_document_and_rebuild(
         database.bump_content_revision(conn)
         rows = conn.execute(
             """
-            select document_id, filename, chunk_index, content from chunks
-            where tenant_id = ? and owner_id = ?
-            order by created_at asc, chunk_index asc
+            select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content
+            from chunks join documents on documents.id = chunks.document_id
+            where chunks.tenant_id = ? and chunks.owner_id = ?
+              and documents.lifecycle_status = 'ACTIVE'
+            order by chunks.created_at asc, chunks.chunk_index asc
             """,
             (scope_tenant, scope_owner),
         ).fetchall()

@@ -58,6 +58,16 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 仓库版与安装版 `enterprise-insight-maintainer` Skill 均通过 Skill Creator quick validation，并新增分析快照/CAS 不变量及 PRD 评测路由。
 - 维护知识更新为 40 个批准来源、250 个 chunk；本轮复用 189 个未变化向量、重算 61 个变化 chunk，3/3 索引测试和漂移检查通过。
 
+2026-08-30 完成知识生命周期 Phase 2 验证：
+
+- Agent Service 全量 130/130 通过。新增回归覆盖 personal 替代与撤回、不可变 predecessor/successor 链、未来检索排除失效版本、历史聊天引用状态刷新、物理历史保留、图谱失效、team 生命周期四眼、跨 tenant 隐藏、重复决定 409，以及图谱重建失败时整笔事务回滚。
+- 新增 `contracts/http/knowledge-lifecycle-v1.schema.json`，并扩展 approved knowledge、publication deliverables 与 evidence source 契约；JSON 解析、Pydantic 响应和契约测试通过。
+- Knowledge Lifecycle V1 三类冻结场景全部通过，未来检索、版本链、历史状态、tenant 隔离、四眼、幂等冲突、图谱失效与物理保留九项均为 100%；模块拆分后的独立最终验收 P95 553.70 ms。该延迟包含完整 HTTP 分析/发布/知识治理流程，只是本机回归门禁，不是生产 SLO 或容量结果。
+- V6 keyword/embedding/hybrid 保持 decision 98%、recall@3 97%、fact 97%，最终验收 P95 分别为 11.1/32.6/21.4 ms；PRD V1 十项质量指标保持 100%，P95 26.12 ms。
+- localhost-only 纵向验收扩展为 33/33：新增个人替代链、撤回后的未来检索排除、历史引用状态、生命周期独立决定和 team 请求者禁止自批。Web TypeScript 与 Vite 生产构建通过。
+- 历史引用回放只对升级后保存了来源快照的新日志完整生效；升级前 `sources_json` 为空的旧日志无法逆向恢复引用，不应包装成已迁移数据。
+- 维护知识更新为 42 个批准来源、259 个 chunk；索引单测 3/3、语义查询命中 ADR-0010、仓库/安装 Skill quick validation 与知识漂移检查通过。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。
@@ -72,9 +82,10 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - V6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。
 - `evaluate_v6.py` 显式关闭 LLM Router，使用确定性回答路径；judge 检查是否答/拒、Top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。
 - PRD V1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective Top-1、跨租户过滤、显式冲突、视频时间定位、引用支持、验收可测试性、阶段稳定和 specialist 固定顺序。当前质量项均为 100%，首次本机 P95 为 22.28 ms；样本规模小、与规则共同维护且没有真实客户 holdout，因此只能作为确定性回归门禁，不能外推 PRD 业务接受率或开放域模型能力。
+- Knowledge Lifecycle V1 只有 personal 替代、personal 撤回、team 替代三类固定场景，用于防止治理语义回退；它不覆盖大规模图谱增量成本、长期数据保留策略或真实多人组织流程。
 - 六阶段确认接口使用创建时的冻结证据并保留阶段 1–4；同一 resume token 的两个并发请求已有确定性回归，验证一次数据库 CAS 成功、另一次返回 409。它仍是业务阶段 checkpoint，不是模型调用中断后的执行栈恢复。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 RAG 黄金集 + PRD V1 黄金集 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 RAG + PRD V1 + Knowledge Lifecycle V1 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

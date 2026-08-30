@@ -14,7 +14,7 @@
 python scripts/local_acceptance.py
 ```
 
-脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；28 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、工单交付、VIEWER 只读、缓存安全边界，以及 objective 证据快照、阶段恢复稳定和旧 resume token 的 CAS 拒绝。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；33 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、知识替代/撤回/历史引用状态、团队生命周期四眼、工单交付、VIEWER 只读、缓存安全边界，以及 objective 证据快照、阶段恢复稳定和旧 resume token 的 CAS 拒绝。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
 
 维护知识索引使用以下命令，不依赖外部 embedding 服务：
 

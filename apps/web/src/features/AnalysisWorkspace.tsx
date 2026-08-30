@@ -3,7 +3,8 @@ import { AlertCircle, BookCheck, CheckCircle2, FileCheck2, ListTodo, Loader2, Pl
 import {
   type AnalysisAuditEvent, type AnalysisSession, type PublicationDeliverables,
   approvePrdPublication, confirmAnalysisSession, createActionTicketDraft,
-  createAnalysisSession, decideKnowledgeCandidate, getPublicationDeliverables,
+  createAnalysisSession, decideKnowledgeCandidate, decideKnowledgeLifecycle,
+  getPublicationDeliverables, requestKnowledgeLifecycle,
   listAnalysisAudit, listAnalysisSessions, listPublicationQueue, requestPrdPublication,
 } from "../analysisApi";
 import { loadSession } from "../session";
@@ -27,6 +28,7 @@ export function AnalysisWorkspace(props: {
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
   const [audit, setAudit] = React.useState<AnalysisAuditEvent[]>([]);
   const [deliverables, setDeliverables] = React.useState<PublicationDeliverables | null>(null);
+  const [lifecycleDrafts, setLifecycleDrafts] = React.useState<Record<string, { reason: string; statement: string }>>({});
   const [busy, setBusy] = React.useState(false);
   const viewer = loadSession();
 
@@ -116,6 +118,40 @@ export function AnalysisWorkspace(props: {
     finally { setBusy(false); }
   }
 
+  async function requestLifecycle(candidateId: string, action: "REVOKE" | "SUPERSEDE") {
+    if (!active || !deliverables) return;
+    const candidate = deliverables.knowledge_candidates.find((item) => item.candidate_id === candidateId);
+    const draft = lifecycleDrafts[candidateId] ?? { reason: "", statement: "" };
+    if (!candidate || draft.reason.trim().length < 3) {
+      props.onError("请填写至少 3 个字符的治理原因。"); return;
+    }
+    if (action === "SUPERSEDE" && draft.statement.trim().length < 3) {
+      props.onError("请填写替代后的知识陈述。"); return;
+    }
+    setBusy(true);
+    try {
+      await requestKnowledgeLifecycle(active.session_id, candidateId, {
+        action,
+        reason: draft.reason.trim(),
+        replacement_statement: action === "SUPERSEDE" ? draft.statement.trim() : undefined,
+        replacement_evidence: action === "SUPERSEDE" ? candidate.evidence : undefined,
+      });
+      setDeliverables(await getPublicationDeliverables(active.session_id));
+      setLifecycleDrafts((current) => ({ ...current, [candidateId]: { reason: "", statement: "" } }));
+    } catch (caught) { props.onError(getErrorMessage(caught)); }
+    finally { setBusy(false); }
+  }
+
+  async function reviewLifecycle(candidateId: string, requestId: string, approved: boolean) {
+    if (!active) return;
+    setBusy(true);
+    try {
+      await decideKnowledgeLifecycle(active.session_id, candidateId, requestId, approved);
+      setDeliverables(await getPublicationDeliverables(active.session_id));
+    } catch (caught) { props.onError(getErrorMessage(caught)); }
+    finally { setBusy(false); }
+  }
+
   async function draftActionTicket(actionItemId: string) {
     if (!active) return;
     setBusy(true);
@@ -172,10 +208,26 @@ export function AnalysisWorkspace(props: {
           <header><div><span className="eyebrow">PUBLISHED DELIVERY</span><h2><FileCheck2 size={19} />发布交付物</h2></div><code>v{deliverables.version.version_number} · {deliverables.version.content_sha256.slice(0, 12)}</code></header>
           <p>PRD 已保存为不可变快照。知识候选批准后才沉淀为可检索知识；行动项批准后才创建工单。</p>
           <div className="delivery-grid">
-            <div><h3><BookCheck size={16} />知识候选</h3>{deliverables.knowledge_candidates.map((candidate) => {
+            <div><h3><BookCheck size={16} />知识候选与版本治理</h3>{deliverables.knowledge_candidates.map((candidate) => {
               const canDecide = candidate.status === "PENDING" && viewer?.role !== "viewer"
                 && (viewer?.workspaceType === "personal" ? candidate.owner_id === viewer?.userId : candidate.created_by !== viewer?.userId);
-              return <article key={candidate.candidate_id}><strong>{candidate.requirement_id}</strong><p>{candidate.statement}</p><span className="task-status">{candidate.status}</span>{candidate.knowledge_document_id ? <p className="mono">已沉淀 · {candidate.knowledge_document_id.slice(0, 22)} · {candidate.knowledge_content_sha256?.slice(0, 12)}</p> : null}{canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准并沉淀</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}</article>;
+              const versions = deliverables.knowledge_versions.filter((item) => item.candidate_id === candidate.candidate_id);
+              const lifecycle = deliverables.knowledge_lifecycle_requests.filter((item) => item.candidate_id === candidate.candidate_id);
+              const pending = lifecycle.find((item) => item.status === "PENDING");
+              const canGovern = candidate.status === "APPROVED" && candidate.knowledge_status === "ACTIVE"
+                && !pending && viewer?.role !== "viewer";
+              const canReview = Boolean(pending && viewer?.role !== "viewer"
+                && (viewer?.workspaceType === "personal" || pending.requested_by !== viewer?.userId));
+              const draft = lifecycleDrafts[candidate.candidate_id] ?? { reason: "", statement: "" };
+              return <article key={candidate.candidate_id} className="knowledge-governance-item">
+                <strong>{candidate.requirement_id}</strong><p>{candidate.statement}</p>
+                <div className="knowledge-status-row"><span className="task-status">{candidate.status}</span><span className={`task-status lifecycle-${candidate.knowledge_status.toLowerCase()}`}>{candidate.knowledge_status}{candidate.knowledge_version_number ? ` · v${candidate.knowledge_version_number}` : ""}</span></div>
+                {candidate.knowledge_document_id ? <p className="mono">当前版本 · {candidate.knowledge_document_id.slice(0, 28)} · {candidate.knowledge_content_sha256?.slice(0, 12)}</p> : null}
+                {versions.length ? <details className="knowledge-lineage"><summary>版本链 · {versions.length} 个不可变版本</summary>{versions.map((version) => <div key={version.knowledge_version_id} className="knowledge-version-row"><span>v{version.version_number} · {version.status}</span><code>{version.content_sha256.slice(0, 12)}</code><p>{version.statement}</p>{version.invalidation_reason ? <small>失效原因：{version.invalidation_reason}</small> : null}</div>)}</details> : null}
+                {pending ? <div className="lifecycle-pending"><strong>{pending.action === "REVOKE" ? "撤回" : "替代"}申请待审批</strong><p>{pending.reason}</p><small>申请人：{pending.requested_by} · {formatDate(pending.requested_at)}</small>{canReview ? <div className="delivery-actions"><button disabled={busy} onClick={() => void reviewLifecycle(candidate.candidate_id, pending.request_id, true)}>批准治理</button><button disabled={busy} onClick={() => void reviewLifecycle(candidate.candidate_id, pending.request_id, false)}>拒绝</button></div> : <p className="governance-hint">团队空间必须由另一位写成员审批。</p>}</div> : null}
+                {canGovern ? <div className="lifecycle-editor"><label>治理原因<input value={draft.reason} maxLength={1000} onChange={(event) => setLifecycleDrafts((current) => ({ ...current, [candidate.candidate_id]: { ...draft, reason: event.target.value } }))} placeholder="为什么需要撤回或替代" /></label><label>替代陈述（仅替代时必填）<textarea rows={3} maxLength={4000} value={draft.statement} onChange={(event) => setLifecycleDrafts((current) => ({ ...current, [candidate.candidate_id]: { ...draft, statement: event.target.value } }))} placeholder="新版本沿用该候选的原始证据，并形成新旧版本链" /></label><div className="delivery-actions"><button disabled={busy} onClick={() => void requestLifecycle(candidate.candidate_id, "SUPERSEDE")}>申请替代</button><button className="danger-subtle" disabled={busy} onClick={() => void requestLifecycle(candidate.candidate_id, "REVOKE")}>申请撤回</button></div></div> : null}
+                {canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准并沉淀</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}
+              </article>;
             })}</div>
             <div><h3><ListTodo size={16} />行动项草稿</h3>{deliverables.action_items.map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><p>{item.description}</p><span className="task-status">{item.status}</span>{item.ticket_id ? <p className="mono">工单 {item.ticket_id}</p> : null}{item.status === "DRAFT" && item.owner_id === viewer?.userId ? <div className="delivery-actions"><button disabled={busy} onClick={() => void draftActionTicket(item.action_item_id)}>进入工单审批</button></div> : null}</article>)}</div>
           </div>

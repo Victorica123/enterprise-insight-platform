@@ -38,7 +38,7 @@ PRD 发布已经执行差异化职责分离：个人 Workspace 的 OWNER 必须�
 
 分析恢复也使用一次性状态门禁，但不等同于发布审批：`resume_token` 只推进同一业务 checkpoint，数据库按 session/tenant/owner/status/token compare-and-set，竞争失败返回 409；它不会直接发布知识或触发外部写操作。
 
-知识候选不会因 PRD 发布而自动进入正式知识：个人 Workspace 需要 OWNER 单独决定，team Workspace 需要不同写角色成员决定。批准时，候选 CAS、托管知识 document/chunk、图索引和 provenance 同事务提交；失败会整体回滚到 `PENDING`。托管知识不能通过普通文档删除接口移除，后续若支持撤回必须走新的审计化治理流程。行动项只会生成受控工具的 pending action，审批成功后才创建工单。团队工单按 tenant 共享读取但保留创建者 `owner_id`；个人工单仍按 owner 私有。
+知识候选不会因 PRD 发布而自动进入正式知识：个人 Workspace 需要 OWNER 单独决定，team Workspace 需要不同写角色成员决定。批准时，候选 CAS、托管知识 document/chunk、图索引和 provenance 同事务提交；失败会整体回滚到 `PENDING`。托管知识不能通过普通文档删除接口移除。替代/撤回必须先创建持久化治理申请；personal OWNER 再次明确决定，team 由不同写成员决定。审批事务软失效旧 document、维护不可变版本链、提升 content revision 并从活跃文档重建图谱，原始证据和历史引用不删除。行动项只会生成受控工具的 pending action，审批成功后才创建工单。团队工单按 tenant 共享读取但保留创建者 `owner_id`；个人工单仍按 owner 私有。
 
 ## 待发布决策
 

@@ -262,6 +262,26 @@ export function MonitorView({ metricsSummary, embeddingStatus, onRefresh, actorR
                               {expandedDetail.answer_preview ? (
                                 <p className="log-answer-preview">{expandedDetail.answer_preview}</p>
                               ) : null}
+                              {expandedDetail.sources.length ? (
+                                <div className="historical-sources">
+                                  <strong>历史证据引用</strong>
+                                  {expandedDetail.sources.map((source, index) => (
+                                    <div key={`${source.document_id}-${source.chunk_index}-${index}`}>
+                                      <span>{source.filename} · chunk {source.chunk_index}</span>
+                                      {source.origin_type === "approved_knowledge" ? (
+                                        <span className={`knowledge-history-status ${source.knowledge_lifecycle_status?.toLowerCase() ?? "unknown"}`}>
+                                          {source.knowledge_lifecycle_status ?? "状态未知"}
+                                          {source.knowledge_version_number ? ` · v${source.knowledge_version_number}` : ""}
+                                        </span>
+                                      ) : null}
+                                      <p>{source.content}</p>
+                                      {source.superseded_by_document_id ? (
+                                        <small>已由 {source.superseded_by_document_id} 替代</small>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
                               <ol className="trace-list">
                                 {expandedDetail.trace.map((step: TraceStep, index: number) => (
                                   <li className="trace-item" key={`${step.name}-${index}`}>

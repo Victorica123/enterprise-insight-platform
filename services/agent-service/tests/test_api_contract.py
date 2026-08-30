@@ -185,6 +185,23 @@ class ApiContractTests(unittest.TestCase):
             schema["allOf"][0]["if"]["properties"]["status"]["const"], "APPROVED",
         )
 
+    def test_knowledge_lifecycle_contract_defines_version_chain_and_governance(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "knowledge-lifecycle-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+
+        self.assertTrue(schema["$id"].endswith("/knowledge-lifecycle-v1.schema.json"))
+        self.assertEqual(
+            set(schema["$defs"]["knowledgeVersion"]["properties"]["status"]["enum"]),
+            {"ACTIVE", "SUPERSEDED", "REVOKED"},
+        )
+        self.assertEqual(
+            set(schema["$defs"]["lifecycleRequest"]["properties"]["action"]["enum"]),
+            {"REVOKE", "SUPERSEDE"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

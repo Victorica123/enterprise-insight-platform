@@ -80,6 +80,10 @@ export type Source = {
   knowledge_candidate_id?: string | null;
   prd_version_id?: string | null;
   content_sha256?: string | null;
+  knowledge_version_id?: string | null;
+  knowledge_version_number?: number | null;
+  knowledge_lifecycle_status?: "ACTIVE" | "SUPERSEDED" | "REVOKED" | null;
+  superseded_by_document_id?: string | null;
 };
 
 export type ToolCallRecord = {
@@ -521,7 +525,7 @@ export type ChatLog = {
   created_at: string;
 };
 
-export type ChatLogDetail = ChatLog & { trace: TraceStep[] };
+export type ChatLogDetail = ChatLog & { trace: TraceStep[]; sources: Source[] };
 
 export type FeedbackResult = {
   log_id: number;

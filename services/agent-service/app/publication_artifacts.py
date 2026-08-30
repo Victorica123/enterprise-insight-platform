@@ -7,18 +7,20 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-from app import database
-from app.graph_store import index_document_graph, init_graph_store
+from app import database, knowledge_lifecycle_store
+from app.graph_store import index_document_graph, init_graph_store, rebuild_graph_scope
 from app.analysis_models import (
     ActionItemDraft,
     AnalysisSessionResponse,
     KnowledgeCandidate,
+    KnowledgeLifecycleRequest,
     PublicationDeliverables,
     PublishedPrdVersion,
 )
 
 
 def init_publication_artifact_store() -> None:
+    database.init_db()
     with database.connect() as conn:
         conn.execute(
             """
@@ -68,12 +70,17 @@ def init_publication_artifact_store() -> None:
         database.ensure_column(conn, "knowledge_candidates", "knowledge_document_id", "text")
         database.ensure_column(conn, "knowledge_candidates", "knowledge_content_sha256", "text")
         database.ensure_column(conn, "knowledge_candidates", "knowledge_published_at", "text")
+        database.ensure_column(conn, "knowledge_candidates", "knowledge_status", "text not null default 'NONE'")
+        database.ensure_column(conn, "knowledge_candidates", "active_knowledge_version_id", "text")
+        database.ensure_column(conn, "knowledge_candidates", "knowledge_version_number", "integer not null default 0")
+        database.ensure_column(conn, "knowledge_candidates", "pending_lifecycle_request_id", "text")
         conn.execute(
             """
             create index if not exists idx_knowledge_candidate_scope_status
             on knowledge_candidates(tenant_id, owner_id, status, created_at)
             """
         )
+        knowledge_lifecycle_store.init_knowledge_lifecycle_store(conn)
         conn.execute(
             """
             create table if not exists action_item_drafts (
@@ -239,6 +246,26 @@ def get_publication_deliverables(
             "select * from knowledge_candidates where version_id = ? order by requirement_id",
             (version_row["version_id"],),
         ).fetchall()
+        candidate_ids = [row["candidate_id"] for row in candidate_rows]
+        if candidate_ids:
+            placeholders = ",".join("?" for _ in candidate_ids)
+            knowledge_version_rows = conn.execute(
+                f"""
+                select * from knowledge_versions where candidate_id in ({placeholders})
+                order by candidate_id, version_number
+                """,
+                candidate_ids,
+            ).fetchall()
+            lifecycle_rows = conn.execute(
+                f"""
+                select * from knowledge_lifecycle_requests where candidate_id in ({placeholders})
+                order by requested_at, request_id
+                """,
+                candidate_ids,
+            ).fetchall()
+        else:
+            knowledge_version_rows = []
+            lifecycle_rows = []
         action_rows = conn.execute(
             "select * from action_item_drafts where version_id = ? order by requirement_id",
             (version_row["version_id"],),
@@ -246,6 +273,14 @@ def get_publication_deliverables(
     return PublicationDeliverables(
         version=_version_from_row(version_row),
         knowledge_candidates=[_candidate_from_row(row) for row in candidate_rows],
+        knowledge_versions=[
+            knowledge_lifecycle_store.knowledge_version_from_row(row)
+            for row in knowledge_version_rows
+        ],
+        knowledge_lifecycle_requests=[
+            knowledge_lifecycle_store.lifecycle_request_from_row(row)
+            for row in lifecycle_rows
+        ],
         action_items=[_action_from_row(row) for row in action_rows],
     )
 
@@ -279,35 +314,37 @@ def decide_knowledge_candidate(
         knowledge_document_id: str | None = None
         knowledge_content_sha256: str | None = None
         knowledge_published_at: str | None = None
+        knowledge_version_id: str | None = None
         if approved:
-            knowledge_document_id = f"knowledge-{candidate_id}"
-            knowledge_content, knowledge_content_sha256, metadata = _build_approved_knowledge(candidate)
-            knowledge_published_at = decided_at.isoformat()
-            database.insert_document(
-                document_id=knowledge_document_id,
-                filename=f"approved-knowledge-{candidate_id[:8]}.md",
-                chunks=[(f"已批准知识 / {candidate['requirement_id']}", knowledge_content)],
-                conn=conn,
-                tenant_id=candidate["tenant_id"],
-                owner_id=candidate["owner_id"],
-                source_type="knowledge",
-                external_id=candidate_id,
-                source_version=1,
-                payload_sha256=knowledge_content_sha256,
-                metadata=metadata,
+            version = knowledge_lifecycle_store.materialize_knowledge_version(
+                conn,
+                candidate,
+                statement=candidate["statement"],
+                evidence=json.loads(candidate["evidence_json"]),
+                version_number=1,
+                predecessor_version_id=None,
+                actor_id=actor_id,
+                decided_at=decided_at,
+                index_document_graph=index_document_graph,
             )
-            index_document_graph(knowledge_document_id, conn=conn)
+            knowledge_document_id = version.document_id
+            knowledge_content_sha256 = version.content_sha256
+            knowledge_published_at = version.approved_at.isoformat()
+            knowledge_version_id = version.knowledge_version_id
 
         cursor = conn.execute(
             """
             update knowledge_candidates
             set status = ?, decided_by = ?, decided_at = ?,
-                knowledge_document_id = ?, knowledge_content_sha256 = ?, knowledge_published_at = ?
+                knowledge_document_id = ?, knowledge_content_sha256 = ?, knowledge_published_at = ?,
+                knowledge_status = ?, active_knowledge_version_id = ?, knowledge_version_number = ?
             where candidate_id = ? and tenant_id = ? and status = 'PENDING'
             """,
             (
                 status, actor_id, decided_at.isoformat(), knowledge_document_id,
-                knowledge_content_sha256, knowledge_published_at, candidate_id, tenant_id,
+                knowledge_content_sha256, knowledge_published_at,
+                "ACTIVE" if approved else "NONE", knowledge_version_id,
+                1 if approved else 0, candidate_id, tenant_id,
             ),
         )
         if cursor.rowcount != 1:
@@ -319,40 +356,51 @@ def decide_knowledge_candidate(
     return _candidate_from_row(row) if row else None
 
 
-def _build_approved_knowledge(candidate: sqlite3.Row) -> tuple[str, str, dict[str, object]]:
-    evidence = json.loads(candidate["evidence_json"])
-    evidence_lines: list[str] = []
-    for item in evidence:
-        excerpt = " ".join(str(item.get("excerpt", "")).split())
-        location = item.get("filename", "")
-        if item.get("source_type") == "video":
-            location += f" [{item.get('start_ms', 0)}-{item.get('end_ms', 0)}ms]"
-        evidence_lines.append(
-            f"- {item.get('source_type', 'document')} · {location} · {excerpt}"
-        )
-    content = "\n".join([
-        f"# 已批准业务知识：{candidate['requirement_id']}",
-        "",
-        candidate["statement"],
-        "",
-        "## 可验证证据",
-        *evidence_lines,
-        "",
-        "## 治理来源",
-        f"- PRD version: {candidate['version_id']}",
-        f"- Analysis session: {candidate['session_id']}",
-        f"- Knowledge candidate: {candidate['candidate_id']}",
-    ])
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    metadata: dict[str, object] = {
-        "managed_type": "approved_knowledge",
-        "candidate_id": candidate["candidate_id"],
-        "analysis_session_id": candidate["session_id"],
-        "prd_version_id": candidate["version_id"],
-        "requirement_id": candidate["requirement_id"],
-        "evidence": evidence,
-    }
-    return content, digest, metadata
+def request_knowledge_lifecycle(
+    candidate_id: str,
+    *,
+    tenant_id: str,
+    actor_id: str,
+    action: str,
+    reason: str,
+    replacement_statement: str | None,
+    replacement_evidence: list[dict[str, object]],
+    requested_at: datetime,
+) -> KnowledgeLifecycleRequest | None:
+    init_publication_artifact_store()
+    return knowledge_lifecycle_store.request_knowledge_lifecycle(
+        candidate_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action=action,
+        reason=reason,
+        replacement_statement=replacement_statement,
+        replacement_evidence=replacement_evidence,
+        requested_at=requested_at,
+    )
+
+
+def decide_knowledge_lifecycle(
+    request_id: str,
+    *,
+    candidate_id: str,
+    tenant_id: str,
+    actor_id: str,
+    approved: bool,
+    decided_at: datetime,
+) -> KnowledgeLifecycleRequest | None:
+    init_publication_artifact_store()
+    init_graph_store()
+    return knowledge_lifecycle_store.decide_knowledge_lifecycle(
+        request_id,
+        candidate_id=candidate_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        approved=approved,
+        decided_at=decided_at,
+        index_document_graph=index_document_graph,
+        rebuild_graph_scope=rebuild_graph_scope,
+    )
 
 
 def get_action_item(action_item_id: str, tenant_id: str) -> ActionItemDraft | None:

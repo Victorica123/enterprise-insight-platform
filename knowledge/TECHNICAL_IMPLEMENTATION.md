@@ -83,6 +83,8 @@ PRD 发布只生成 `PENDING` 知识候选。授权用户点击“批准并沉�
 
 任何一步失败都回滚，因此不会出现“状态已批准但检索不到知识”。通用文档删除拒绝托管知识，防止绕过治理。Retriever 在授权过滤后读取这类 chunk；公开 `Source` 为兼容旧客户端仍取 `source_type=document`，同时用 `origin_type=approved_knowledge` 和 candidate/PRD/hash 字段证明来源。该实现是“人工门禁后的知识演进”，不是模型自动修改 Skill 或提示规则。
 
+批准知识的 Phase 2 演进使用 `knowledge_versions` 与 `knowledge_lifecycle_requests`。替代不会覆盖 v1，而是物化 v2 并把 v1 标记 `SUPERSEDED`；撤回把当前版本标记 `REVOKED`。`knowledge_lifecycle_store.py` 独占其 schema、兼容迁移、版本物化和事务状态机，`publication_artifacts.py` 只保留交付物编排边界。生命周期决定在 `BEGIN IMMEDIATE` 中以 request/candidate CAS 推进，同时更新 document 活跃状态、候选当前指针、content revision 和 owner scope 图谱。`list_chunk_rows` 在 SQL join 阶段只读取 `ACTIVE` document，因此失效知识不会进入模型上下文。聊天日志保存最多 10 条、每条正文最多 1000 字符的来源快照；回放保留原引用，并从 document 表刷新当前生命周期。升级前没有来源快照的旧日志保持为空，不虚构历史证据。
+
 ### 3.5 Workspace 协作
 
 Media Service 是成员关系和 active Workspace 令牌的唯一权威。OWNER 创建团队，OWNER/ADMIN 生成 15 分钟一次性邀请，服务端只保存邀请码 SHA-256；用户接受后默认成为 MEMBER。角色映射为 VIEWER→viewer、MEMBER→operator、ADMIN/OWNER→admin。
@@ -146,7 +148,7 @@ python scripts/update_knowledge.py --check
 - 事务 outbox：数据库事实和待投递事件同事务，避免业务成功但消息丢失。
 - 可恢复业务状态：媒体任务可重试；Agent 会话冻结授权证据并持久化阶段/答案，确认保留前四阶段、CAS 推进检查点；审批副作用独立治理。
 - 不可变发布：canonical JSON + SHA-256，发布版本不可覆盖。
-- 原子知识沉淀：候选 CAS、托管 document/chunk、图索引与 provenance 同事务，失败保持 `PENDING`。
+- 原子知识沉淀与演进：候选批准、版本替代或撤回都把托管 document/chunk、当前指针、content revision、图索引与 provenance 放在同一事务；历史版本只软失效，不做 CRUD 删除。
 - 证据最小化：跨服务事件不携带 JWT、存储密钥或永久播放 URL。
 - 轻重模式分离：localhost mock/local 模式用于无外部依赖验收，不能代替 Redis、MQ、对象存储和真实模型 smoke。
 
@@ -160,7 +162,7 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 - Media Service：JUnit/Spring 集成测试覆盖认证、上传、任务、播放、outbox、租户与团队协作。
 - Agent Service：unittest/pytest 覆盖摄取、检索、向量回退、分析、发布、工具、隔离与观测。
-- Agent 评测：V6 黄金集验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟；PRD V1 黄金集另行验证目标排序、授权隔离、缺口/冲突、引用支持、验收可测试性、检查点和 specialist 顺序。
+- Agent 评测：V6 黄金集验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟；PRD V1 黄金集验证目标排序、授权隔离、缺口/冲突、引用支持、验收可测试性、检查点和 specialist 顺序；Knowledge Lifecycle V1 验证替代/撤回后的检索、版本链、历史引用、四眼与事务失效。
 - Web：TypeScript project build + Vite production build，并补真实浏览器业务操作。
 - 平台：`scripts/local_acceptance.py` 使用随机 localhost 端口、H2、SQLite、本地文件和 mock AI 跑双用户完整纵向链路。
 - 知识：生成器漂移检查、维护索引单元测试和 Skill quick validation。

@@ -177,6 +177,10 @@ class Source(BaseModel):
     knowledge_candidate_id: str | None = None
     prd_version_id: str | None = None
     content_sha256: str | None = None
+    knowledge_version_id: str | None = None
+    knowledge_version_number: int | None = Field(default=None, ge=1)
+    knowledge_lifecycle_status: Literal["ACTIVE", "SUPERSEDED", "REVOKED"] | None = None
+    superseded_by_document_id: str | None = None
 
     @model_validator(mode="after")
     def validate_video_location(self) -> "Source":
@@ -395,6 +399,7 @@ class ChatLogResponse(BaseModel):
 
 class ChatLogDetailResponse(ChatLogResponse):
     trace: list[TraceStep] = Field(default_factory=list)
+    sources: list[Source] = Field(default_factory=list)
 
 
 class FeedbackRequest(BaseModel):

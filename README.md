@@ -16,6 +16,7 @@ flowchart LR
     R --> P[六阶段分析 / 等待恢复]
     P --> G[PRD 审批 / 不可变版本]
     G --> K[知识批准后进入未来 RAG]
+    K --> L[替代/撤回审批与版本链]
     G --> T[行动项审批后创建工单]
 ```
 
@@ -29,15 +30,16 @@ flowchart LR
 6. personal Workspace 使用 OWNER 二次确认发布；team Workspace 必须不同成员四眼审批。
 7. 发布生成不可变 PRD、知识候选和行动项；知识与工单分别经过独立审批。
 8. 批准知识以版本、哈希和原始证据物化，并被后续 RAG 检索命中。
+9. 过期或错误知识通过独立审批被替代/撤回；旧版本保留审计，未来 RAG 与图谱只读取活跃版本。
 
 ## 工程证据
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 127 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识物化 |
+| Agent Service | 130 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
 | Media Service | JDK 17/18 下 108 个自动化用例 |
-| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例两套独立黄金集门禁 |
-| 平台纵向链路 | 28 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
+| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景三套独立门禁 |
+| 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
 | Web | TypeScript project build + Vite production build |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 
@@ -62,7 +64,7 @@ pip install -r services/agent-service/requirements.txt
 python scripts/local_acceptance.py
 ```
 
-脚本自动启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地文件与 mock/local AI，验证真实 JWT、个人/团队隔离、视频证据、等待恢复、PRD 审批、知识沉淀、工单审批、缓存安全边界和 Range 播放。
+脚本自动启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地文件与 mock/local AI，验证真实 JWT、个人/团队隔离、视频证据、等待恢复、PRD 审批、知识沉淀与替代/撤回、历史引用状态、工单审批、缓存安全边界和 Range 播放。
 
 需要保留数据的本地工作台：
 

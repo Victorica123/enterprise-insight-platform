@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.analysis_models import (
     ActionItemTicketDraftResponse, AnalysisAuditEvent, AnalysisConfirmationRequest,
     AnalysisCreateRequest, AnalysisSessionResponse, KnowledgeCandidate,
-    KnowledgeCandidateDecisionRequest, PublicationApprovalRequest,
+    KnowledgeCandidateDecisionRequest, KnowledgeLifecycleCreateRequest,
+    KnowledgeLifecycleDecisionRequest, KnowledgeLifecycleRequest, PublicationApprovalRequest,
     PublicationDeliverables,
 )
 from app.analysis_evidence import build_analysis_evidence_snapshot
@@ -23,9 +24,11 @@ from app.publication_service import (
 )
 from app.publication_artifacts import (
     decide_knowledge_candidate,
+    decide_knowledge_lifecycle,
     get_action_item,
     get_publication_deliverables,
     mark_action_ticket_pending,
+    request_knowledge_lifecycle,
 )
 from app.retrievers import RetrievalScope
 from app.tools import execute_tool
@@ -225,6 +228,93 @@ def decide_published_knowledge_candidate(
     )
     if decided is None:
         raise HTTPException(status_code=409, detail="Knowledge candidate was already decided.")
+    return decided
+
+
+@router.post(
+    "/sessions/{session_id}/knowledge-candidates/{candidate_id}/lifecycle-requests",
+    response_model=KnowledgeLifecycleRequest,
+    status_code=201,
+)
+def create_knowledge_lifecycle_request(
+    session_id: str,
+    candidate_id: str,
+    request: KnowledgeLifecycleCreateRequest,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> KnowledgeLifecycleRequest:
+    require_write_role(principal.role)
+    session = _require_tenant_session(session_id, principal)
+    if session.status != "PUBLISHED":
+        raise HTTPException(status_code=409, detail="The PRD has not been published.")
+    if principal.workspace_type == "personal" and (
+        principal.user_id != session.owner_id or principal.role != "admin"
+    ):
+        raise HTTPException(status_code=403, detail="Only the personal workspace owner can govern knowledge.")
+    bundle = get_publication_deliverables(session_id, principal.tenant_id)
+    candidate = next(
+        (item for item in bundle.knowledge_candidates if item.candidate_id == candidate_id),
+        None,
+    ) if bundle else None
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
+    created = request_knowledge_lifecycle(
+        candidate_id,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        action=request.action,
+        reason=request.reason,
+        replacement_statement=request.replacement_statement,
+        replacement_evidence=[item.model_dump(mode="json") for item in request.replacement_evidence],
+        requested_at=utc_now(),
+    )
+    if created is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Knowledge is not active, has a pending lifecycle request, or the replacement is unchanged.",
+        )
+    return created
+
+
+@router.post(
+    "/sessions/{session_id}/knowledge-candidates/{candidate_id}/lifecycle-requests/{request_id}/decision",
+    response_model=KnowledgeLifecycleRequest,
+)
+def decide_knowledge_lifecycle_request(
+    session_id: str,
+    candidate_id: str,
+    request_id: str,
+    request: KnowledgeLifecycleDecisionRequest,
+    principal: ActorPrincipal = Depends(current_principal),
+) -> KnowledgeLifecycleRequest:
+    require_write_role(principal.role)
+    session = _require_tenant_session(session_id, principal)
+    if session.status != "PUBLISHED":
+        raise HTTPException(status_code=409, detail="The PRD has not been published.")
+    bundle = get_publication_deliverables(session_id, principal.tenant_id)
+    lifecycle = next(
+        (
+            item for item in bundle.knowledge_lifecycle_requests
+            if item.request_id == request_id and item.candidate_id == candidate_id
+        ),
+        None,
+    ) if bundle else None
+    if lifecycle is None:
+        raise HTTPException(status_code=404, detail="Knowledge lifecycle request not found.")
+    if principal.workspace_type == "personal":
+        if principal.user_id != session.owner_id or principal.role != "admin":
+            raise HTTPException(status_code=403, detail="Only the personal workspace owner can govern knowledge.")
+    elif lifecycle.requested_by == principal.user_id:
+        raise HTTPException(status_code=403, detail="Team knowledge lifecycle requires a different reviewer.")
+    decided = decide_knowledge_lifecycle(
+        request_id,
+        candidate_id=candidate_id,
+        tenant_id=principal.tenant_id,
+        actor_id=principal.user_id,
+        approved=request.approved,
+        decided_at=utc_now(),
+    )
+    if decided is None:
+        raise HTTPException(status_code=409, detail="Knowledge lifecycle request was already decided or is stale.")
     return decided
 
 

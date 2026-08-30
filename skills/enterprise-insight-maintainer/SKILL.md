@@ -29,8 +29,7 @@ Keep this repository a coherent product rather than two demos placed side by sid
 - Every material conclusion must retain evidence. Video evidence includes asset identity and a playable time range.
 - Model output is untrusted. Deterministic validation, authorization, idempotency and approval protect side effects.
 - Analysis creation ranks evidence by objective only after tenant/owner/asset authorization, then freezes the selected facts with a revision and SHA-256. Confirmation preserves completed stages 1-4 and atomically consumes the resume token with database compare-and-set. Do not silently re-query current evidence or regress to whole-pipeline recomputation.
-- Analysis creation ranks evidence by objective only after tenant/owner/asset authorization, then freezes the selected facts with a revision and SHA-256. Confirmation preserves completed stages 1-4 and atomically consumes the resume token with database compare-and-set. Do not silently re-query current evidence or regress to whole-pipeline recomputation.
-- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; approval must atomically materialize a managed, retrievable knowledge source with candidate/PRD/hash/evidence provenance. Ordinary document deletion cannot bypass this governance. Derived action items enter the controlled tool approval queue.
+- Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; approval must atomically materialize a managed, retrievable source with candidate/PRD/hash/evidence provenance. Approved knowledge evolves only through audited supersede/revoke requests: never delete historical managed documents, only ACTIVE versions enter future retrieval/graph context, and team requesters cannot approve their own lifecycle request. Derived action items enter the controlled tool approval queue.
 - Media processing state and Agent analysis state are separate lifecycles, aggregated only for presentation.
 
 ## Grill the user at real decision points
@@ -43,11 +42,12 @@ Do not pause for discoverable implementation details, reversible refactors, test
 
 - For a cross-service change, update or add the versioned contract before implementations.
 - Keep HTTP handlers thin and domain logic testable without external infrastructure.
+- Keep PRD delivery projection in `publication_artifacts.py`; keep governed knowledge schema, migration, materialization and lifecycle transactions in `knowledge_lifecycle_store.py` so Phase 2 does not grow back into a monolith.
 - Prefer an end-to-end vertical slice over broad scaffolding with no user-visible path.
 - Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate.
 - Add a regression test for a defect and an evaluation case for a changed Agent behavior.
 - Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
-- Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
+- Approved-knowledge materialization or lifecycle changes must run the focused workflow tests and `python quality/agent-evals/evaluate_knowledge_lifecycle.py`; retrieval visibility changes also run V6.
 - Use an ADR for a material architectural decision; do not silently rewrite prior decisions.
 
 Read [references/maintenance-workflow.md](references/maintenance-workflow.md) for task routing, verification levels, knowledge ownership and handoff requirements.

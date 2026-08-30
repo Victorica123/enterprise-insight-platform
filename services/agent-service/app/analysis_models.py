@@ -158,6 +158,67 @@ class KnowledgeCandidate(BaseModel):
     knowledge_document_id: str | None = None
     knowledge_content_sha256: str | None = None
     knowledge_published_at: datetime | None = None
+    knowledge_status: Literal["NONE", "ACTIVE", "REVOKED"] = "NONE"
+    active_knowledge_version_id: str | None = None
+    knowledge_version_number: int = Field(default=0, ge=0)
+    pending_lifecycle_request_id: str | None = None
+
+
+class GovernedKnowledgeVersion(BaseModel):
+    knowledge_version_id: str
+    candidate_id: str
+    tenant_id: str
+    owner_id: str
+    version_number: int = Field(ge=1)
+    statement: str
+    evidence: list[EvidenceRef] = Field(min_length=1)
+    document_id: str
+    content_sha256: str
+    status: Literal["ACTIVE", "SUPERSEDED", "REVOKED"]
+    predecessor_version_id: str | None = None
+    successor_version_id: str | None = None
+    approved_by: str
+    approved_at: datetime
+    invalidated_by: str | None = None
+    invalidated_at: datetime | None = None
+    invalidation_reason: str | None = None
+
+
+class KnowledgeLifecycleRequest(BaseModel):
+    request_id: str
+    candidate_id: str
+    tenant_id: str
+    owner_id: str
+    action: Literal["REVOKE", "SUPERSEDE"]
+    reason: str
+    replacement_statement: str | None = None
+    replacement_evidence: list[EvidenceRef] = Field(default_factory=list)
+    status: Literal["PENDING", "APPROVED", "REJECTED"] = "PENDING"
+    requested_by: str
+    requested_at: datetime
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    resulting_version_id: str | None = None
+
+
+class KnowledgeLifecycleCreateRequest(BaseModel):
+    action: Literal["REVOKE", "SUPERSEDE"]
+    reason: str = Field(min_length=3, max_length=1000)
+    replacement_statement: str | None = Field(default=None, max_length=4000)
+    replacement_evidence: list[EvidenceRef] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_supersession(self) -> "KnowledgeLifecycleCreateRequest":
+        if self.action == "SUPERSEDE":
+            if not self.replacement_statement or len(self.replacement_statement.strip()) < 3:
+                raise ValueError("supersede requires a replacement statement")
+            if not self.replacement_evidence:
+                raise ValueError("supersede requires evidence")
+        return self
+
+
+class KnowledgeLifecycleDecisionRequest(BaseModel):
+    approved: bool
 
 
 class ActionItemDraft(BaseModel):
@@ -184,6 +245,8 @@ class ActionItemDraft(BaseModel):
 class PublicationDeliverables(BaseModel):
     version: PublishedPrdVersion
     knowledge_candidates: list[KnowledgeCandidate]
+    knowledge_versions: list[GovernedKnowledgeVersion] = Field(default_factory=list)
+    knowledge_lifecycle_requests: list[KnowledgeLifecycleRequest] = Field(default_factory=list)
     action_items: list[ActionItemDraft]
 
 

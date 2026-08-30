@@ -497,3 +497,9 @@
     grid-template-columns: 1fr;
   }
 }
+.historical-sources { display: grid; gap: 7px; margin: 10px 0; padding: 10px; border: 1px solid var(--border-light); border-radius: 8px; }
+.historical-sources > div { padding: 8px; background: var(--surface-2); border-radius: 7px; }
+.historical-sources span { margin-right: 7px; font-size: 11px; color: var(--muted); }
+.historical-sources p { margin: 5px 0; color: var(--text-secondary); font-size: 12px; }
+.historical-sources small { color: var(--warning-text); }
+.knowledge-history-status.superseded, .knowledge-history-status.revoked { color: var(--warning-text); font-weight: 700; }

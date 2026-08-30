@@ -37,6 +37,12 @@ def init_db() -> None:
                 source_version integer not null default 1,
                 payload_sha256 text not null default '',
                 metadata_json text not null default '{}',
+                lifecycle_status text not null default 'ACTIVE',
+                supersedes_document_id text,
+                superseded_by_document_id text,
+                lifecycle_changed_by text,
+                lifecycle_changed_at text,
+                lifecycle_reason text,
                 created_at text not null default current_timestamp
             )
             """
@@ -82,6 +88,12 @@ def init_db() -> None:
             "source_version": "integer not null default 1",
             "payload_sha256": "text not null default ''",
             "metadata_json": "text not null default '{}'",
+            "lifecycle_status": "text not null default 'ACTIVE'",
+            "supersedes_document_id": "text",
+            "superseded_by_document_id": "text",
+            "lifecycle_changed_by": "text",
+            "lifecycle_changed_at": "text",
+            "lifecycle_reason": "text",
         }.items():
             ensure_column(conn, table="documents", column=column, definition=definition)
         for column, definition in {
@@ -195,6 +207,7 @@ def init_db() -> None:
         )
         ensure_column(conn, table="chat_logs", column="tenant_id", definition="text not null default 'legacy'")
         ensure_column(conn, table="chat_logs", column="owner_id", definition="text not null default 'legacy'")
+        ensure_column(conn, table="chat_logs", column="sources_json", definition="text not null default '[]'")
         conn.execute(
             "create index if not exists idx_chat_logs_scope on chat_logs(tenant_id, owner_id, created_at)"
         )
@@ -404,6 +417,7 @@ def list_document_rows(
                 documents.filename,
                 documents.source_type,
                 documents.external_id,
+                documents.lifecycle_status,
                 documents.created_at,
                 count(chunks.id) as chunk_count
             from documents
@@ -423,7 +437,7 @@ def list_chunk_rows(
     asset_ids: tuple[str, ...] = (),
 ) -> list[sqlite3.Row]:
     init_db()
-    predicates: list[str] = []
+    predicates: list[str] = ["documents.lifecycle_status = 'ACTIVE'"]
     parameters: list[object] = []
     if tenant_id is not None:
         predicates.append("chunks.tenant_id = ?")
@@ -443,7 +457,9 @@ def list_chunk_rows(
                    chunks.embedding, chunks.embedding_v2, chunks.chunk_title,
                    chunks.tenant_id, chunks.owner_id, chunks.source_type, chunks.asset_id,
                    chunks.segment_id, chunks.start_ms, chunks.end_ms, chunks.speaker,
-                   documents.external_id, documents.payload_sha256, documents.metadata_json
+                   documents.external_id, documents.payload_sha256, documents.metadata_json,
+                   documents.lifecycle_status, documents.supersedes_document_id,
+                   documents.superseded_by_document_id
             from chunks
             join documents on documents.id = chunks.document_id
             {where_clause}
@@ -875,6 +891,7 @@ def record_chat_log(
     estimated_cost_usd: float,
     answer_preview: str,
     trace: list[dict[str, str]],
+    sources: list[dict[str, object]] | None = None,
     tenant_id: str = "legacy",
     owner_id: str = "legacy",
 ) -> int:
@@ -885,9 +902,9 @@ def record_chat_log(
             insert into chat_logs (
                 tenant_id, owner_id, question, workflow_mode, answer_mode, retriever_mode, intent, outcome,
                 evidence_status, citation_status, source_count, latency_ms,
-                total_tokens, estimated_cost_usd, answer_preview, trace_json
+                total_tokens, estimated_cost_usd, answer_preview, trace_json, sources_json
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tenant_id,
@@ -906,6 +923,7 @@ def record_chat_log(
                 round(estimated_cost_usd, 6),
                 answer_preview[:400],
                 json.dumps(trace[:40], ensure_ascii=False),
+                json.dumps((sources or [])[:10], ensure_ascii=False),
             ),
         )
         return int(cursor.lastrowid or 0)
@@ -1013,4 +1031,46 @@ def _chat_log_row_to_dict(row: sqlite3.Row, include_trace: bool) -> dict[str, ob
             result["trace"] = json.loads(row["trace_json"] or "[]")
         except Exception:
             result["trace"] = []
+        try:
+            sources = json.loads(row["sources_json"] or "[]") if "sources_json" in row.keys() else []
+        except Exception:
+            sources = []
+        result["sources"] = _refresh_historical_source_lifecycle(sources)
     return result
+
+
+def _refresh_historical_source_lifecycle(
+    sources: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    knowledge_document_ids = [
+        str(source.get("document_id"))
+        for source in sources
+        if source.get("origin_type") == "approved_knowledge" and source.get("document_id")
+    ]
+    if not knowledge_document_ids:
+        return sources
+    placeholders = ",".join("?" for _ in knowledge_document_ids)
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            select id, lifecycle_status, superseded_by_document_id, metadata_json
+            from documents where id in ({placeholders})
+            """,
+            knowledge_document_ids,
+        ).fetchall()
+    states = {row["id"]: row for row in rows}
+    refreshed: list[dict[str, object]] = []
+    for source in sources:
+        value = dict(source)
+        row = states.get(str(value.get("document_id")))
+        if row is not None:
+            value["knowledge_lifecycle_status"] = row["lifecycle_status"]
+            value["superseded_by_document_id"] = row["superseded_by_document_id"]
+            try:
+                metadata = json.loads(row["metadata_json"] or "{}")
+            except Exception:
+                metadata = {}
+            value["knowledge_version_id"] = metadata.get("knowledge_version_id")
+            value["knowledge_version_number"] = metadata.get("knowledge_version_number")
+        refreshed.append(value)
+    return refreshed

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/knowledge-lifecycle-v1.schema.json",
+  "title": "Governed knowledge lifecycle v1",
+  "oneOf": [
+    { "$ref": "#/$defs/lifecycleRequest" },
+    { "$ref": "#/$defs/knowledgeVersion" }
+  ],
+  "$defs": {
+    "evidence": {
+      "$ref": "publication-deliverables-v1.schema.json#/$defs/evidence"
+    },
+    "knowledgeVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "knowledge_version_id", "candidate_id", "tenant_id", "owner_id",
+        "version_number", "statement", "evidence", "document_id",
+        "content_sha256", "status", "predecessor_version_id",
+        "successor_version_id", "approved_by", "approved_at",
+        "invalidated_by", "invalidated_at", "invalidation_reason"
+      ],
+      "properties": {
+        "knowledge_version_id": { "type": "string", "format": "uuid" },
+        "candidate_id": { "type": "string", "format": "uuid" },
+        "tenant_id": { "type": "string", "minLength": 1 },
+        "owner_id": { "type": "string", "minLength": 1 },
+        "version_number": { "type": "integer", "minimum": 1 },
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence" } },
+        "document_id": { "type": "string", "minLength": 1 },
+        "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "status": { "enum": ["ACTIVE", "SUPERSEDED", "REVOKED"] },
+        "predecessor_version_id": { "type": ["string", "null"], "format": "uuid" },
+        "successor_version_id": { "type": ["string", "null"], "format": "uuid" },
+        "approved_by": { "type": "string", "minLength": 1 },
+        "approved_at": { "type": "string", "format": "date-time" },
+        "invalidated_by": { "type": ["string", "null"] },
+        "invalidated_at": { "type": ["string", "null"], "format": "date-time" },
+        "invalidation_reason": { "type": ["string", "null"] }
+      }
+    },
+    "lifecycleRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id", "candidate_id", "tenant_id", "owner_id", "action",
+        "reason", "replacement_statement", "replacement_evidence", "status",
+        "requested_by", "requested_at", "decided_by", "decided_at",
+        "resulting_version_id"
+      ],
+      "properties": {
+        "request_id": { "type": "string", "format": "uuid" },
+        "candidate_id": { "type": "string", "format": "uuid" },
+        "tenant_id": { "type": "string", "minLength": 1 },
+        "owner_id": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["REVOKE", "SUPERSEDE"] },
+        "reason": { "type": "string", "minLength": 3, "maxLength": 1000 },
+        "replacement_statement": { "type": ["string", "null"], "maxLength": 4000 },
+        "replacement_evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "status": { "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "requested_by": { "type": "string", "minLength": 1 },
+        "requested_at": { "type": "string", "format": "date-time" },
+        "decided_by": { "type": ["string", "null"] },
+        "decided_at": { "type": ["string", "null"], "format": "date-time" },
+        "resulting_version_id": { "type": ["string", "null"], "format": "uuid" }
+      }
+    }
+  }
+}
