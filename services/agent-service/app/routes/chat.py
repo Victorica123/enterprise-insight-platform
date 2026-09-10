@@ -6,17 +6,17 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.agentic_rag import answer_agentic_question  # compatibility patch target
-from app.auth import ActorPrincipal, current_principal
 from app.architecture.context import RequestContext
 from app.architecture.observability import record_chat_log, record_chat_metric
 from app.architecture.orchestration import answer_chat
-from app.rag import answer_question  # compatibility patch target
-from app.models import ChatRequest, ChatResponse
+from app.auth import ActorPrincipal, current_principal
 from app.model_egress import (
     bind_model_egress_tenant,
     is_model_egress_allowed,
     reset_model_egress_tenant,
 )
+from app.models import ChatRequest, ChatResponse
+from app.rag import answer_question  # compatibility patch target
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ router = APIRouter(tags=["chat"])
 )
 def chat(
     request: ChatRequest,
-    principal: ActorPrincipal = Depends(current_principal),  # noqa: B008
+    principal: ActorPrincipal = Depends(current_principal),
 ) -> ChatResponse:
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")

@@ -11,18 +11,16 @@ import sqlite3
 import uuid
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from time import perf_counter
 
 from app import database
 from app.graph_extraction import (
-    ENTITY_TYPE_LABELS,
     GraphEntity,
     GraphRelation,
     extract_graph_from_text,
     normalize_name,
 )
-
 
 MAX_PATH_DEPTH = 4
 MAX_PATHS = 8
@@ -162,7 +160,7 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _persist(

@@ -15,7 +15,6 @@ from app.tool_observability_store import (
     update_tool_call,
 )
 
-
 __all__ = [
     "get_chat_log",
     "get_chat_metrics_summary",

@@ -18,6 +18,7 @@ export async function safeFetch(input: RequestInfo | URL, init?: RequestInit): P
     if (error instanceof TypeError) {
       throw new Error(
         `无法连接后端服务。请确认 FastAPI 已启动，地址为 ${API_BASE_URL}，并检查端口、CORS 或网络拦截。`,
+        { cause: error },
       );
     }
 

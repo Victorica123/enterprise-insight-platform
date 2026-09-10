@@ -19,7 +19,6 @@ from typing import Any
 
 from fastapi import Header, HTTPException, status
 
-
 VALID_ROLES = frozenset({"viewer", "operator", "admin"})
 VALID_WORKSPACE_TYPES = frozenset({"personal", "team"})
 WRITE_ROLES = frozenset({"operator", "admin"})

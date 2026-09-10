@@ -10,7 +10,6 @@ from app.media_ingestion import (
 )
 from app.rag import delete_document, ingest_document, list_documents
 
-
 __all__ = [
     "IngestionConflictError",
     "TranscriptData",

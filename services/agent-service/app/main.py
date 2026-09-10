@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import __version__
+from app import __version__, database
 from app.analysis_store import init_analysis_store
 from app.auth import validate_auth_configuration
 from app.config import (
@@ -23,7 +23,6 @@ from app.config import (
     load_local_env,
 )
 from app.database import get_embedding_stats, init_db
-from app import database
 from app.embeddings import warm_up_embeddings
 from app.graph_store import init_graph_store
 from app.llm import is_llm_configured

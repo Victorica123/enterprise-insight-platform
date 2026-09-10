@@ -1,8 +1,8 @@
 """Deterministic local-answer templates and field extraction rules."""
 import re
 
-from app.models import Source
 from app.evidence import source_location
+from app.models import Source
 
 
 def build_fallback_answer(sources: list[Source], note: str) -> str:

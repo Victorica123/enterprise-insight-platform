@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, model_validator
 from typing import Literal
 
+from pydantic import BaseModel, Field, model_validator
 
 AnswerMode = Literal["auto", "local", "api"]
 RetrieverMode = Literal["keyword", "embedding", "hybrid"]

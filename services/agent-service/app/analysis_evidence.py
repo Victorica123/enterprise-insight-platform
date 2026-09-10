@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from app import database
 from app.retrievers import Chunk, RetrievalScope, get_retriever
 
-
 ANALYSIS_RETRIEVAL_MODE = "hybrid"
 ANALYSIS_SNAPSHOT_LIMIT = 24
 

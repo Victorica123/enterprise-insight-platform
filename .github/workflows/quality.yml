@@ -15,6 +15,8 @@ jobs:
           cache: pip
           cache-dependency-path: services/agent-service/requirements.txt
       - run: pip install -r services/agent-service/requirements.txt
+      - run: pip install ruff==0.16.6
+      - run: ruff check --config ruff.toml services/agent-service scripts quality
       - run: python -m unittest discover -s tests -q
         working-directory: services/agent-service
         env:
@@ -53,6 +55,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
+        working-directory: apps/web
+      - run: npm run lint
         working-directory: apps/web
       - run: npm test
         working-directory: apps/web

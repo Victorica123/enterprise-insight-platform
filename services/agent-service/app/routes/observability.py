@@ -23,7 +23,6 @@ from app.models import (
 )
 from app.tool_observability_store import get_tool_metrics_summary, list_tool_call_logs
 
-
 router = APIRouter(tags=["observability"])
 
 

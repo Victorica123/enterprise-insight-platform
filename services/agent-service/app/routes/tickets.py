@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.architecture.execution import execute_tool, resolve_tool_action
 from app.auth import (
     ActorPrincipal,
     current_principal,
@@ -24,8 +25,6 @@ from app.ticket_store import (
     list_pending_actions,
     list_tickets,
 )
-from app.architecture.execution import execute_tool, resolve_tool_action
-
 
 router = APIRouter(tags=["tickets"])
 

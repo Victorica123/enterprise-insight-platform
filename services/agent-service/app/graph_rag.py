@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.graph_extraction import ENTITY_TYPE_LABELS
 from app.graph_store import (
-    ENTITY_TYPE_LABELS,
     GraphRelation,
     get_entity_neighborhood,
     list_entities,

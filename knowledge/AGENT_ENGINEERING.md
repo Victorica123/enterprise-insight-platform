@@ -36,7 +36,7 @@
 ## 检索与缓存实现
 
 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 BGE 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。
-- hybrid 先独立执行 keyword 与 embedding，再以 RRF 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。
+- hybrid 先独立执行 keyword 与 embedding，再以 RRF 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。RRF 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。
 - 可选 cross-encoder 只精排 Top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。
 - chunk 快照 LRU 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asset scope。写入提升 revision，多进程读不会长期复用旧授权范围或旧内容。
 - BGE 向量 LRU 以 model identity + 文本 SHA-256 为 key，最大 512 项；同 batch 去重，缓存只保存向量，不保存原文。该缓存是 embedding 计算复用，不等同于 LLM attention KV cache。

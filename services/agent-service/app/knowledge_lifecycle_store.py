@@ -11,7 +11,6 @@ from app import database
 from app.analysis_models import GovernedKnowledgeVersion, KnowledgeLifecycleRequest
 from app.evidence_provenance import validate_and_normalize_evidence
 
-
 GraphIndexer = Callable[..., dict[str, int]]
 GraphScopeRebuilder = Callable[..., None]
 

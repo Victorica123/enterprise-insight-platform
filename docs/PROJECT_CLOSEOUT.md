@@ -16,6 +16,10 @@
 
 在上述封板基线之上，本轮生产试点加固已完成并通过本机回归：Agent Service 154/154、Media Service 在 Temurin JDK 18.0.2.1 下 131/131、Web TypeScript/Vite 构建通过，localhost-only 纵向验收保持 33/33。新增的 MySQL/RS256/OIDC/保留期/模型出境门禁仍属于准生产路径；当前主机没有 Docker、k6 和经批准的外部模型凭证，因此真实中间件、容量、故障注入和生产 SLO 仍未形成通过证据。本文后续历史数字保留其对应日期，最新可审计数字以 [`knowledge/QUALITY.md`](../knowledge/QUALITY.md) 为准。
 
+### 2026-09-11 状态补充
+
+2026-09-01 至 09-10 的准生产基线工作已全部提交入库，Git 历史不再停留在 2026-08-31。新增 ruff 与 ESLint 门禁进入 CI；收尾回归中发现并修复两处缺陷：ruff 自动修复删除了 `graph_store` 的透传导入导致 Agent 服务无法加载，以及 PRD 门禁在没有本地 BGE 模型的环境里因 hybrid RRF 平局排序错误而失败。当前口径：Agent 158/158、Media 在 JDK 17 与 18 下 135/135、Web lint 0 error 与 7/7 单测、localhost-only 验收 33/33；`compose.local.yml` 三容器在本机 Docker 中健康运行。生产边界不变，细节见 `knowledge/QUALITY.md` 2026-09-11 条目。
+
 ## 已封板的交付物
 
 | 交付物 | 入口 |

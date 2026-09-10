@@ -58,7 +58,7 @@ Engineering knowledge plane (not customer runtime data)
 
 1. Agent Service 从 JWT 得到 `tenant_id`、`owner_id` 和 `workspace_type`。personal 查询绑定 tenant + owner，team 查询绑定 tenant；过滤发生在检索前。用户选定 `asset_ids` 时只收窄视频来源，当前 Workspace 内已授权的上传文档和 `ACTIVE` 受治理知识仍参与检索，避免视频筛选意外切断知识沉淀闭环。
 2. Router 判断问题意图与复杂度，Planner 生成原问题、改写和补充 query。两者与 B2 工具选择均通过 `response_format` 请求结构化 JSON：OpenAI 使用严格 JSON Schema，DeepSeek 使用 JSON Object；服务端再做枚举、类型、工具白名单和参数校验，失败统一降级到规则路径。
-3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 使用 RRF 合并排名，再用关键词/向量归一化分执行证据门控；可选 cross-encoder 只重排 Top-12 候选。
+3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 使用 RRF 合并排名（平局时先看 keyword 覆盖分，再看融合门控分），再用关键词/向量归一化分执行证据门控；可选 cross-encoder 只重排 Top-12 候选。
 4. Evidence Agent 判断证据是否足够；复杂问题最多进行受限轮次补查，不无限循环。
 5. 本地模板或 LLM 生成答案后，引用校验器检查 source、租户归属及视频时间范围。无法支持的结论必须标记假设或拒答。
 6. 前端点击视频引用时向 Media Service 请求短时播放 token；Agent Service 不保存对象存储凭证。

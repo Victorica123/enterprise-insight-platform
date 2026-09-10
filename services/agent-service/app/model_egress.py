@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from contextvars import ContextVar, Token
 
-
 _TENANT: ContextVar[str | None] = ContextVar("model_egress_tenant", default=None)
 
 

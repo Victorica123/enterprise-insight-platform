@@ -8,7 +8,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-
 _LONG_TEXT_COLUMNS = {
     "answer_preview", "confirmations_json", "content", "description",
     "details_json", "document_ids", "error_message", "evidence",

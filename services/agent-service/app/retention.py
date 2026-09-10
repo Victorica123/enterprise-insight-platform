@@ -6,11 +6,10 @@ import asyncio
 import logging
 import os
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app import database
 from app.graph_store import rebuild_graph_scope
-
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ def run_retention_once(now: datetime | None = None) -> dict[str, int]:
     """Delete one bounded batch; callers may run it repeatedly for a backlog."""
     if not retention_enabled():
         return {"video_documents": 0, "audit_records": 0}
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     transcript_cutoff = (current - timedelta(days=_positive_int("RETENTION_TRANSCRIPT_DAYS", 180))).isoformat(
         timespec="seconds"
     )

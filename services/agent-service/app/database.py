@@ -1,13 +1,12 @@
 import json
-import sqlite3
 import os
+import sqlite3
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Iterator
 
 from app.db_compat import MySqlConnectionCompat, connect_mysql
 from app.embeddings import build_embedding, embed_real, embedding_to_json
-
 
 DB_PATH = Path(os.getenv(
     "AGENT_DATABASE_PATH",

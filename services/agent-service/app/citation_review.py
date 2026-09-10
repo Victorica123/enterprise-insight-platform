@@ -1,8 +1,8 @@
 """Answer citation normalization and lightweight claim grounding checks."""
 import re
 
-from app.models import Source
 from app.evidence import source_location
+from app.models import Source
 
 
 def review_citations(answer: str, sources: list[Source]) -> tuple[str, str, str]:

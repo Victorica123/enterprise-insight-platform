@@ -5,7 +5,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-
 AnalysisStatus = Literal[
     "RUNNING", "WAITING_CONFIRMATION", "DRAFT_READY",
     "PUBLISH_PENDING", "PUBLISHED", "FAILED",
@@ -41,7 +40,7 @@ class EvidenceRef(BaseModel):
     speaker: str | None = None
 
     @model_validator(mode="after")
-    def validate_video_location(self) -> "EvidenceRef":
+    def validate_video_location(self) -> EvidenceRef:
         if self.source_type == "video":
             if not self.asset_id or not self.segment_id or self.start_ms is None or self.end_ms is None:
                 raise ValueError("video evidence requires asset, segment and time range")
@@ -208,7 +207,7 @@ class KnowledgeLifecycleCreateRequest(BaseModel):
     replacement_evidence: list[EvidenceRef] = Field(default_factory=list, max_length=50)
 
     @model_validator(mode="after")
-    def validate_supersession(self) -> "KnowledgeLifecycleCreateRequest":
+    def validate_supersession(self) -> KnowledgeLifecycleCreateRequest:
         if self.action == "SUPERSEDE":
             if not self.replacement_statement or len(self.replacement_statement.strip()) < 3:
                 raise ValueError("supersede requires a replacement statement")

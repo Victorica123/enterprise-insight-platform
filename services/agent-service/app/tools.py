@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Callable
 
 from app.auth import OPERATOR_ROLES, WRITE_ROLES
 from app.publication_artifacts import settle_action_ticket
-from app.tool_observability_store import record_tool_call, update_tool_call
 from app.ticket_store import (
     PendingAction,
     claim_pending_action,
@@ -23,7 +22,7 @@ from app.ticket_store import (
     update_ticket_status,
     utc_now,
 )
-
+from app.tool_observability_store import record_tool_call, update_tool_call
 
 logger = logging.getLogger(__name__)
 

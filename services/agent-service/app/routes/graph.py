@@ -16,7 +16,6 @@ from app.models import (
     GraphRelationResponse,
 )
 
-
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 

@@ -5,7 +5,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from app.analysis_models import (
-    AnalysisStageResult, EvidenceRef, OpenQuestion, PrdDraft, PrdRequirement,
+    AnalysisStageResult,
+    EvidenceRef,
+    OpenQuestion,
+    PrdDraft,
+    PrdRequirement,
 )
 from app.retrievers import Chunk
 

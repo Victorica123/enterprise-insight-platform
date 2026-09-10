@@ -90,4 +90,4 @@
 
 ## 完成修改前
 
-至少运行改动模块的聚焦测试、`python scripts/update_knowledge.py --check`，再按 `skills/enterprise-insight-maintainer/references/maintenance-workflow.md` 判断是否需要服务级或平台级验证。不要为了减少文件数把身份、审批、证据、契约或质量门禁重新揉回一个大文件。
+至少运行改动模块的聚焦测试、对应的 lint（Python：`ruff check --config ruff.toml services/agent-service scripts quality`；Web：`npm run lint`）、`python scripts/update_knowledge.py --check`，再按 `skills/enterprise-insight-maintainer/references/maintenance-workflow.md` 判断是否需要服务级或平台级验证。不要为了减少文件数把身份、审批、证据、契约或质量门禁重新揉回一个大文件。

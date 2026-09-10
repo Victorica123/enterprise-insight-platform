@@ -56,6 +56,8 @@ Do not pause for discoverable implementation details, reversible refactors, test
 - Media outbox, upload or cross-service reliability changes must run the Media integration tests and the localhost acceptance; document whether the result used H2/SQLite/mock or real MySQL/Redis/RocketMQ/S3.
 - Approved-knowledge materialization or lifecycle changes must run the focused workflow tests and `python quality/agent-evals/evaluate_knowledge_lifecycle.py`; retrieval visibility changes also run V6.
 - Use an ADR for a material architectural decision; do not silently rewrite prior decisions.
+- Run the shared lint gates before finishing: `ruff check --config ruff.toml services/agent-service scripts quality` at the repository root and `npm run lint` in `apps/web`. After any `--fix`, rerun the full affected service tests: an automated import cleanup can delete a re-export that other modules still import.
+- Evaluation gates must pass in the CI environment (hash embedding, no optional local model, `LLM_ROUTER_ENABLED=0`); a gate that only passes with `fastembed` installed is not evidence.
 
 Read [references/maintenance-workflow.md](references/maintenance-workflow.md) for task routing, verification levels, knowledge ownership and handoff requirements.
 

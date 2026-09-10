@@ -6,7 +6,6 @@ from app.database import get_embedding_stats, rebuild_chunk_embeddings
 from app.models import EmbeddingRebuildResponse, EmbeddingStatus
 from app.status_service import build_embedding_status
 
-
 router = APIRouter(tags=["embeddings"])
 
 

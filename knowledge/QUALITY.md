@@ -149,9 +149,20 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 当前机器缺少 Docker/k6，真实 MySQL/Keycloak/Redis/RocketMQ/MinIO 运行、故障注入、生产数据库备份恢复及容量 SLO 仍待目标环境验证；没有调用外部模型供应商。轻量备份脚本不覆盖准生产 Docker 数据卷，此限制已加入运维知识。
 - 知识更新器已重建当前状态与语义索引，`--check` 与补丁空白检查通过。
 
+2026-09-11 收尾未入库工作，建立 lint 门禁并修复两处门禁缺陷：
+
+- 新增仓库根 `ruff.toml`（ruff 0.16.6，E4/E7/E9/F/I/UP/B/RUF100，忽略 FastAPI 依赖注入惯用法 B008）与 `apps/web/eslint.config.js`（ESLint 10 flat config：`@eslint/js` recommended、typescript-eslint recommended、`react-hooks/rules-of-hooks`、`react-hooks/exhaustive-deps`、`react-refresh/only-export-components`）。CI 的 agent job 新增 `ruff check`，web job 新增 `npm run lint`。首次扫描 Python 110 条（101 条自动修复：导入排序、`datetime.UTC`、PEP 604/695 写法、无用 noqa；9 条手工处理 `zip(strict=)`、lambda 赋值与泛型语法），现为 0 条；ESLint 现为 0 error、18 warning（`exhaustive-deps` 与 fast refresh 提示保留为 warning）。未启用 eslint-plugin-react-hooks 7.x 的 React Compiler 校验规则集：本项目未使用 React Compiler，且其 `refs` 规则会把携带 ref 的 props 对象的全部属性读取误报为渲染期访问 ref（单个文件即 127 条误报）。
+- 缺陷一：ruff F401 自动修复删除了 `graph_store.py` 对 `ENTITY_TYPE_LABELS` 的透传导入，而 `graph_rag.py` 仍从 `graph_store` 导入该符号，导致 `app.main` 无法加载、Agent 全量 14 个测试模块导入失败。修复为 `graph_rag.py` 直接从定义方 `graph_extraction.py` 导入。结论：自动修复之后必须重跑全量回归，lint 通过不等于行为保持。
+- 缺陷二：PRD V1 门禁的 `prd-09-objective-ranking` 在没有可选本地 BGE 模型（`fastembed` 未安装，`requirements.txt` 亦不包含）时失败，`objective_recall1` 为 92%。用同一环境对上一次提交（2026-08-31）复跑同样失败，因此不是本轮回归，而是历史通过证据隐含依赖了本机可选模型；CI 环境同样只有哈希 embedding。根因：hybrid 在 RRF 平局（keyword 与 hash embedding 排名互为镜像）时以 0.5/0.5 融合门控分决胜，64 维哈希向量的噪声分反超了精确词项覆盖。修复为平局时先比较 keyword 覆盖分再比较融合分，门控分本身不变；新增回归 `HybridTieBreakTests`，已验证旧排序下该用例失败。
+- 修复后本机回归（全部使用哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **158/158**；V6 keyword/hybrid decision **98%**、recall@3 **97%**、fact **97%**，embedding-only 模式为 88%/84%/81%，低于其以本地 BGE 记录的 baseline，V6 门禁阈值只约束 hybrid，且该模式数字不代表真实模型质量；PRD **12/12** 且十项指标 **100%**；Knowledge Lifecycle **3/3** 且九项指标 **100%**；V5 **8/8**；维护索引测试 **3/3**。
+- Media Service 在 CI 使用的 Temurin JDK 17.0.18 下 `mvn -q test` 全量 **135/135**，Failures/Errors/Skipped 均为 0；这是 JDK 17 口径的首次全量通过记录，JDK 18 口径以 2026-09-07 条目为准。Web `npm run lint` 0 error、`npm test` **7/7**、TypeScript/Vite 生产构建通过。
+- `python scripts/local_acceptance.py` 返回 `PASS`，localhost-only **33/33**（临时 H2/SQLite、mock/local AI、随机端口、真实平台 JWT）。本机 Docker Desktop 已可用，`compose.local.yml` 的 agent、media、web 三容器构建后健康，`http://127.0.0.1:8080` 可访问；准生产 `compose.local-prod.yml`、k6 浸泡与故障注入仍未运行，真实中间件与外部模型结论不变。
+- 面试文档中的测试数量已统一为 Agent 157（本条目后为 158）、Media 135；`PROJECT_CLOSEOUT.md` 与本文带日期的历史条目按规则保留当时数字。2026-09-01 至 09-11 的全部工作区改动已提交入库，Git 历史不再停留在 2026-08-31。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。
+- `ruff check --config ruff.toml services/agent-service scripts quality` 与 `apps/web` 的 `npm run lint` 均为 0 error。
 - Web 类型检查和构建通过。
 - 契约校验、owner/tenant 负向测试通过。
 - Agent 行为变化对应评测未退化。
@@ -166,7 +177,7 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - Knowledge Lifecycle V1 只有 personal 替代、personal 撤回、team 替代三类固定场景，用于防止治理语义回退；它不覆盖大规模图谱增量成本、长期数据保留策略或真实多人组织流程。
 - 六阶段确认接口使用创建时的冻结证据并保留阶段 1–4；同一 resume token 的两个并发请求已有确定性回归，验证一次数据库 CAS 成功、另一次返回 409。它仍是业务阶段 checkpoint，不是模型调用中断后的执行栈恢复。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent 全量用例 + V6 RAG + PRD V1 + Knowledge Lifecycle V1 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web 类型/生产构建和 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent ruff lint + 全量用例 + V6 RAG + PRD V1 + Knowledge Lifecycle V1 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web ESLint + 前端单测 + 类型/生产构建，以及 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

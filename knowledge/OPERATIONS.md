@@ -5,6 +5,7 @@
 - Media Service：以其 Maven 配置声明的 JDK 17/18 为准。
 - Agent Service：Python 版本与依赖以 `services/agent-service` 的运行文件为准。
 - Web：Node.js 版本与依赖以 `apps/web/package.json` 和锁文件为准。
+- 静态检查：Python 在仓库根运行 `uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality`（或 `pip install ruff==0.16.6` 后运行同样的 `ruff check`）；Web 在 `apps/web` 运行 `npm run lint`。两者与 CI 使用同一配置，要求 0 error。使用 `--fix` 自动修复后必须重跑对应服务的全量测试。
 
 核心验收必须可使用 H2、SQLite、本地媒体目录、mock 转写/摘要和 localhost HTTP 完成；外部模型、Redis、RocketMQ、S3 与正式域名属于独立的真实集成验证，不阻塞本地功能验收。
 

@@ -22,7 +22,6 @@ from app.publication_artifacts import (
 )
 from app.publication_service import PublicationRuleError, approve_publication, request_publication
 
-
 __all__ = [
     "PublicationRuleError",
     "approve_publication",

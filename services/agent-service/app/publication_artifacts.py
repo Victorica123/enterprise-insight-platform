@@ -8,8 +8,6 @@ import uuid
 from datetime import datetime
 
 from app import database, knowledge_lifecycle_store
-from app.evidence_provenance import validate_and_normalize_evidence
-from app.graph_store import index_document_graph, init_graph_store, rebuild_graph_scope
 from app.analysis_models import (
     ActionItemDraft,
     AnalysisSessionResponse,
@@ -18,6 +16,8 @@ from app.analysis_models import (
     PublicationDeliverables,
     PublishedPrdVersion,
 )
+from app.evidence_provenance import validate_and_normalize_evidence
+from app.graph_store import index_document_graph, init_graph_store, rebuild_graph_scope
 
 
 def init_publication_artifact_store() -> None:

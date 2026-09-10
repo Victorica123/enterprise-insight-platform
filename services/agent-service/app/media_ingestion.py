@@ -35,7 +35,7 @@ class TranscriptSegment(BaseModel):
         return value.strip() or None
 
     @model_validator(mode="after")
-    def validate_time_range(self) -> "TranscriptSegment":
+    def validate_time_range(self) -> TranscriptSegment:
         if self.end_ms < self.start_ms:
             raise ValueError("end_ms must be greater than or equal to start_ms")
         return self
@@ -58,7 +58,7 @@ class TranscriptData(BaseModel):
         return stripped
 
     @model_validator(mode="after")
-    def validate_segments(self) -> "TranscriptData":
+    def validate_segments(self) -> TranscriptData:
         identifiers: set[str] = set()
         previous_start = -1
         for index, segment in enumerate(self.segments):

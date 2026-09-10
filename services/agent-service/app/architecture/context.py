@@ -7,8 +7,8 @@ scope at its own boundary.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from app.auth import ActorPrincipal
 
@@ -24,7 +24,7 @@ class RequestContext:
     trace_id: str | None = None
 
     @classmethod
-    def from_principal(cls, principal: ActorPrincipal) -> "RequestContext":
+    def from_principal(cls, principal: ActorPrincipal) -> RequestContext:
         return cls(
             tenant_id=principal.tenant_id,
             owner_id=principal.retrieval_owner_id,

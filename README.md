@@ -39,10 +39,11 @@ flowchart LR
 | 能力 | 当前可验证证据 |
 | --- | --- |
 | Agent Service | 157 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
-| Media Service | 受支持的 Temurin JDK 18 下 135 个自动化用例 |
+| Media Service | 受支持的 Temurin JDK 17/18 下 135 个自动化用例（CI 使用 JDK 17） |
 | Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景三套独立门禁 |
 | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
-| Web | TypeScript project build + Vite production build |
+| Web | ESLint 0 error + 7 个前端会话回归 + TypeScript project build + Vite production build |
+| 静态检查 | ruff 0.16.6（E/F/I/UP/B）与 ESLint 10（TypeScript + React Hooks）0 error，本机与 CI 共用同一配置 |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 
 详细、可审计的测试口径见 [`knowledge/QUALITY.md`](knowledge/QUALITY.md)。

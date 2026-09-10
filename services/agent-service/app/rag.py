@@ -1,18 +1,17 @@
-from dataclasses import dataclass
 import logging
 import math
 import re
+from dataclasses import dataclass
 from uuid import uuid4
 
-from app.config import get_llm_pricing
 from app import database
+from app.config import get_llm_pricing
 from app.database import connect, init_db, insert_document, list_document_rows
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
-from app.models import ChatResponse, DocumentSummary, DocumentUploadResponse, Source, TokenUsage, TraceStep
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
+from app.models import ChatResponse, DocumentSummary, DocumentUploadResponse, Source, TokenUsage, TraceStep
 from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
-
 
 logger = logging.getLogger(__name__)
 
@@ -599,7 +598,7 @@ def build_answer(
                 source="api",
             )
             return llm_answer.content, trace, usage
-        except Exception as exc:
+        except Exception:
             # 供应商报错原文只进服务端日志，不进用户可见的答案/trace（信息泄漏）
             logger.exception("LLM answer generation failed; falling back to template answer")
             trace.append(

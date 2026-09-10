@@ -6,10 +6,9 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app import database
-
 
 TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
 TICKET_PRIORITIES = {"low", "medium", "high", "critical"}
@@ -192,7 +191,7 @@ def init_ticket_store() -> None:
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def format_time(value: datetime) -> str:

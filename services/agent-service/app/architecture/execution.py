@@ -26,7 +26,6 @@ from app.tools import (
     resolve_tool_action,
 )
 
-
 __all__ = [
     "AnalysisRun",
     "ApprovalResolution",

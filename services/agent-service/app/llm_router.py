@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from app.config import get_llm_settings
 from app.llm import is_llm_configured
@@ -21,8 +21,6 @@ from app.llm_client import create_chat_completion
 from app.tools import get_tools_for_llm
 
 logger = logging.getLogger(__name__)
-
-JsonResult = TypeVar("JsonResult")
 
 INTENT_OPTIONS = ["risk", "causal", "fact", "summary", "general"]
 
@@ -83,7 +81,7 @@ def _llm_router_enabled() -> bool:
 
 
 @dataclass(frozen=True)
-class LLMJsonResult(Generic[JsonResult]):
+class LLMJsonResult[JsonResult]:
     data: JsonResult
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -156,7 +154,7 @@ def _chat_json(
             temperature=0.1,
             response_format=_response_format(schema_name, schema),
         )
-    except Exception as exc:  # noqa: BLE001  # provider failures must preserve rules fallback
+    except Exception as exc:  # provider failures must preserve rules fallback
         logger.warning("llm_router_request_failed error=%s fallback=rules", exc)
         return None
 

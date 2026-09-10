@@ -6,23 +6,42 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.analysis_models import (
-    ActionItemTicketDraftResponse, AnalysisAuditEvent, AnalysisConfirmationRequest,
-    AnalysisCreateRequest, AnalysisSessionResponse, KnowledgeCandidate,
-    KnowledgeCandidateDecisionRequest, KnowledgeLifecycleCreateRequest,
-    KnowledgeLifecycleDecisionRequest, KnowledgeLifecycleRequest, PublicationApprovalRequest,
+    ActionItemTicketDraftResponse,
+    AnalysisAuditEvent,
+    AnalysisConfirmationRequest,
+    AnalysisCreateRequest,
+    AnalysisSessionResponse,
+    KnowledgeCandidate,
+    KnowledgeCandidateDecisionRequest,
+    KnowledgeLifecycleCreateRequest,
+    KnowledgeLifecycleDecisionRequest,
+    KnowledgeLifecycleRequest,
+    PublicationApprovalRequest,
     PublicationDeliverables,
 )
 from app.architecture.execution import execute_tool, resume_six_stage_analysis, run_six_stage_analysis
 from app.architecture.governance import (
-    get_evidence_snapshot, get_session, get_session_for_tenant, list_audit_events,
-    list_pending_publications, list_sessions, save_session, transition_confirmation, utc_now,
-    PublicationRuleError, approve_publication, request_publication,
-    decide_knowledge_candidate, decide_knowledge_lifecycle, get_action_item,
-    get_publication_deliverables, mark_action_ticket_pending, request_knowledge_lifecycle,
+    PublicationRuleError,
+    approve_publication,
+    decide_knowledge_candidate,
+    decide_knowledge_lifecycle,
+    get_action_item,
+    get_evidence_snapshot,
+    get_publication_deliverables,
+    get_session,
+    get_session_for_tenant,
+    list_audit_events,
+    list_pending_publications,
+    list_sessions,
+    mark_action_ticket_pending,
+    request_knowledge_lifecycle,
+    request_publication,
+    save_session,
+    transition_confirmation,
+    utc_now,
 )
-from app.architecture.retrieval import build_analysis_evidence_snapshot, EvidenceProvenanceError, RetrievalScope
+from app.architecture.retrieval import EvidenceProvenanceError, RetrievalScope, build_analysis_evidence_snapshot
 from app.auth import ActorPrincipal, current_principal, require_write_role
-
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 

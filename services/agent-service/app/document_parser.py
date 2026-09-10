@@ -1,8 +1,7 @@
-from io import BytesIO
-from pathlib import Path
 import re
 import unicodedata
-
+from io import BytesIO
+from pathlib import Path
 
 SUPPORTED_EXTENSIONS = (".txt", ".md", ".pdf")
 

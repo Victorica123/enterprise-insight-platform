@@ -183,7 +183,7 @@ class EmbeddingRetriever:
                 continue
             scores = [
                 (query, cosine_similarity(query_vector, chunk_vector))
-                for query, query_vector in zip(query_texts, query_vectors)
+                for query, query_vector in zip(query_texts, query_vectors, strict=True)
             ]
             best_similarity = max((score for _, score in scores), default=0.0)
             score = similarity_to_score(best_similarity)
@@ -280,10 +280,14 @@ class HybridRetriever:
             )
             for key, chunk in chunks.items()
         ]
+        # RRF 平局（两路排名互为镜像，常见于小语料）时优先精确词项覆盖，再看融合门控分：
+        # 关键词命中是可审计的字面证据，向量分（尤其 64 维哈希保底）只是近似信号。
+        # 否则在没有本地 BGE 模型的环境里，"生成退款时效 PRD" 这类目标会被噪声向量分反超。
         ranked_hits = sorted(
             hits,
             key=lambda hit: (
                 fused.get((hit.chunk.document_id, hit.chunk.chunk_index), 0.0),
+                keyword_scores.get((hit.chunk.document_id, hit.chunk.chunk_index), 0),
                 hit.score,
             ),
             reverse=True,

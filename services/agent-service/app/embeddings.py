@@ -6,7 +6,6 @@ import re
 from collections import OrderedDict
 from threading import RLock
 
-
 DEFAULT_EMBEDDING_DIMENSION = 64
 
 # A3: 真实语义 embedding（fastembed/BGE-small-zh，512 维，ONNX 本地推理，无 torch 依赖）。
@@ -83,7 +82,7 @@ def embed_real(texts: list[str]) -> list[list[float]] | None:
         resolved: dict[tuple[int, str], tuple[float, ...]] = {}
         missing: OrderedDict[tuple[int, str], str] = OrderedDict()
         with _real_embedding_cache_lock:
-            for key, text in zip(keys, safe_texts):
+            for key, text in zip(keys, safe_texts, strict=True):
                 cached = _real_embedding_cache.get(key)
                 if cached is not None:
                     _real_embedding_cache.move_to_end(key)
@@ -99,7 +98,7 @@ def embed_real(texts: list[str]) -> list[list[float]] | None:
                 return None
             additions = {
                 key: tuple(float(value) for value in vector)
-                for key, vector in zip(missing, generated)
+                for key, vector in zip(missing, generated, strict=False)
             }
             resolved.update(additions)
             with _real_embedding_cache_lock:
@@ -208,7 +207,7 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
 
-    dot = sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
     left_norm = math.sqrt(sum(value * value for value in left))
     right_norm = math.sqrt(sum(value * value for value in right))
     if left_norm == 0 or right_norm == 0:

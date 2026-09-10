@@ -28,8 +28,9 @@ uvicorn app.main:app --reload --port 8000
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -q           # 102 个回归测试
+python -m unittest discover -s tests -q           # 158 个回归测试（LLM_ROUTER_ENABLED=0）
 python ../../quality/agent-evals/evaluate_v6.py   # 离线黄金集门禁
+# 仓库根目录：uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality
 ```
 
 ## 模块地图

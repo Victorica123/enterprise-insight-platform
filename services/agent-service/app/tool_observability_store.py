@@ -5,7 +5,7 @@ import json
 import math
 import sqlite3
 import uuid
-from typing import Iterable
+from collections.abc import Iterable
 
 from app import database
 from app.ticket_store import expire_pending_actions, format_time, init_ticket_store, utc_now

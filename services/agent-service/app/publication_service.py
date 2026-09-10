@@ -10,7 +10,7 @@ from app.analysis_models import (
     PublicationApprovalRequest,
 )
 from app.analysis_store import transition_session, utc_now
-from app.auth import ActorPrincipal, WRITE_ROLES
+from app.auth import WRITE_ROLES, ActorPrincipal
 from app.publication_artifacts import build_publication_deliverables
 
 

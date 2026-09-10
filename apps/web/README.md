@@ -22,6 +22,8 @@ echo "VITE_MEDIA_API_BASE_URL=http://127.0.0.1:8081" >> .env
 ## 构建与检查
 
 ```bash
+npm run lint       # ESLint（TypeScript + React Hooks 规则），CI 同配置
+npm test           # node --test 前端会话/OIDC 回归
 npm run build      # tsc -b 类型检查 + vite 生产构建
 npm run preview    # 本地预览生产构建
 ```

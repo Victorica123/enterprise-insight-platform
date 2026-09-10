@@ -1,0 +1,9 @@
+# Python lint 门禁：CI 与本机共用此配置，保证结果可复现。
+# 运行方式：ruff check services/agent-service scripts quality
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "RUF100"]
+# B008: FastAPI 依赖注入惯用法（Depends/Query 作为参数默认值），不视为缺陷。
+ignore = ["B008"]

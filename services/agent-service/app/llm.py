@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
 from app.config import get_llm_settings
+from app.evidence import source_location
 from app.llm_client import create_chat_completion
 from app.models import Source
-from app.evidence import source_location
 
 
 @dataclass(frozen=True)

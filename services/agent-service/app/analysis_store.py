@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app import database
 from app.analysis_evidence import (
-    AnalysisEvidenceSnapshot, empty_snapshot_sha256, restore_analysis_evidence_snapshot,
+    AnalysisEvidenceSnapshot,
+    empty_snapshot_sha256,
+    restore_analysis_evidence_snapshot,
 )
 from app.analysis_models import AnalysisAuditEvent, AnalysisSessionResponse, PublicationDeliverables
 from app.publication_artifacts import (
@@ -333,7 +335,7 @@ def list_audit_events(
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _from_row(row: Any) -> AnalysisSessionResponse:

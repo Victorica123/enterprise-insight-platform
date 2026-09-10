@@ -10,7 +10,6 @@ from app.media_ingestion import (
     ingest_transcript_event,
 )
 
-
 router = APIRouter(prefix="/internal/v1/media", tags=["internal-media"])
 
 
