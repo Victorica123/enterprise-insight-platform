@@ -3,7 +3,6 @@ package com.example.videoplatform.media;
 import com.example.videoplatform.auth.JwtService;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
-import com.example.videoplatform.workflow.WorkflowPublisher;
 import io.jsonwebtoken.Claims;
 import java.io.IOException;
 import java.time.Duration;
@@ -17,14 +16,12 @@ public class DirectUploadService {
 	private final MediaStorageService mediaStorageService;
 	private final JwtService jwtService;
 	private final VideoTaskService videoTaskService;
-	private final WorkflowPublisher workflowPublisher;
 
 	public DirectUploadService(MediaStorageService mediaStorageService, JwtService jwtService,
-			VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher) {
+			VideoTaskService videoTaskService) {
 		this.mediaStorageService = mediaStorageService;
 		this.jwtService = jwtService;
 		this.videoTaskService = videoTaskService;
-		this.workflowPublisher = workflowPublisher;
 	}
 
 	public MediaDtos.DirectUploadInitResponse initDirectUpload(String owner,
@@ -80,7 +77,6 @@ public class DirectUploadService {
 		VideoTask task = "legacy".equals(tenantId)
 				? videoTaskService.createTask(owner, fileName, storagePath)
 				: videoTaskService.createTaskInWorkspace(owner, tenantId, fileName, storagePath);
-		workflowPublisher.publish(task.getTaskId());
 		return new MediaDtos.DirectUploadCompleteResponse(task.getTaskId(), task.getVideoId(),
 				task.getStoragePath(), task.getStatus().name());
 	}

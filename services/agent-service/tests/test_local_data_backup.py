@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from contextlib import closing
 import sqlite3
 import sys
 import tempfile
-from pathlib import Path
 import unittest
+from contextlib import closing
+from pathlib import Path
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:

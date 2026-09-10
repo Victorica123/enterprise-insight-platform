@@ -5,13 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
+from app import database
 from app.citation_review import review_citations
 from app.main import app
 from app.models import Source
 from app.retrievers import KeywordRetriever, RetrievalScope, clear_chunk_cache
-
+from fastapi.testclient import TestClient
 
 SERVICE_HEADERS = {"Authorization": "Bearer integration-test-token"}
 
@@ -158,6 +157,45 @@ class MediaIngestionTests(unittest.TestCase):
             RetrievalScope(tenant_id="tenant-a", owner_id="user-a", asset_ids=("asset-1",)),
         )
         self.assertEqual({hit.chunk.asset_id for hit in selected.hits}, {"asset-1"})
+
+    def test_video_selection_keeps_workspace_documents_and_governed_knowledge(self) -> None:
+        self.assertEqual(self.post(transcript_event()).status_code, 202)
+        self.assertEqual(
+            self.post(transcript_event(event_id="evt-2", asset_id="asset-2")).status_code,
+            202,
+        )
+        database.insert_document(
+            "doc-workspace",
+            "requirements.md",
+            [("审批规则", "预算审批需要保留业务文档证据。")],
+            tenant_id="tenant-a",
+            owner_id="user-a",
+            source_type="document",
+        )
+        database.insert_document(
+            "knowledge-workspace",
+            "approved-knowledge.md",
+            [("已批准知识", "已批准业务知识要求预算审批可追溯。")],
+            tenant_id="tenant-a",
+            owner_id="user-a",
+            source_type="knowledge",
+        )
+        clear_chunk_cache()
+
+        selected = KeywordRetriever().search(
+            ["预算审批"],
+            RetrievalScope(tenant_id="tenant-a", owner_id="user-a", asset_ids=("asset-1",)),
+        )
+
+        self.assertEqual(selected.scanned_count, 4)
+        self.assertEqual(
+            {(hit.chunk.source_type, hit.chunk.asset_id) for hit in selected.hits},
+            {
+                ("video", "asset-1"),
+                ("document", None),
+                ("knowledge", None),
+            },
+        )
 
     def test_validates_service_auth_and_segment_order(self) -> None:
         missing = self.client.post("/internal/v1/media/transcripts", json=transcript_event())

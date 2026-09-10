@@ -3,6 +3,7 @@
 职责：识别问题里的图谱实体 -> 取周边子图 -> 组装关系链上下文与风险链，
 供 Answer Agent 注入回答，并在 trace 中留下可回放的记录。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,10 +16,20 @@ from app.graph_store import (
 )
 from app.retrievers import RetrievalScope
 
-
 RELATION_INTENT_KEYWORDS = [
-    "关系", "关联", "相关", "涉及", "之间", "链路", "图谱",
-    "哪些", "谁", "责任", "归属", "影响", "牵连",
+    "关系",
+    "关联",
+    "相关",
+    "涉及",
+    "之间",
+    "链路",
+    "图谱",
+    "哪些",
+    "谁",
+    "责任",
+    "归属",
+    "影响",
+    "牵连",
 ]
 
 RISK_RELATION_TYPES = {"延期原因", "合同风险", "约定"}
@@ -56,15 +67,16 @@ def match_question_entities(
     for entity in list_entities(
         limit=300,
         tenant_id=scope.tenant_id if scope else "legacy",
-        owner_id=(scope.owner_id or "legacy") if scope else "legacy",
+        owner_id=_graph_owner(scope),
     ):
         name = entity.name
         stripped = name.replace("客户", "")
-        if name in compact or (len(stripped) >= 1 and f"客户{stripped}" in compact) or (
-            len(name) >= 3 and name[:3] in compact
-        ):
-            if name not in matched:
-                matched.append(name)
+        if (
+            name in compact
+            or (len(stripped) >= 1 and f"客户{stripped}" in compact)
+            or (len(name) >= 3 and name[:3] in compact)
+        ) and name not in matched:
+            matched.append(name)
         if len(matched) >= limit:
             break
     return matched
@@ -89,7 +101,7 @@ def lookup_graph(
         depth=2,
         limit=24,
         tenant_id=scope.tenant_id if scope else "legacy",
-        owner_id=(scope.owner_id or "legacy") if scope else "legacy",
+        owner_id=_graph_owner(scope),
     )
     if not lookup.relations:
         return lookup
@@ -98,6 +110,11 @@ def lookup_graph(
     lookup.risk_chains = build_risk_chains(lookup.relations)
     lookup.context = build_graph_context(lookup)
     return lookup
+
+
+def _graph_owner(scope: RetrievalScope | None) -> str | None:
+    """Preserve ``None`` for team-wide graph reads instead of falling to legacy."""
+    return scope.owner_id if scope is not None else "legacy"
 
 
 def format_relation(relation: GraphRelation) -> str:
@@ -118,7 +135,11 @@ def build_graph_context(lookup: GraphLookup) -> str:
     parts = ["【关系图谱】"]
     parts.append(f"命中实体：{'、'.join(lookup.matched_entities)}")
     for relation in lookup.relations[:12]:
-        origin = f"{relation.filename} #chunk{relation.chunk_index}" if relation.filename else "工单"
+        origin = (
+            f"{relation.filename} #chunk{relation.chunk_index}"
+            if relation.filename
+            else "工单"
+        )
         parts.append(f"- {format_relation(relation)}（来源：{origin}）")
     if lookup.risk_chains:
         parts.append("风险链路：")

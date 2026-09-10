@@ -21,7 +21,14 @@ class LLMAnswer:
 
 def is_llm_configured() -> bool:
     settings = get_llm_settings()
-    return bool(settings.api_key)
+    return _has_usable_api_key(settings.api_key)
+
+
+def _has_usable_api_key(api_key: str | None) -> bool:
+    if not api_key or not api_key.strip():
+        return False
+    normalized = api_key.strip().lower()
+    return not any(marker in normalized for marker in ("change_me", "your-", "replace-with"))
 
 
 def generate_answer(
@@ -30,7 +37,7 @@ def generate_answer(
     extra_contexts: list[str] | None = None,
 ) -> LLMAnswer:
     settings = get_llm_settings()
-    if not settings.api_key:
+    if not _has_usable_api_key(settings.api_key):
         raise RuntimeError(f"未配置 {settings.provider} API Key。")
 
     response = create_chat_completion(

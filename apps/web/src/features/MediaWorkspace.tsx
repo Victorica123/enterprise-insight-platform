@@ -4,7 +4,7 @@ import {
   Trash2, Upload, Video,
 } from "lucide-react";
 import {
-  type MediaTask, createPlayback, deleteMediaTask, retryMediaTask, uploadVideo,
+  type MediaRuntime, type MediaTask, createPlayback, deleteMediaTask, retryMediaTask, uploadVideo,
 } from "../mediaApi";
 import { formatDate, getErrorMessage } from "./common";
 import "../styles/media.css";
@@ -13,6 +13,7 @@ export type VideoEvidenceRequest = { taskId: string; fileName: string; startMs: 
 
 export function MediaWorkspace(props: {
   tasks: MediaTask[];
+  runtime: MediaRuntime | null;
   loading: boolean;
   selectedAssetIds: string[];
   onSelectionChange: (ids: string[]) => void;
@@ -59,7 +60,18 @@ export function MediaWorkspace(props: {
     <div className="media-workspace">
       <section className="card media-hero">
         <div><span className="eyebrow">MEDIA → EVIDENCE → AGENT</span><h2><Video size={22} />视频证据工作台</h2>
-          <p>上传后自动转写、摘要并同步为可检索的时间戳证据。勾选视频即可限定 Agent 的分析范围。</p></div>
+          <p>上传后自动转写、摘要并同步为可检索的时间戳证据。勾选视频即可限定 Agent 的分析范围。</p>
+          {props.runtime ? <div className={`media-runtime ${props.runtime.transcriptMode === "mock" ? "mock" : "real"}`}>
+            <strong>{props.runtime.transcriptMode === "mock" ? "当前为验证模式" : "当前为真实处理模式"}</strong>
+            <span>转写：{props.runtime.transcriptMode === "mock" ? "模拟" : "Whisper API"}</span>
+            <span>摘要：{props.runtime.summaryMode === "mock" ? "本地模拟" : "外部 LLM"}</span>
+            <span>调度：{props.runtime.dispatchMode}</span>
+            <span>存储：{props.runtime.storageType}</span>
+            <span>身份：{props.runtime.oidcEnabled ? `OIDC + ${props.runtime.jwtAlgorithm}` : props.runtime.jwtAlgorithm}</span>
+            <span>模型出境：{props.runtime.modelEgressAllowed ? "本工作区已批准" : "未批准（仅本地）"}</span>
+            {props.runtime.retentionEnabled ? <span>保留期：媒体 {props.runtime.mediaRetentionDays} 天 / 转写 {props.runtime.transcriptRetentionDays} 天 / 审计 {props.runtime.auditRetentionDays} 天</span> : null}
+          </div> : null}
+        </div>
         <form onSubmit={upload} className="video-upload">
           <input type="file" accept="video/*,.mp4,.mov,.mkv,.webm" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           <button className="button" disabled={!file || busy}>{busy ? <Loader2 size={15} className="spin" /> : <Upload size={15} />}{busy ? "上传中" : "上传视频"}</button>
@@ -73,9 +85,16 @@ export function MediaWorkspace(props: {
         : props.tasks.length === 0 ? <div className="card empty-state"><FileVideo2 size={30} /><p>还没有视频。上传一个视频，完整链路会在本机自动运行。</p></div>
         : <div className="media-grid">{props.tasks.map((task) => {
           const selected = props.selectedAssetIds.includes(task.videoId);
+          const selectionLabel = selected ? "移出 Agent 分析范围" : "纳入 Agent 分析范围";
           return <article className={`card media-task ${selected ? "selected" : ""}`} key={task.taskId}>
             <div className="media-task-head">
-              <button className={`asset-check ${selected ? "active" : ""}`} onClick={() => toggle(task.videoId)} title="纳入 Agent 分析范围">
+              <button
+                className={`asset-check ${selected ? "active" : ""}`}
+                onClick={() => toggle(task.videoId)}
+                title={selectionLabel}
+                aria-label={selectionLabel}
+                aria-pressed={selected}
+              >
                 <CheckCircle2 size={18} />
               </button>
               <div><strong>{task.fileName}</strong><span>{formatDate(task.createdAt)}</span></div>
@@ -84,7 +103,7 @@ export function MediaWorkspace(props: {
             <p className="media-summary">{task.summary || task.errorMessage || "正在生成转写与摘要…"}</p>
             <div className="media-meta"><span><Clock3 size={14} />{formatDuration(task.transcriptDurationMs)}</span><span>v{task.transcriptVersion}</span><span>{task.transcriptSegments.length} 段证据</span></div>
             <div className="media-actions">
-              <button className="button secondary" disabled={task.status !== "COMPLETED"} onClick={() => props.onPlay({ taskId: task.taskId, fileName: task.fileName, startMs: 0 })}><Play size={14} />播放</button>
+              <button className="button secondary" disabled={task.status !== "COMPLETED" || !task.mediaRetained} onClick={() => props.onPlay({ taskId: task.taskId, fileName: task.fileName, startMs: 0 })}><Play size={14} />{task.mediaRetained ? "播放" : "媒体已过保留期"}</button>
               {task.status === "FAILED" ? <button className="icon-button subtle" onClick={() => void mutate(task, "retry")} title="重试"><RotateCcw size={15} /></button> : null}
               <button className="icon-button danger" onClick={() => void mutate(task, "delete")} title="删除"><Trash2 size={15} /></button>
             </div>

@@ -10,7 +10,7 @@ class MediaFileValidatorTests {
 
 	@Test
 	void acceptsVideoFiles() {
-		MockMultipartFile file = new MockMultipartFile("file", "Demo.MP4", "video/mp4", new byte[] {1});
+		MockMultipartFile file = new MockMultipartFile("file", "Demo.MP4", "video/mp4", mp4Header());
 
 		MediaFileValidator.requireVideoFile(file);
 
@@ -41,10 +41,23 @@ class MediaFileValidatorTests {
 	@Test
 	void rejectsNonVideoContentTypeWhenPresent() {
 		MockMultipartFile file = new MockMultipartFile("file", "demo.mp4", "application/octet-stream",
-				new byte[] {1});
+				mp4Header());
 
 		assertThatThrownBy(() -> MediaFileValidator.requireVideoFile(file))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("content type");
+	}
+
+	@Test
+	void rejectsVideoExtensionWithUnrecognizedContainerHeader() {
+		MockMultipartFile file = new MockMultipartFile("file", "demo.mp4", "video/mp4", new byte[] {1, 2, 3});
+
+		assertThatThrownBy(() -> MediaFileValidator.requireVideoFile(file))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("does not match");
+	}
+
+	private static byte[] mp4Header() {
+		return new byte[] {0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'};
 	}
 }

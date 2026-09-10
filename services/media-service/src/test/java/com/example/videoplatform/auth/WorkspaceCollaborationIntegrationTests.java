@@ -10,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest(properties = {
 		"app.redis.enabled=false",
 		"app.mq.enabled=false",
+		"app.workflow.dispatcher-enabled=true",
+		"spring.datasource.url=jdbc:h2:mem:workspace-collaboration;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
 		"spring.docker.compose.enabled=false",
 		"spring.autoconfigure.exclude="
 				+ "org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration,"
@@ -31,6 +32,10 @@ import org.springframework.test.web.servlet.MockMvc;
 })
 @AutoConfigureMockMvc
 class WorkspaceCollaborationIntegrationTests {
+
+	private static final byte[] MINIMAL_MP4 = {
+			0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0
+	};
 
 	@Autowired private MockMvc mockMvc;
 	@Autowired private ObjectMapper objectMapper;
@@ -144,7 +149,7 @@ class WorkspaceCollaborationIntegrationTests {
 				.header("Authorization", bearer(memberPersonal)), 200).path("data");
 
 		MockMultipartFile file = new MockMultipartFile(
-				"file", "team-demo.mp4", "video/mp4", "fake-video-content".getBytes(StandardCharsets.UTF_8));
+				"file", "team-demo.mp4", "video/mp4", MINIMAL_MP4);
 		String taskId = json(multipart("/api/media/upload/file")
 				.file(file)
 				.header("Authorization", bearer(ownerTeam)), 200)

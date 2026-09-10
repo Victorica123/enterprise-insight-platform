@@ -9,6 +9,7 @@ from datetime import datetime
 
 from app import database
 from app.analysis_models import GovernedKnowledgeVersion, KnowledgeLifecycleRequest
+from app.evidence_provenance import validate_and_normalize_evidence
 
 
 GraphIndexer = Callable[..., dict[str, int]]
@@ -60,6 +61,7 @@ def init_knowledge_lifecycle_store(conn: sqlite3.Connection) -> None:
             replacement_statement text,
             replacement_evidence_json text not null default '[]',
             status text not null,
+            pending_candidate_id text,
             requested_by text not null,
             requested_at text not null,
             decided_by text,
@@ -69,10 +71,23 @@ def init_knowledge_lifecycle_store(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    database.ensure_column(
+        conn,
+        table="knowledge_lifecycle_requests",
+        column="pending_candidate_id",
+        definition="text",
+    )
+    conn.execute(
+        """
+        update knowledge_lifecycle_requests
+        set pending_candidate_id = candidate_id
+        where status = 'PENDING' and pending_candidate_id is null
+        """
+    )
     conn.execute(
         """
         create unique index if not exists uk_knowledge_lifecycle_pending
-        on knowledge_lifecycle_requests(candidate_id) where status = 'PENDING'
+        on knowledge_lifecycle_requests(pending_candidate_id)
         """
     )
     _backfill_initial_knowledge_versions(conn)
@@ -285,6 +300,7 @@ def request_knowledge_lifecycle(
     replacement_statement: str | None,
     replacement_evidence: list[dict[str, object]],
     requested_at: datetime,
+    evidence_owner_id: str | None = None,
 ) -> KnowledgeLifecycleRequest | None:
     with database.connect() as conn:
         conn.execute("begin immediate")
@@ -314,19 +330,29 @@ def request_knowledge_lifecycle(
             or not replacement_evidence
         ):
             return None
+        normalized_evidence = (
+            validate_and_normalize_evidence(
+                conn,
+                replacement_evidence,
+                tenant_id=tenant_id,
+                owner_id=evidence_owner_id,
+            )
+            if action == "SUPERSEDE"
+            else []
+        )
         request_id = str(uuid.uuid4())
         conn.execute(
             """
             insert into knowledge_lifecycle_requests (
                 request_id, candidate_id, tenant_id, owner_id, action, reason,
                 replacement_statement, replacement_evidence_json, status,
-                requested_by, requested_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                pending_candidate_id, requested_by, requested_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
             """,
             (
                 request_id, candidate_id, tenant_id, candidate["owner_id"], action,
                 reason.strip(), normalized_statement,
-                json.dumps(replacement_evidence, ensure_ascii=False), actor_id,
+                json.dumps(normalized_evidence, ensure_ascii=False), candidate_id, actor_id,
                 requested_at.isoformat(),
             ),
         )
@@ -357,6 +383,7 @@ def decide_knowledge_lifecycle(
     decided_at: datetime,
     index_document_graph: GraphIndexer,
     rebuild_graph_scope: GraphScopeRebuilder,
+    evidence_owner_id: str | None = None,
 ) -> KnowledgeLifecycleRequest | None:
     with database.connect() as conn:
         conn.execute("begin immediate")
@@ -419,7 +446,12 @@ def decide_knowledge_lifecycle(
                     (candidate_id, request_id),
                 )
             else:
-                replacement_evidence = json.loads(lifecycle["replacement_evidence_json"])
+                replacement_evidence = validate_and_normalize_evidence(
+                    conn,
+                    json.loads(lifecycle["replacement_evidence_json"]),
+                    tenant_id=tenant_id,
+                    owner_id=evidence_owner_id,
+                )
                 successor = materialize_knowledge_version(
                     conn,
                     candidate,
@@ -491,7 +523,8 @@ def decide_knowledge_lifecycle(
         cursor = conn.execute(
             """
             update knowledge_lifecycle_requests
-            set status = ?, decided_by = ?, decided_at = ?, resulting_version_id = ?
+            set status = ?, pending_candidate_id = null, decided_by = ?,
+                decided_at = ?, resulting_version_id = ?
             where request_id = ? and candidate_id = ? and tenant_id = ? and status = 'PENDING'
             """,
             (

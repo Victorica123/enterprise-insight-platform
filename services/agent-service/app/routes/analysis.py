@@ -12,26 +12,16 @@ from app.analysis_models import (
     KnowledgeLifecycleDecisionRequest, KnowledgeLifecycleRequest, PublicationApprovalRequest,
     PublicationDeliverables,
 )
-from app.analysis_evidence import build_analysis_evidence_snapshot
-from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis
-from app.analysis_store import (
+from app.architecture.execution import execute_tool, resume_six_stage_analysis, run_six_stage_analysis
+from app.architecture.governance import (
     get_evidence_snapshot, get_session, get_session_for_tenant, list_audit_events,
     list_pending_publications, list_sessions, save_session, transition_confirmation, utc_now,
-)
-from app.auth import ActorPrincipal, current_principal, require_write_role
-from app.publication_service import (
     PublicationRuleError, approve_publication, request_publication,
+    decide_knowledge_candidate, decide_knowledge_lifecycle, get_action_item,
+    get_publication_deliverables, mark_action_ticket_pending, request_knowledge_lifecycle,
 )
-from app.publication_artifacts import (
-    decide_knowledge_candidate,
-    decide_knowledge_lifecycle,
-    get_action_item,
-    get_publication_deliverables,
-    mark_action_ticket_pending,
-    request_knowledge_lifecycle,
-)
-from app.retrievers import RetrievalScope
-from app.tools import execute_tool
+from app.architecture.retrieval import build_analysis_evidence_snapshot, EvidenceProvenanceError, RetrievalScope
+from app.auth import ActorPrincipal, current_principal, require_write_role
 
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -219,13 +209,17 @@ def decide_published_knowledge_candidate(
     bundle = get_publication_deliverables(session_id, principal.tenant_id)
     if bundle is None or not any(item.candidate_id == candidate_id for item in bundle.knowledge_candidates):
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
-    decided = decide_knowledge_candidate(
-        candidate_id,
-        tenant_id=principal.tenant_id,
-        actor_id=principal.user_id,
-        approved=request.approved,
-        decided_at=utc_now(),
-    )
+    try:
+        decided = decide_knowledge_candidate(
+            candidate_id,
+            tenant_id=principal.tenant_id,
+            actor_id=principal.user_id,
+            approved=request.approved,
+            decided_at=utc_now(),
+            evidence_owner_id=principal.user_id if principal.workspace_type == "personal" else None,
+        )
+    except EvidenceProvenanceError as exc:
+        raise HTTPException(status_code=409, detail=f"Evidence provenance validation failed: {exc}") from exc
     if decided is None:
         raise HTTPException(status_code=409, detail="Knowledge candidate was already decided.")
     return decided
@@ -257,16 +251,20 @@ def create_knowledge_lifecycle_request(
     ) if bundle else None
     if candidate is None:
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
-    created = request_knowledge_lifecycle(
-        candidate_id,
-        tenant_id=principal.tenant_id,
-        actor_id=principal.user_id,
-        action=request.action,
-        reason=request.reason,
-        replacement_statement=request.replacement_statement,
-        replacement_evidence=[item.model_dump(mode="json") for item in request.replacement_evidence],
-        requested_at=utc_now(),
-    )
+    try:
+        created = request_knowledge_lifecycle(
+            candidate_id,
+            tenant_id=principal.tenant_id,
+            actor_id=principal.user_id,
+            action=request.action,
+            reason=request.reason,
+            replacement_statement=request.replacement_statement,
+            replacement_evidence=[item.model_dump(mode="json") for item in request.replacement_evidence],
+            requested_at=utc_now(),
+            evidence_owner_id=principal.user_id if principal.workspace_type == "personal" else None,
+        )
+    except EvidenceProvenanceError as exc:
+        raise HTTPException(status_code=409, detail=f"Evidence provenance validation failed: {exc}") from exc
     if created is None:
         raise HTTPException(
             status_code=409,
@@ -305,14 +303,18 @@ def decide_knowledge_lifecycle_request(
             raise HTTPException(status_code=403, detail="Only the personal workspace owner can govern knowledge.")
     elif lifecycle.requested_by == principal.user_id:
         raise HTTPException(status_code=403, detail="Team knowledge lifecycle requires a different reviewer.")
-    decided = decide_knowledge_lifecycle(
-        request_id,
-        candidate_id=candidate_id,
-        tenant_id=principal.tenant_id,
-        actor_id=principal.user_id,
-        approved=request.approved,
-        decided_at=utc_now(),
-    )
+    try:
+        decided = decide_knowledge_lifecycle(
+            request_id,
+            candidate_id=candidate_id,
+            tenant_id=principal.tenant_id,
+            actor_id=principal.user_id,
+            approved=request.approved,
+            decided_at=utc_now(),
+            evidence_owner_id=principal.user_id if principal.workspace_type == "personal" else None,
+        )
+    except EvidenceProvenanceError as exc:
+        raise HTTPException(status_code=409, detail=f"Evidence provenance validation failed: {exc}") from exc
     if decided is None:
         raise HTTPException(status_code=409, detail="Knowledge lifecycle request was already decided or is stale.")
     return decided

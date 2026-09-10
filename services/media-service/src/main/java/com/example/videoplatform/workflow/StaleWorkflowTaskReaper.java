@@ -23,14 +23,12 @@ public class StaleWorkflowTaskReaper {
 	private static final Logger log = LoggerFactory.getLogger(StaleWorkflowTaskReaper.class);
 
 	private final VideoTaskService videoTaskService;
-	private final WorkflowPublisher workflowPublisher;
 	private final AppProperties appProperties;
 	private final WorkflowMetrics workflowMetrics;
 
-	public StaleWorkflowTaskReaper(VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
+	public StaleWorkflowTaskReaper(VideoTaskService videoTaskService,
 			AppProperties appProperties, WorkflowMetrics workflowMetrics) {
 		this.videoTaskService = videoTaskService;
-		this.workflowPublisher = workflowPublisher;
 		this.appProperties = appProperties;
 		this.workflowMetrics = workflowMetrics;
 	}
@@ -53,12 +51,7 @@ public class StaleWorkflowTaskReaper {
 
 		log.warn("Requeueing {} stale workflow task(s), cutoff={}", taskIds.size(), cutoff);
 		for (String taskId : taskIds) {
-			try {
-				workflowMetrics.incrementRequeue("reaper");
-				workflowPublisher.publish(taskId);
-			} catch (Exception exception) {
-				log.warn("Failed to republish stale workflow task {}: {}", taskId, exception.getMessage(), exception);
-			}
+			workflowMetrics.incrementRequeue("reaper");
 		}
 	}
 }

@@ -15,8 +15,8 @@ from app.graph_store import (
     rebuild_graph,
 )
 from app.rag import delete_document, ingest_document
+from app.retrievers import RetrievalScope
 from app.ticket_store import create_ticket
-
 
 SAMPLE_TEXT = (
     "客户 B 的项目原计划在 2026 年 6 月 20 日交付。\n"
@@ -53,7 +53,9 @@ class GraphExtractionTests(unittest.TestCase):
 class GraphStoreTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_patcher = patch("app.database.DB_PATH", Path(self.temp_dir.name) / "graph.sqlite3")
+        self.db_patcher = patch(
+            "app.database.DB_PATH", Path(self.temp_dir.name) / "graph.sqlite3"
+        )
         self.db_patcher.start()
         ingest_document("sample.md", SAMPLE_TEXT)
 
@@ -85,7 +87,9 @@ class GraphStoreTests(unittest.TestCase):
         rebuild_graph()
         ticket_relations = [r for r in list_relations() if r.source_type == "ticket"]
         self.assertTrue(ticket_relations)
-        self.assertTrue(any(r.target_name in {"客户B", "客户B项目"} for r in ticket_relations))
+        self.assertTrue(
+            any(r.target_name in {"客户B", "客户B项目"} for r in ticket_relations)
+        )
 
     def test_delete_document_clears_graph(self) -> None:
         document = list_entities(entity_type="customer")[0]
@@ -100,7 +104,9 @@ class GraphStoreTests(unittest.TestCase):
 class GraphAgentTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_patcher = patch("app.database.DB_PATH", Path(self.temp_dir.name) / "graph.sqlite3")
+        self.db_patcher = patch(
+            "app.database.DB_PATH", Path(self.temp_dir.name) / "graph.sqlite3"
+        )
         self.db_patcher.start()
         ingest_document("sample.md", SAMPLE_TEXT)
 
@@ -119,8 +125,39 @@ class GraphAgentTests(unittest.TestCase):
         self.assertTrue(lookup.risk_chains)
         self.assertTrue(build_risk_chains(lookup.relations))
 
+    def test_team_scope_reads_graphs_owned_by_all_members(self) -> None:
+        ingest_document(
+            "team-a.md",
+            "客户 A 的项目负责人是李四。",
+            tenant_id="tenant-team",
+            owner_id="user-a",
+        )
+        ingest_document(
+            "team-b.md",
+            "客户 B 的项目负责人是王五。",
+            tenant_id="tenant-team",
+            owner_id="user-b",
+        )
+
+        team_lookup = lookup_graph(
+            "客户B项目的负责人是谁？",
+            "fact",
+            scope=RetrievalScope(tenant_id="tenant-team"),
+        )
+        personal_lookup = lookup_graph(
+            "客户B项目的负责人是谁？",
+            "fact",
+            scope=RetrievalScope(tenant_id="tenant-team", owner_id="user-a"),
+        )
+
+        self.assertTrue(team_lookup.hit)
+        self.assertIn("王五", team_lookup.context)
+        self.assertFalse(personal_lookup.hit)
+
     def test_agentic_answer_includes_graph_paths(self) -> None:
-        response = answer_agentic_question("客户B的项目为什么延期？", "local", "keyword")
+        response = answer_agentic_question(
+            "客户B的项目为什么延期？", "local", "keyword"
+        )
         summary = response.agent_summary
         self.assertEqual(summary.evidence_status, "passed")
         self.assertIn("Graph Agent", summary.agents)
@@ -130,7 +167,9 @@ class GraphAgentTests(unittest.TestCase):
         self.assertTrue(any(step.name == "graph_lookup" for step in response.trace))
 
     def test_unrelated_question_skips_graph_context(self) -> None:
-        response = answer_agentic_question("火星基地的氧气供应方案是什么？", "local", "keyword")
+        response = answer_agentic_question(
+            "火星基地的氧气供应方案是什么？", "local", "keyword"
+        )
         self.assertNotIn("【关系图谱】", response.answer)
 
 

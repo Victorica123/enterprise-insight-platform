@@ -6,21 +6,40 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
- * 内容寻址的媒体资产：按内容指纹（文件 MD5）唯一。
+ * Tenant-scoped content-addressed media processing result.
  *
- * <p>把"昂贵的处理结果"（转写 / 摘要）与"用户上传任务"解耦：相同内容（同 MD5）无论被
- * 多少用户、多少次上传，都只处理一次，结果由所有引用它的 {@link VideoTask} 共享。
- * 这是内容级去重的核心——省下的不只是上传带宽，更是分钟级的 FFmpeg / Whisper / LLM 开销。
+ * <p>The same bytes may be deduplicated inside one workspace, but a content
+ * hash from another tenant must never select or mutate this record.  The
+ * physical table is suffixed with {@code _scoped} so Hibernate's update mode
+ * can introduce the safer schema without changing the primary key of the
+ * legacy global cache in place.
  */
 @Entity
-@Table(name = "media_asset")
+@Table(name = "media_asset_scoped",
+		indexes = {
+			@Index(name = "idx_media_asset_scope_status", columnList = "tenantId, status"),
+			@Index(name = "idx_media_asset_scope_md5", columnList = "tenantId, contentMd5")
+		},
+		uniqueConstraints = @UniqueConstraint(
+			name = "uk_media_asset_tenant_md5", columnNames = {"tenantId", "contentMd5"}))
 public class MediaAsset {
 
 	@Id
+	@Column(length = 128)
+	private String assetKey;
+
+	@Column(nullable = false, length = 128)
+	private String tenantId;
+
+	@Column(nullable = false, length = 64)
 	private String contentMd5;
 
 	@Enumerated(EnumType.STRING)
@@ -52,12 +71,27 @@ public class MediaAsset {
 		// JPA
 	}
 
+	/** Compatibility constructor for legacy fixtures and the legacy workspace. */
 	public MediaAsset(String contentMd5, String storagePath) {
+		this("legacy", contentMd5, storagePath);
+	}
+
+	public MediaAsset(String tenantId, String contentMd5, String storagePath) {
+		this.tenantId = normalizeTenantId(tenantId);
 		this.contentMd5 = contentMd5;
+		this.assetKey = keyFor(this.tenantId, contentMd5);
 		this.storagePath = storagePath;
 		this.status = AssetStatus.PROCESSING;
 		this.createdAt = Instant.now();
 		this.updatedAt = this.createdAt;
+	}
+
+	public String getAssetKey() {
+		return assetKey;
+	}
+
+	public String getTenantId() {
+		return tenantId;
 	}
 
 	public String getContentMd5() {
@@ -75,6 +109,10 @@ public class MediaAsset {
 
 	public String getStoragePath() {
 		return storagePath;
+	}
+
+	public void clearStoredMedia() {
+		this.storagePath = null;
 	}
 
 	public String getTranscript() {
@@ -108,6 +146,15 @@ public class MediaAsset {
 		return TranscriptResult.fromStored(transcript, transcriptSegmentsJson, transcriptLanguage, transcriptDurationMs);
 	}
 
+	public void expireTranscriptData() {
+		this.transcript = null;
+		this.transcriptSegmentsJson = null;
+		this.transcriptLanguage = null;
+		this.transcriptDurationMs = null;
+		this.status = AssetStatus.RETENTION_EXPIRED;
+		this.updatedAt = Instant.now();
+	}
+
 	public void markFailed(String errorMessage) {
 		this.errorMessage = errorMessage;
 		this.status = AssetStatus.FAILED;
@@ -122,9 +169,19 @@ public class MediaAsset {
 		return updatedAt;
 	}
 
+	static String keyFor(String tenantId, String contentMd5) {
+		return UUID.nameUUIDFromBytes(
+				(normalizeTenantId(tenantId) + "\u0000" + contentMd5).getBytes(StandardCharsets.UTF_8)).toString();
+	}
+
+	private static String normalizeTenantId(String value) {
+		return value == null || value.isBlank() ? "legacy" : value.trim();
+	}
+
 	public enum AssetStatus {
 		PROCESSING,
 		READY,
-		FAILED
+		FAILED,
+		RETENTION_EXPIRED
 	}
 }

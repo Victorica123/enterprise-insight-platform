@@ -81,8 +81,8 @@ export function ApiFailureDialog({ notice, onClose }: { notice: ApiFailureNotice
         <div className="dialog-heading">
           <span className="dialog-icon"><CloudOff size={22} /></span>
           <div>
-            <h2 id="api-failure-title">模型 API 调用失败</h2>
-            <p>DeepSeek 没有返回可用结果，本次回答已自动降级为本地 RAG。</p>
+            <h2 id="api-failure-title">外部模型服务不可用</h2>
+            <p>外部模型没有返回可用结果，本次回答已自动降级为本地 RAG。</p>
           </div>
           <button ref={closeButtonRef} className="icon-button" type="button" onClick={onClose} aria-label="关闭提示">
             <X size={17} />

@@ -1,24 +1,26 @@
 """Deterministic V5 release gate: token accounting, chat logs, replay, and feedback loop."""
-from pathlib import Path
+
+# The evaluator adds the service directory to sys.path at runtime.
+# pyright: reportMissingImports=false
+from __future__ import annotations
+
 import os
 import statistics
 import sys
 import tempfile
+from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "agent-service"))
 
 # 离线门禁：关闭 LLM 路由（确定性 + 不消耗 API 额度），走规则降级通道
 os.environ.setdefault("LLM_ROUTER_ENABLED", "0")
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.main import app  # noqa: E402
-from app.rag import ingest_document  # noqa: E402
-
+# This evaluator intentionally uses compatibility headers; production defaults
+# remain JWT-only.
+os.environ.setdefault("AGENT_AUTH_MODE", "development")
+os.environ.setdefault("APP_ENV", "test")
 
 FIXTURE_TEXT = (
     "客户 B 的项目原计划在 2026 年 6 月 20 日交付。\n"
@@ -53,6 +55,10 @@ QUALITY_GATES = {
 
 
 def main() -> int:
+    from app.main import app
+    from app.rag import ingest_document
+    from fastapi.testclient import TestClient
+
     with tempfile.TemporaryDirectory() as temp_dir:
         db_path = Path(temp_dir) / "v5-evaluation.sqlite3"
         with patch("app.database.DB_PATH", db_path):
@@ -76,25 +82,39 @@ def main() -> int:
                 responses.append(response.json())
 
             outcomes_ok = all(
-                (payload["agent_summary"]["evidence_status"] == "passed") == (expected == "answered")
-                for payload, (_, expected) in zip(responses, QUESTIONS)
+                (payload["agent_summary"]["evidence_status"] == "passed")
+                == (expected == "answered")
+                for payload, (_, expected) in zip(responses, QUESTIONS, strict=True)
             )
             log_ids_ok = all(payload["log_id"] > 0 for payload in responses)
             answered_tokens_ok = all(
-                payload["token_usage"] is not None and payload["token_usage"]["total_tokens"] > 0
-                for payload, (_, expected) in zip(responses, QUESTIONS)
+                payload["token_usage"] is not None
+                and payload["token_usage"]["total_tokens"] > 0
+                for payload, (_, expected) in zip(responses, QUESTIONS, strict=True)
                 if expected == "answered"
             )
 
             logs = client.get("/chat-logs", headers={"X-User-Role": "operator"}).json()
             logs_recorded = len(logs) == len(QUESTIONS)
 
-            refused_logs = client.get("/chat-logs", params={"outcome": "refused"}, headers={"X-User-Role": "operator"}).json()
+            refused_logs = client.get(
+                "/chat-logs",
+                params={"outcome": "refused"},
+                headers={"X-User-Role": "operator"},
+            ).json()
             refused_id = refused_logs[0]["log_id"] if refused_logs else 0
-            replay = client.get(f"/chat-logs/{refused_id}", headers={"X-User-Role": "operator"}).json() if refused_id else {}
+            replay = (
+                client.get(
+                    f"/chat-logs/{refused_id}", headers={"X-User-Role": "operator"}
+                ).json()
+                if refused_id
+                else {}
+            )
             replay_ok = bool(refused_logs) and bool(replay.get("trace"))
 
-            up = client.post(f"/chat-logs/{responses[0]['log_id']}/feedback", json={"rating": "up"})
+            up = client.post(
+                f"/chat-logs/{responses[0]['log_id']}/feedback", json={"rating": "up"}
+            )
             down = client.post(
                 f"/chat-logs/{responses[1]['log_id']}/feedback",
                 json={"rating": "down", "note": "评测反馈样例"},
@@ -107,7 +127,10 @@ def main() -> int:
                 and summary["satisfaction_rate"] == 0.5
             )
             summary_keys_ok = all(key in summary for key in REQUIRED_SUMMARY_KEYS)
-            token_accounting_ok = summary["total_tokens"] > 0 and summary["total_estimated_cost_usd"] == 0.0
+            token_accounting_ok = (
+                summary["total_tokens"] > 0
+                and summary["total_estimated_cost_usd"] == 0.0
+            )
 
     checks = {
         "answer_refusal_decisions": outcomes_ok,
@@ -120,7 +143,10 @@ def main() -> int:
         "local_mode_zero_cost": token_accounting_ok,
     }
     observability_score = sum(checks.values()) / len(checks)
-    p95_latency_ms = sorted(latencies)[max(0, int(len(latencies) * 0.95) - 1)]
+    try:
+        p95_latency_ms = sorted(latencies)[max(0, int(len(latencies) * 0.95) - 1)]
+    except (IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError("Unable to calculate p95 chat latency") from exc
 
     print("V5 observability evaluation")
     print("-" * 72)

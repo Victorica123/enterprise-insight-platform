@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/media-runtime-v1.schema.json",
+  "title": "Media processing runtime visibility v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dispatchMode",
+    "mqEnabled",
+    "transcriptMode",
+    "summaryMode",
+    "mockDelayMs",
+    "maxActiveTasksPerUser",
+    "mqConsumerThreads",
+    "storageType",
+    "jwtAlgorithm",
+    "oidcEnabled",
+    "modelEgressAllowed",
+    "retentionEnabled",
+    "mediaRetentionDays",
+    "transcriptRetentionDays",
+    "auditRetentionDays"
+  ],
+  "properties": {
+    "dispatchMode": { "enum": ["local-async", "rocketmq"] },
+    "mqEnabled": { "type": "boolean" },
+    "transcriptMode": { "enum": ["mock", "whisper-api"] },
+    "summaryMode": { "enum": ["mock", "llm-api"] },
+    "mockDelayMs": { "type": "integer", "minimum": 0 },
+    "maxActiveTasksPerUser": { "type": "integer", "minimum": 0 },
+    "mqConsumerThreads": { "type": "integer", "minimum": 1 },
+    "storageType": { "type": "string", "minLength": 1 },
+    "jwtAlgorithm": { "enum": ["HS256", "RS256"] },
+    "oidcEnabled": { "type": "boolean" },
+    "modelEgressAllowed": { "type": "boolean" },
+    "retentionEnabled": { "type": "boolean" },
+    "mediaRetentionDays": { "type": "integer", "minimum": 1 },
+    "transcriptRetentionDays": { "type": "integer", "minimum": 1 },
+    "auditRetentionDays": { "type": "integer", "minimum": 1 }
+  }
+}

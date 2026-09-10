@@ -76,6 +76,79 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - Agent Service 全量 130/130、Media Service 在 JDK 18 下 108/108、Web TypeScript/Vite 生产构建通过；V3 受控工具安全检查 100%、恰好一次违规 0，V6 三种检索模式保持 decision 98%、recall@3 97%、fact 97%，PRD V1 十项指标 100%，Knowledge Lifecycle V1 九项指标 100%。
 - localhost-only 纵向验收 33/33 通过，仍只依赖临时 H2/SQLite、本机文件、随机 localhost 端口和 mock/local AI。仓库版与安装版维护 Skill quick validation 通过；语义知识查询已验证 revision 下的 miss→hit 缓存复用。
 
+2026-09-01 完成租户去重、任务 lease 与团队图谱范围修复：
+
+- Agent Service 全量 131/131 通过；新增回归证明 team 图谱查询会读取同租户不同成员创建的实体，而 personal 查询不会越界。
+- Agent V5 可观测性评测 8/8 检查通过（100%，p95 约 59.55 ms）；评测脚本显式使用测试 development auth mode，生产路径仍为 JWT-only。
+- Media Service 在受支持的 Temurin JDK 18.0.2.1 下完整 Maven 测试 113/113 通过，其中 lease/Workflow 聚焦 19/19；新增条件 lease 完成/失败写入、内容 fan-out fencing、摘要前持续持有 lease，以及过期任务条件重入队的集成验证。
+- Media Service 在当前 JDK 25 下仍因 Mockito inline/ByteBuddy 不支持该 Java 版本而无法启动部分测试；质量结论使用仓库声明支持的 JDK 18，不将 JDK 25 失败解释为产品回归。
+- `mvn -q test` 在 `services/media-service`、Agent Service 全量回归和图谱聚焦回归均已执行；本次变更未引入公开 HTTP/事件契约变更。
+- `python quality/agent-evals/evaluate_v5.py`、V6、PRD 和 Knowledge Lifecycle 评测均通过；本轮 `scripts/local_acceptance.py` 以 localhost-only 范围完成 33/33 检查，覆盖媒体→Agent outbox、时间证据、分析恢复、个人/团队隔离、审批、知识生命周期、工单、VIEWER 只读和缓存安全边界。
+- pi-lens 当前会话诊断复核：24 个已诊断文件无剩余问题；此前提示的 54 条 ruff/pyright/ast-grep/LSP 诊断已由自动修复或格式化处理。
+- 真实 Docker、Redis、RocketMQ、S3、外部模型和生产 IdP 仍不在本地验证范围；本次 acceptance 仅使用临时 H2/SQLite、本机文件、mock/local AI 和随机 localhost 端口。
+
+2026-09-01 完成 P0/P1 上传、outbox 与结构化 LLM 通道加固：
+
+- Agent Service 全量回归 **137/137** 通过；新增/更新的结构化响应、LLM client response format、兼容降级、路由契约和既有治理用例均通过。
+- Media Service 的 outbox claim 聚焦回归 **3/3** 通过；覆盖单实例条件领取、过期 lease 接管、旧 worker fencing、失败退避和 DEAD 前的 attempt 条件。
+- Outbox 状态现在由 `PENDING → CLAIMED → SENT/DEAD` 条件更新推进；这只证明 H2/JPA 代码和集成语义，正式 MySQL 方言、`SKIP LOCKED`/锁行为、告警和真实多实例故障注入仍未验证。
+- Agent Router/Planner/Tool Agent 的 LLM 通道在 mock response 下验证 OpenAI strict JSON Schema、DeepSeek JSON Object、工具参数 JSON 字符串解码和规则降级；没有调用真实外部模型，因此不产生开放域质量或供应商兼容性通过证据。
+- 本轮 V6 保持 keyword/embedding/hybrid 的 decision 98%、recall@3 97%、fact 97%，p95 分别为 13.2/27.4/24.1 ms；PRD V1 为 12/12、十项指标 100%，p95 19.38 ms；Knowledge Lifecycle V1 为 3/3、九项指标 100%，p95 487.00 ms。以上仍是固定 fixture 的确定性回归，不外推真实模型质量或生产容量。
+- 本地验收脚本的测试视频改为带合法 MP4 `ftyp` 头的最小字节，并用显式 localhost HTTP 客户端代替可访问任意 scheme 的 URL opener；本轮修正随机 HS256 密钥长度和 Range 播放断言后，localhost-only 33/33 验收已通过。
+
+2026-09-02 完成 P0/P1 变更后的最终 localhost 验收：
+
+- `python scripts/local_acceptance.py` 返回 `PASS`，网络范围为 `localhost-only`，33 项检查全部通过。
+- 验收覆盖注册与 Workspace、JWT tenant、Media 上传与 mock transcript、outbox delivery、Agent 检索、时间证据、分析等待/恢复、证据与 PRD 快照、发布/知识/工单审批、Range 播放、team 跨成员媒体和 Agent 检索、personal 隔离、team 四眼治理、VIEWER 只读、缓存授权边界、知识替代/撤回、历史引用状态和 resume token CAS。
+- 视频证据成功保留时间范围 `start_ms=0`、`end_ms=5000`；上传 fixture 使用合法 MP4 `ftyp` 头，Range 响应断言验证头部字节而不是旧的明文测试内容。
+- 本次验收使用临时 H2/SQLite、本机文件、随机 localhost 端口和 mock/local AI；它不证明真实 MySQL/Redis/RocketMQ/S3、外部 LLM、正式 IdP、生产容量或灾备能力。
+
+2026-09-02 完成 P0/P1 变更后的最终回归复跑：
+
+- Media Service 使用 Temurin JDK 18.0.2.1 执行 `mvn -q test`：113/113 通过，Failures 0、Errors 0、Skipped 0；此前失败的 JWT/Workspace 测试已更新为合法 MP4 `ftyp` fixture。
+- V5 可观测性：8/8 检查通过，质量门禁通过，p95 chat latency 为 52.95 ms（门槛 ≤300 ms）。
+- V6 固定黄金集：keyword、embedding、hybrid 均 decision 98%、recall@3 97%、fact 97%；p95 分别为 19.4 ms、34.6 ms、22.2 ms，门禁通过。
+- PRD V1：12/12，decision、问题召回/精确率、objective Top-1、冲突、证据完整性、支持率、验收可测试性、checkpoint 稳定性和 specialist 确定性均为 100%，p95 为 43.58 ms，门禁通过。
+- Knowledge Lifecycle V1：3/3，决策、未来检索、版本链、历史状态、tenant 隔离、四眼、幂等冲突、图谱失效和物理保留均为 100%，p95 为 627.47 ms，门禁通过。
+- 以上结果均来自固定 fixture/黄金集和本机运行；V6 的 para-04 等已知边界样例仍按门禁规则记录，不外推开放域模型质量、真实用户接受率或生产容量。
+
+2026-09-04 建立无需云服务器的本机准生产可靠性验证路径：
+
+- 新增 MySQL 8.4、Redis 7、RocketMQ 5.2、MinIO、Media、Agent、Web 的 `compose.local-prod.yml`，以及 Toxiproxy 故障注入、Prometheus/Grafana、全链路烟测、开放模型并发浸泡、诊断采集和启停脚本。Compose、Prometheus YAML、k6 JavaScript、Python 探针和 PowerShell AST 均完成静态解析；当前主机没有 Docker/Podman 和 k6，尚未产生真实容器、中间件、故障注入或长时间浸泡通过证据。
+- Media Service 修复本地锁表、登录限流表、JWT blacklist 的无界保留，并让工作流心跳调度器立即移除取消任务；对应单元回归通过。这些测试能证明已识别的引用保留路径被关闭，不能单独证明长期运行不存在其他泄漏。
+- 上传接单改为同一数据库事务内提交任务与 `workflow_dispatch_outbox` 意图，调度采用 claim lease、fencing、退避和至少一次投递；新增集成测试证明 outbox 写入失败时任务同步回滚，并验证失败重试、过期 claim 接管和旧 worker fencing。公开上传响应仍返回可追踪 taskId，没有改变 HTTP 契约。
+- Media Service 使用 Temurin JDK 18.0.2.1 全量 **124/124** 通过，Failures 0、Errors 0、Skipped 0；Agent Service 全量 **137/137** 通过；统一 Web 完成 TypeScript/Vite 生产构建。
+- `scripts/local_acceptance.py` 再次以 `localhost-only` 范围通过 **33/33**，覆盖真实 JWT/tenant、上传、工作流、Media→Agent outbox、时间段证据、问答、分析恢复、审批发布、知识生命周期、工单和团队四眼治理。
+- V5 可观测性 8/8 通过，p95 60.69 ms；V6 keyword/embedding/hybrid 均为 decision 98%、recall@3 97%、fact 97%，p95 分别为 34.5/51.1/32.8 ms；PRD V1 12/12 且十项指标 100%，p95 64.52 ms；Knowledge Lifecycle V1 3/3 且九项指标 100%，p95 746.20 ms。
+- Agent `tracemalloc` 探针完成 100 次预热加 2,000 次同进程 Chat，GC 后净分配增长 99,364 bytes（约 0.095 MB），低于 24 MB 门槛；这是短时 Python 分配回归，不替代数小时 RSS/JFR/heap/线程与真实中间件联合分析。
+
+2026-09-04 完成真实用户工作流复盘后的缺陷修复与生产能力显式化：
+
+- 修复 `asset_ids` 误伤非视频来源的问题：视频选择现在只收窄视频证据，同一已授权 Workspace 内的上传文档与 `ACTIVE` 受治理知识继续参与检索。新增单元回归，并把 localhost-only 验收中的批准知识再查询改为携带已选视频，完整验收仍为 **33/33**。
+- 媒体运行时契约新增 `transcriptMode` 与 `summaryMode`；Web 明确展示“验证模式/真实处理模式”，不再把 mock 转写与摘要包装成真实 AI。Auto 模式因未配置外部模型而正常本地降级时不再弹故障窗，显式 API 请求或真实 API 调用失败仍会告警。
+- mock 转写不再把内部 `storagePath` 写入转写文本、跨服务事件和 Agent 证据；回归断言文件名仍可追踪，但存储路径不可见。
+- DeepSeek 配置不再借用 `OPENAI_API_KEY`，空值和示例 key 不再被误判为可用模型配置；本机准生产脚本新增 `-RequireRealAi` fail-closed 门禁，在真实转写、摘要或 Agent 模型任一配置缺失时拒绝启动且不输出密钥。
+- 本轮最终回归：Agent Service **142/142**，Media Service 在 Temurin JDK 18.0.2.1 下 **124/124**，Web TypeScript/Vite 生产构建通过；V6 三种检索模式保持 decision 98%、recall@3 97%、fact 97%，PRD V1 十项指标 100%，Knowledge Lifecycle V1 九项指标 100%。
+- 真实外部转写、摘要和 Agent 模型联调仍未执行，因为当前没有经批准的供应商端点与凭据；`-RequireRealAi` 的缺配置失败路径已验证，但不将其包装成真实 AI 通过证据。
+
+2026-09-04 完成生产试点基线落地后的最终本机回归：
+
+- Agent Service 全量 **154/154** 通过，新增覆盖 MySQL SQL 兼容与生产配置 fail-closed、RS256/JWKS 验签、外部模型 tenant allowlist 和 180/365 天数据清理；Media Service 在 Temurin JDK 18.0.2.1 下全量 **131/131** 通过，Failures 0、Errors 0、Skipped 0，新增覆盖 OIDC 校验、RS256 签发、公钥 JWKS、模型出境门禁和 30/180 天媒体保留。
+- 统一 Web 再次完成 TypeScript/Vite 生产构建；OIDC Authorization Code + S256 PKCE、外部令牌交换、生产关闭本地口令入口，以及过期媒体/转写的用户态展示均通过类型与打包门禁。
+- `scripts/local_acceptance.py` 在随机 localhost 端口保持 **33/33**，继续覆盖真实平台 JWT/tenant、媒体上传、outbox、时间证据、问答、分析恢复、审批发布、团队四眼、受治理知识和工单；该脚本刻意使用 H2/SQLite 与 mock/local AI，不冒充 MySQL/Keycloak/外部模型集成结果。
+- V5 可观测性 8/8 通过，p95 49.66 ms；V6 keyword/embedding/hybrid 均保持 decision 98%、recall@3 97%、fact 97%，p95 分别为 14.5/31.6/25.8 ms；PRD V1 12/12 且十项指标 100%，p95 20.14 ms；Knowledge Lifecycle V1 3/3 且九项指标 100%，最终复跑 p95 781.99 ms。
+- `compose.local-prod.yml`、Keycloak realm、JSON Schema 和 PowerShell 启停/门禁脚本进入静态校验范围。当前主机仍没有 Docker/k6，故尚无真实 MySQL、Keycloak、Redis、RocketMQ、MinIO、多实例死锁、长时内存或容量 SLO 的运行证据；这些仍是上线前必须在具备对应运行时的机器补齐的环境门禁。
+
+2026-09-07 接续额度中断的生产试点任务，完成会话续期与最终回归：
+
+- OIDC 平台会话在到期前续签并重新查询当前 Workspace 成员角色；仅成员关系不存在的 404 可回退个人空间。新增前端 HTTP/存储模拟回归 **7/7**，覆盖 refresh token 轮换、并发 grant 合并、404 回退、401/403/500 不回退、登出期间迟到的供应商/平台响应及失效凭据清除。该套件使用真实前端模块，进入 CI 的 `npm test`，不冒充真实 Keycloak 浏览器联调。
+- 新增 Media OIDC Workspace 交换测试 **4/4**：角色降级重新签发、无成员关系拒绝签发、未指定 Workspace 使用个人空间、无效外部身份拒绝进入授权流程。Media 全量在 Temurin JDK 18.0.2.1 下 **135/135** 通过，Failures/Errors/Skipped 均为 0；Agent 全量 **157/157** 通过，包含此前中断前补充的 MySQL 兼容、治理唯一槽位与保留期修复。
+- Web TypeScript/Vite 生产构建通过；localhost-only 纵向验收 **33/33**，使用临时 H2/SQLite、本机文件、mock/local AI 和真实平台 JWT。验收输出保存于忽略的 `runtime/resume-local-acceptance.log`，Media 本轮输出在 `runtime/resume-media-tests.log`。
+- V5 **8/8**；V6 keyword/embedding/hybrid decision **98%**、recall@3 **97%**、fact **97%**；PRD **12/12** 且十项指标 **100%**；Knowledge Lifecycle **3/3** 且九项指标 **100%**，门禁全部通过。维护索引测试 **3/3** 通过；Agent 全量内的备份回归验证临时 SQLite/媒体归档 SHA-256、quick_check、恢复与覆盖前安全备份。
+- 12 份契约 JSON、准生产 Compose/CI YAML、Keycloak JSON 与 PowerShell 脚本完成语法解析。当前 Python 未安装额外 `jsonschema` 库，未宣称执行其元 Schema 校验；接口行为仍由 Agent/Media 契约与身份回归覆盖。
+- 当前机器缺少 Docker/k6，真实 MySQL/Keycloak/Redis/RocketMQ/MinIO 运行、故障注入、生产数据库备份恢复及容量 SLO 仍待目标环境验证；没有调用外部模型供应商。轻量备份脚本不覆盖准生产 Docker 数据卷，此限制已加入运维知识。
+- 知识更新器已重建当前状态与语义索引，`--check` 与补丁空白检查通过。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

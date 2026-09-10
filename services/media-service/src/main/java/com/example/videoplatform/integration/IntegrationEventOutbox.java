@@ -11,7 +11,8 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "integration_event_outbox", indexes = {
-		@Index(name = "idx_outbox_status_next_attempt", columnList = "status,nextAttemptAt")
+		@Index(name = "idx_outbox_status_next_attempt", columnList = "status,nextAttemptAt"),
+		@Index(name = "idx_outbox_claim_expiry", columnList = "status,claimExpiresAt")
 })
 public class IntegrationEventOutbox {
 
@@ -43,6 +44,12 @@ public class IntegrationEventOutbox {
 	private Instant createdAt;
 
 	private Instant publishedAt;
+
+	/** Dispatcher identity that currently owns delivery of this row. */
+	@Column(length = 64)
+	private String claimId;
+
+	private Instant claimExpiresAt;
 
 	protected IntegrationEventOutbox() {
 		// JPA
@@ -82,10 +89,19 @@ public class IntegrationEventOutbox {
 		return lastError;
 	}
 
+	public String getClaimId() {
+		return claimId;
+	}
+
+	public Instant getClaimExpiresAt() {
+		return claimExpiresAt;
+	}
+
 	public void markSent() {
 		this.status = DeliveryStatus.SENT;
 		this.publishedAt = Instant.now();
 		this.lastError = null;
+		clearClaim();
 	}
 
 	public void markFailed(String error, int maxAttempts, boolean permanent) {
@@ -93,11 +109,22 @@ public class IntegrationEventOutbox {
 		this.lastError = truncate(error);
 		if (permanent || attempts >= Math.max(1, maxAttempts)) {
 			this.status = DeliveryStatus.DEAD;
+			clearClaim();
 			return;
 		}
-		long delaySeconds = Math.min(300, 5L * (1L << Math.min(attempts - 1, 6)));
+		long delaySeconds = retryDelaySeconds(attempts);
 		this.status = DeliveryStatus.PENDING;
 		this.nextAttemptAt = Instant.now().plusSeconds(delaySeconds);
+		clearClaim();
+	}
+
+	public static long retryDelaySeconds(int attemptNumber) {
+		return Math.min(300, 5L * (1L << Math.min(Math.max(0, attemptNumber - 1), 6)));
+	}
+
+	private void clearClaim() {
+		this.claimId = null;
+		this.claimExpiresAt = null;
 	}
 
 	private static String truncate(String value) {
@@ -107,6 +134,7 @@ public class IntegrationEventOutbox {
 
 	public enum DeliveryStatus {
 		PENDING,
+		CLAIMED,
 		SENT,
 		DEAD
 	}

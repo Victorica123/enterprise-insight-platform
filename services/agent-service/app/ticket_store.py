@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
@@ -15,7 +14,7 @@ from app import database
 TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
 TICKET_PRIORITIES = {"low", "medium", "high", "critical"}
 FINAL_ACTION_STATUSES = {"succeeded", "failed", "rejected", "expired"}
-_INITIALIZED_DB_PATH: Path | None = None
+_INITIALIZED_DB_PATH: str | None = None
 
 
 @dataclass
@@ -96,10 +95,10 @@ class PendingAction:
 
 def init_ticket_store() -> None:
     global _INITIALIZED_DB_PATH
-    current_path = database.DB_PATH.resolve()
-    if _INITIALIZED_DB_PATH == current_path and current_path.exists():
+    current_path = database.database_identity()
+    if database.initialization_marker_is_current(_INITIALIZED_DB_PATH):
         return
-    database.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    database.prepare_database_storage()
     with database.connect() as conn:
         conn.execute(
             """

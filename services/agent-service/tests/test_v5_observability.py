@@ -3,13 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from app.chat_observability_store import get_chat_metrics_summary, record_chat_metric
 from app.main import app
 from app.models import Source
 from app.rag import build_answer, build_local_usage, estimate_tokens, ingest_document
-
+from fastapi.testclient import TestClient
 
 SAMPLE_TEXT = (
     "客户 B 的项目原计划在 2026 年 6 月 20 日交付。\n"

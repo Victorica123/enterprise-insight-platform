@@ -24,7 +24,7 @@ from app.ticket_store import (
     list_pending_actions,
     list_tickets,
 )
-from app.tools import execute_tool, resolve_tool_action
+from app.architecture.execution import execute_tool, resolve_tool_action
 
 
 router = APIRouter(tags=["tickets"])

@@ -1,7 +1,7 @@
 package com.example.videoplatform.workflow;
 
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -10,12 +10,20 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(prefix = "app.redis", name = "enabled", havingValue = "false", matchIfMissing = true)
 public class LocalLockService implements DistributedLockService {
 
-	private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+	private final ConcurrentMap<String, LockEntry> locks = new ConcurrentHashMap<>();
 
 	@Override
 	public boolean tryLock(String key, long expireSeconds) {
-		ReentrantLock lock = locks.computeIfAbsent(key, k -> new ReentrantLock());
-		return lock.tryLock();
+		LockEntry entry = locks.compute(key, (ignored, current) -> {
+			LockEntry retained = current == null ? new LockEntry() : current;
+			retained.references++;
+			return retained;
+		});
+		boolean acquired = entry.lock.tryLock();
+		if (!acquired) {
+			releaseReference(key, entry);
+		}
+		return acquired;
 	}
 
 	@Override
@@ -26,9 +34,29 @@ public class LocalLockService implements DistributedLockService {
 
 	@Override
 	public void unlock(String key) {
-		ReentrantLock lock = locks.get(key);
-		if (lock != null && lock.isHeldByCurrentThread()) {
-			lock.unlock();
+		LockEntry entry = locks.get(key);
+		if (entry != null && entry.lock.isHeldByCurrentThread()) {
+			entry.lock.unlock();
+			releaseReference(key, entry);
 		}
+	}
+
+	private void releaseReference(String key, LockEntry expected) {
+		locks.computeIfPresent(key, (ignored, current) -> {
+			if (current != expected) {
+				return current;
+			}
+			current.references--;
+			return current.references == 0 ? null : current;
+		});
+	}
+
+	int lockEntryCount() {
+		return locks.size();
+	}
+
+	private static final class LockEntry {
+		private final ReentrantLock lock = new ReentrantLock();
+		private int references;
 	}
 }

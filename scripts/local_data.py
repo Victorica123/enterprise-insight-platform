@@ -6,16 +6,15 @@ The Agent SQLite database is copied through SQLite's online backup API.
 from __future__ import annotations
 
 import argparse
-from contextlib import closing
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from contextlib import closing
+from datetime import UTC, datetime
+from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
-
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "runtime").resolve()
@@ -81,7 +80,7 @@ def write_backup(output: Path) -> Path:
         files = [path for path in staged_runtime.rglob("*") if path.is_file()]
         manifest = {
             "format": 1,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "files": [{
                 "path": path.relative_to(stage).as_posix(),
                 "size": path.stat().st_size,

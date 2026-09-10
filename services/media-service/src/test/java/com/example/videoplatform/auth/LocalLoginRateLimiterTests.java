@@ -3,6 +3,7 @@ package com.example.videoplatform.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.videoplatform.config.AppProperties;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class LocalLoginRateLimiterTests {
@@ -50,5 +51,20 @@ class LocalLoginRateLimiterTests {
 		assertThat(limiter.tryAcquire("alice")).isTrue();
 		assertThat(limiter.tryAcquire("alice")).isTrue();
 		assertThat(limiter.tryAcquire("alice")).isFalse();
+	}
+
+	@Test
+	void globallyEvictsInactiveIdentitiesAfterWindowExpires() {
+		AtomicLong now = new AtomicLong(1_000L);
+		LocalLoginRateLimiter limiter = new LocalLoginRateLimiter(3, 1_000L, now::get);
+		for (int index = 0; index < 1_000; index++) {
+			assertThat(limiter.tryAcquire("bot-" + index)).isTrue();
+		}
+		assertThat(limiter.entryCount()).isEqualTo(1_000);
+
+		now.addAndGet(2_000L);
+		assertThat(limiter.tryAcquire("current-user")).isTrue();
+
+		assertThat(limiter.entryCount()).isEqualTo(1);
 	}
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { listMediaTasks, type MediaTask } from "../mediaApi";
+import { getMediaRuntime, listMediaTasks, type MediaRuntime, type MediaTask } from "../mediaApi";
 import type { WorkspaceSession } from "../session";
 import { getErrorMessage } from "../features/common";
 
@@ -8,6 +8,7 @@ export function useMediaWorkspace(
   onError: (message: string) => void,
 ) {
   const [tasks, setTasks] = React.useState<MediaTask[]>([]);
+  const [runtime, setRuntime] = React.useState<MediaRuntime | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [selectedAssetIds, setSelectedAssetIds] = React.useState<string[]>([]);
 
@@ -15,8 +16,9 @@ export function useMediaWorkspace(
     if (!session) return;
     setLoading(true);
     try {
-      const next = await listMediaTasks();
+      const [next, nextRuntime] = await Promise.all([listMediaTasks(), getMediaRuntime()]);
       setTasks(next);
+      setRuntime(nextRuntime);
       setSelectedAssetIds((current) => current.filter(
         (assetId) => next.some((task) => task.videoId === assetId),
       ));
@@ -30,6 +32,7 @@ export function useMediaWorkspace(
   React.useEffect(() => {
     if (!session) {
       setTasks([]);
+      setRuntime(null);
       setSelectedAssetIds([]);
       return;
     }
@@ -42,5 +45,5 @@ export function useMediaWorkspace(
     return () => window.clearInterval(timer);
   }, [session, tasks, refresh]);
 
-  return { tasks, loading, selectedAssetIds, setSelectedAssetIds, refresh };
+  return { tasks, runtime, loading, selectedAssetIds, setSelectedAssetIds, refresh };
 }

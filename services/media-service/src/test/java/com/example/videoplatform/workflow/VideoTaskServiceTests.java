@@ -2,6 +2,8 @@ package com.example.videoplatform.workflow;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,8 +27,11 @@ class VideoTaskServiceTests {
 	private final AppProperties appProperties = new AppProperties();
 	private final TranscriptEventOutboxService transcriptOutboxService =
 			org.mockito.Mockito.mock(TranscriptEventOutboxService.class);
+	private final WorkflowDispatchOutboxService workflowDispatchOutboxService =
+			org.mockito.Mockito.mock(WorkflowDispatchOutboxService.class);
 	private final VideoTaskService service = new VideoTaskService(
-			taskRepository, userAccountRepository, appProperties, transcriptOutboxService);
+			taskRepository, userAccountRepository, appProperties, transcriptOutboxService,
+			workflowDispatchOutboxService);
 
 	@Test
 	void createTaskRejectsWhenActiveTaskLimitIsReached() {
@@ -58,6 +63,7 @@ class VideoTaskServiceTests {
 		assertThat(created.getOwner()).isEqualTo("user-1");
 		assertThat(created.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
 		verify(userAccountRepository).findByUserId("user-1");
+		verify(workflowDispatchOutboxService).enqueue(created.getTaskId());
 	}
 
 	@Test
@@ -88,6 +94,7 @@ class VideoTaskServiceTests {
 		assertThat(result).isSameAs(failed);
 		assertThat(failed.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
 		assertThat(failed.getErrorMessage()).isNull();
+		verify(workflowDispatchOutboxService).enqueue("task-failed");
 	}
 
 	@Test
@@ -120,22 +127,29 @@ class VideoTaskServiceTests {
 		VideoTask queued = task("task-queued", VideoTask.TaskStatus.QUEUED);
 		VideoTask transcribing = task("task-transcribing", VideoTask.TaskStatus.TRANSCRIBING);
 		VideoTask summarizing = task("task-summarizing", VideoTask.TaskStatus.SUMMARIZING);
-		when(taskRepository.findByStatusInAndUpdatedAtBefore(org.mockito.ArgumentMatchers.anyList(), eq(cutoff)))
-				.thenReturn(List.of(queued, transcribing, summarizing));
+		when(taskRepository.findStaleTaskIds(org.mockito.ArgumentMatchers.anyList(), any(Instant.class), eq(cutoff)))
+				.thenReturn(List.of("task-queued", "task-transcribing", "task-summarizing"));
+		when(taskRepository.requeueIfStale(
+				anyString(), org.mockito.ArgumentMatchers.anyList(), eq(VideoTask.TaskStatus.QUEUED),
+				any(Instant.class), eq(cutoff)))
+				.thenReturn(1);
 
 		List<String> taskIds = service.requeueStaleTasks(cutoff);
 
 		assertThat(taskIds).containsExactly("task-queued", "task-transcribing", "task-summarizing");
-		assertThat(queued.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
-		assertThat(transcribing.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
-		assertThat(summarizing.getStatus()).isEqualTo(VideoTask.TaskStatus.QUEUED);
 
 		ArgumentCaptor<List<VideoTask.TaskStatus>> statusesCaptor = ArgumentCaptor.forClass(List.class);
-		verify(taskRepository).findByStatusInAndUpdatedAtBefore(statusesCaptor.capture(), eq(cutoff));
+		verify(taskRepository).findStaleTaskIds(statusesCaptor.capture(), any(Instant.class), eq(cutoff));
 		assertThat(statusesCaptor.getValue()).containsExactly(
 				VideoTask.TaskStatus.QUEUED,
 				VideoTask.TaskStatus.TRANSCRIBING,
 				VideoTask.TaskStatus.SUMMARIZING);
+		verify(taskRepository, org.mockito.Mockito.times(3)).requeueIfStale(
+				anyString(), eq(statusesCaptor.getValue()), eq(VideoTask.TaskStatus.QUEUED),
+				any(Instant.class), eq(cutoff));
+		verify(workflowDispatchOutboxService).enqueue("task-queued");
+		verify(workflowDispatchOutboxService).enqueue("task-transcribing");
+		verify(workflowDispatchOutboxService).enqueue("task-summarizing");
 	}
 
 	private static VideoTask task(String taskId, VideoTask.TaskStatus status) {

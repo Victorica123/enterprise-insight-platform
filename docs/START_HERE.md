@@ -39,6 +39,8 @@
 
 ### Agent Service
 
+新增业务入口统一位于 `services/agent-service/app/architecture/`；它们组合下表中的实现模块，并保留旧导入路径供兼容测试使用。优先按全景层选择 façade：`orchestration.py`（对话）、`retrieval.py`（检索与证据）、`execution.py`（三层执行器）、`knowledge.py`（知识底座）、`governance.py`（审批与生命周期）、`observability.py`（观测与审计）。完整映射见 [ARCHITECTURE_PANORAMA.md](ARCHITECTURE_PANORAMA.md)。
+
 | 要找的问题 | 入口 | 职责 |
 | --- | --- | --- |
 | 文档/chunk/摄取回执 | `database.py` | 核心知识持久化，不含聊天观测逻辑 |

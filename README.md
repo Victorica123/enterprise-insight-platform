@@ -38,14 +38,23 @@ flowchart LR
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 130 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
-| Media Service | JDK 17/18 下 108 个自动化用例 |
+| Agent Service | 157 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
+| Media Service | 受支持的 Temurin JDK 18 下 135 个自动化用例 |
 | Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景三套独立门禁 |
 | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
 | Web | TypeScript project build + Vite production build |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 
 详细、可审计的测试口径见 [`knowledge/QUALITY.md`](knowledge/QUALITY.md)。
+
+## LLM 通道边界
+
+Agentic RAG 的 Router、Planner 和 Tool Agent 是可选的 LLM 辅助通道：
+
+- `LLM_RESPONSE_FORMAT=auto` 时，OpenAI 使用 `json_schema + strict=true`，DeepSeek 使用 `json_object`；服务端仍执行类型、枚举、工具白名单、参数和引用校验。
+- provider 不支持结构化响应、网络失败、拒答或解析失败时，调用会记录降级并回到确定性规则，不阻断本地问答链路。
+- 六阶段分析的四个 specialist 仍是确定性规则 baseline；这项能力不应表述为完整多 LLM Agent Runtime。
+- token 用量和成本只代表调用计量，不代表开放域准确率；质量判断仍以固定黄金集、独立 holdout、引用正确率、拒答质量和人工评审为准。
 
 ## 面试演示实录
 
@@ -77,6 +86,14 @@ python scripts/local_acceptance.py
 
 完整发布与备份恢复步骤见 [`docs/LOCAL_RELEASE_RUNBOOK.md`](docs/LOCAL_RELEASE_RUNBOOK.md)。
 
+不租服务器也可以把真实中间件搬到本机做准生产验证：
+
+```powershell
+./scripts/run_local_reliability.ps1 -Build
+```
+
+这条路径组装 Keycloak OIDC、RS256/JWKS、两个独立 MySQL schema、Redis、RocketMQ、MinIO、Media、Agent 和统一 Web，并提供自动保留期、模型数据出境白名单、JFR、thread dump、tracemalloc 与 Toxiproxy 故障注入入口。完整口径、阈值和不能外推的边界见 [`docs/LOCAL_RELIABILITY_RUNBOOK.md`](docs/LOCAL_RELIABILITY_RUNBOOK.md)。
+
 ## 面试入口
 
 - [`docs/PROJECT_CLOSEOUT.md`](docs/PROJECT_CLOSEOUT.md)：正式收尾结论、封板证据、面试前检查和重新打开规则。
@@ -100,4 +117,4 @@ python scripts/local_acceptance.py
 
 ## 真实边界
 
-当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或 99.9% SLA。localhost 验收中的 mock AI 证明状态机、鉴权、证据、审批和恢复链路，不等同于真实模型质量或生产吞吐。正式上线仍需确定 IdP/即时撤权、数据保留与模型数据策略，并重新验证统一平台的 MySQL、Redis、RocketMQ、S3、真实转写/LLM、迁移、告警和灾备。
+当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或兑现 99.5% SLO。localhost 验收中的 mock AI 证明状态机、鉴权、证据、审批和恢复链路，不等同于真实模型质量或生产吞吐。生产试点基线已固定 Keycloak OIDC、RS256/JWKS、MySQL、30/180/365 天保留期和模型出境租户白名单；仍须在具备 Docker/k6 与获批供应商凭证的环境验证真实中间件、模型、迁移、告警和灾备后才能形成上线结论。

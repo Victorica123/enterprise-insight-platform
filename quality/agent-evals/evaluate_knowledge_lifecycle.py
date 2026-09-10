@@ -1,7 +1,11 @@
 """Deterministic golden gate for governed approved-knowledge evolution."""
+
+# The evaluator adds the service directory to sys.path at runtime.
+# pyright: reportMissingImports=false
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import sys
 import tempfile
@@ -10,17 +14,22 @@ from time import perf_counter
 
 from fastapi.testclient import TestClient
 
-
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
+
+# This evaluator intentionally uses compatibility headers; keep that mode explicit
+# and isolated from production defaults, just like the test package.
+os.environ.setdefault("AGENT_AUTH_MODE", "development")
+os.environ.setdefault("APP_ENV", "test")
 
 from app import database  # noqa: E402
 from app.main import app  # noqa: E402
 from app.retrievers import RetrievalScope, clear_chunk_cache, load_chunks  # noqa: E402
 
-
-GOLDEN_PATH = Path(__file__).resolve().parent / "golden" / "knowledge_lifecycle_golden_set.jsonl"
+GOLDEN_PATH = (
+    Path(__file__).resolve().parent / "golden" / "knowledge_lifecycle_golden_set.jsonl"
+)
 QUALITY_GATES = {
     "decision_accuracy": 1.0,
     "future_retrieval_accuracy": 1.0,
@@ -36,14 +45,27 @@ QUALITY_GATES = {
 
 
 def load_cases() -> list[dict[str, object]]:
-    return [
-        json.loads(line)
-        for line in GOLDEN_PATH.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    cases: list[dict[str, object]] = []
+    for line_number, line in enumerate(
+        GOLDEN_PATH.read_text(encoding="utf-8").splitlines(), 1
+    ):
+        if not line.strip():
+            continue
+        try:
+            decoded = json.loads(line)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"Invalid golden case JSON at line {line_number}"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise TypeError(f"Golden case at line {line_number} must be an object")
+        cases.append(decoded)
+    return cases
 
 
-def headers(user_id: str, workspace_type: str, *, tenant_id: str = "tenant-golden") -> dict[str, str]:
+def headers(
+    user_id: str, workspace_type: str, *, tenant_id: str = "tenant-golden"
+) -> dict[str, str]:
     return {
         "X-User-Role": "admin" if workspace_type == "personal" else "operator",
         "X-User-Id": user_id,
@@ -58,18 +80,27 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
     reviewer = headers("reviewer", workspace_type)
     client = TestClient(app)
     database.insert_document(
-        "golden-source", "golden-review.mp4",
+        "golden-source",
+        "golden-review.mp4",
         [("", "产品负责人要求 P0 优先，审批结果 2 秒内展示，并保留合规审计。")],
-        tenant_id="tenant-golden", owner_id="author", source_type="video",
+        tenant_id="tenant-golden",
+        owner_id="author",
+        source_type="video",
         external_id="asset-golden",
-        chunk_metadata=[{
-            "asset_id": "asset-golden", "segment_id": "segment-golden",
-            "start_ms": 0, "end_ms": 4000, "speaker": "产品负责人",
-        }],
+        chunk_metadata=[
+            {
+                "asset_id": "asset-golden",
+                "segment_id": "segment-golden",
+                "start_ms": 0,
+                "end_ms": 4000,
+                "speaker": "产品负责人",
+            }
+        ],
     )
     started_at = perf_counter()
     created = client.post(
-        "/analysis/sessions", headers=author,
+        "/analysis/sessions",
+        headers=author,
         json={"objective": "生成知识治理验收 PRD", "asset_ids": ["asset-golden"]},
     ).json()
     if created["status"] == "WAITING_CONFIRMATION":
@@ -82,7 +113,8 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
             "evidence_scope": "使用冻结的视频证据",
         }
         created = client.post(
-            f"/analysis/sessions/{created['session_id']}/confirm", headers=author,
+            f"/analysis/sessions/{created['session_id']}/confirm",
+            headers=author,
             json={
                 "resume_token": created["resume_token"],
                 "answers": {
@@ -92,7 +124,8 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
             },
         ).json()
     requested = client.post(
-        f"/analysis/sessions/{created['session_id']}/publication/request", headers=author,
+        f"/analysis/sessions/{created['session_id']}/publication/request",
+        headers=author,
     ).json()
     publication_reviewer = reviewer if workspace_type == "team" else author
     published = client.post(
@@ -105,23 +138,29 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
         },
     )
     bundle = client.get(
-        f"/analysis/sessions/{created['session_id']}/deliverables", headers=author,
+        f"/analysis/sessions/{created['session_id']}/deliverables",
+        headers=author,
     ).json()
     candidate = bundle["knowledge_candidates"][0]
     candidate_reviewer = reviewer if workspace_type == "team" else author
     approved_candidate = client.post(
         f"/analysis/sessions/{created['session_id']}/knowledge-candidates/{candidate['candidate_id']}/decision",
-        headers=candidate_reviewer, json={"approved": True},
+        headers=candidate_reviewer,
+        json={"approved": True},
     )
     history = client.post(
-        "/chat", headers=author,
+        "/chat",
+        headers=author,
         json={
-            "question": "已批准业务知识", "answer_mode": "local",
-            "retriever_mode": "keyword", "workflow_mode": "standard",
+            "question": "已批准业务知识",
+            "answer_mode": "local",
+            "retriever_mode": "keyword",
+            "workflow_mode": "standard",
         },
     ).json()
     original_source = next(
-        source for source in history["sources"]
+        source
+        for source in history["sources"]
         if source.get("knowledge_candidate_id") == candidate["candidate_id"]
     )
     original_document_id = original_source["document_id"]
@@ -135,44 +174,58 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
         "reason": f"golden {action.lower()} governance decision",
     }
     if action == "SUPERSEDE":
-        lifecycle_payload.update({
-            "replacement_statement": "黄金集替代知识：审批结果必须在 1 秒内展示。",
-            "replacement_evidence": candidate["evidence"],
-        })
+        lifecycle_payload.update(
+            {
+                "replacement_statement": "黄金集替代知识：审批结果必须在 1 秒内展示。",
+                "replacement_evidence": candidate["evidence"],
+            }
+        )
     lifecycle = client.post(
-        lifecycle_path, headers=author, json=lifecycle_payload,
+        lifecycle_path,
+        headers=author,
+        json=lifecycle_payload,
     ).json()
     self_decision_status = (
         client.post(
             f"{lifecycle_path}/{lifecycle['request_id']}/decision",
-            headers=author, json={"approved": True},
+            headers=author,
+            json={"approved": True},
         ).status_code
-        if workspace_type == "team" else 200
+        if workspace_type == "team"
+        else 200
     )
     decision_actor = reviewer if workspace_type == "team" else author
     decision = client.post(
         f"{lifecycle_path}/{lifecycle['request_id']}/decision",
-        headers=decision_actor, json={"approved": True},
+        headers=decision_actor,
+        json={"approved": True},
     )
     repeated = client.post(
         f"{lifecycle_path}/{lifecycle['request_id']}/decision",
-        headers=decision_actor, json={"approved": True},
+        headers=decision_actor,
+        json={"approved": True},
     )
     final_bundle = client.get(
-        f"/analysis/sessions/{created['session_id']}/deliverables", headers=author,
+        f"/analysis/sessions/{created['session_id']}/deliverables",
+        headers=author,
     ).json()
     versions = final_bundle["knowledge_versions"]
     final_candidate = final_bundle["knowledge_candidates"][0]
     clear_chunk_cache()
     active_knowledge = [
-        chunk for chunk in load_chunks(RetrievalScope(
-            tenant_id="tenant-golden", owner_id=None if workspace_type == "team" else "author",
-        ))
+        chunk
+        for chunk in load_chunks(
+            RetrievalScope(
+                tenant_id="tenant-golden",
+                owner_id=None if workspace_type == "team" else "author",
+            )
+        )
         if chunk.knowledge_candidate_id == candidate["candidate_id"]
     ]
     replay = client.get(f"/chat-logs/{history['log_id']}", headers=author).json()
     replay_source = next(
-        source for source in replay["sources"]
+        source
+        for source in replay["sources"]
         if source.get("knowledge_candidate_id") == candidate["candidate_id"]
     )
     cross_tenant = client.get(
@@ -189,22 +242,33 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
             (original_document_id,),
         ).fetchone()["c"]
     expected_active = case["expected_active_version"]
-    expected_statuses = list(case["expected_versions"])
+    raw_expected_statuses = case.get("expected_versions")
+    if not isinstance(raw_expected_statuses, list):
+        raise TypeError("Golden case expected_versions must be a list")
+    expected_statuses = raw_expected_statuses
     lineage_ok = [item["status"] for item in versions] == expected_statuses
     if action == "SUPERSEDE":
         lineage_ok = lineage_ok and (
             versions[0]["successor_version_id"] == versions[1]["knowledge_version_id"]
-            and versions[1]["predecessor_version_id"] == versions[0]["knowledge_version_id"]
+            and versions[1]["predecessor_version_id"]
+            == versions[0]["knowledge_version_id"]
         )
     result = {
         "id": case["id"],
-        "decision_ok": published.status_code == 200 and approved_candidate.status_code == 200 and decision.status_code == 200,
+        "decision_ok": published.status_code == 200
+        and approved_candidate.status_code == 200
+        and decision.status_code == 200,
         "retrieval_ok": (
             len(active_knowledge) == (1 if expected_active else 0)
-            and all(chunk.knowledge_version_number == expected_active for chunk in active_knowledge)
+            and all(
+                chunk.knowledge_version_number == expected_active
+                for chunk in active_knowledge
+            )
         ),
-        "lineage_ok": lineage_ok and final_candidate["knowledge_version_number"] == len(versions),
-        "history_ok": replay_source["knowledge_lifecycle_status"] == case["expected_history_status"],
+        "lineage_ok": lineage_ok
+        and final_candidate["knowledge_version_number"] == len(versions),
+        "history_ok": replay_source["knowledge_lifecycle_status"]
+        == case["expected_history_status"],
         "isolation_ok": cross_tenant.status_code == 404,
         "four_eyes_ok": workspace_type != "team" or self_decision_status == 403,
         "idempotency_ok": repeated.status_code == 409,
@@ -216,9 +280,27 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def _as_float(value: object, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise TypeError(f"{label} must be numeric")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"{label} must be numeric") from exc
+
+
+def _p95_index(count: int) -> int:
+    try:
+        return max(0, int(count * 0.95) - 1)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Unable to calculate p95 index") from exc
+
+
 def summarize(results: list[dict[str, object]]) -> dict[str, float | int]:
-    latencies = sorted(float(item["latency_ms"]) for item in results)
-    p95_index = max(0, int(len(latencies) * 0.95) - 1)
+    latencies = sorted(
+        _as_float(item.get("latency_ms"), "latency_ms") for item in results
+    )
+    p95_index = _p95_index(len(latencies))
     metric_keys = {
         "decision_accuracy": "decision_ok",
         "future_retrieval_accuracy": "retrieval_ok",
@@ -232,7 +314,9 @@ def summarize(results: list[dict[str, object]]) -> dict[str, float | int]:
     }
     summary: dict[str, float | int] = {"cases": len(results)}
     for metric, key in metric_keys.items():
-        summary[metric] = round(sum(bool(item[key]) for item in results) / len(results), 4)
+        summary[metric] = round(
+            sum(bool(item[key]) for item in results) / len(results), 4
+        )
     summary["avg_latency_ms"] = round(statistics.mean(latencies), 2)
     summary["p95_latency_ms"] = round(latencies[p95_index], 2)
     return summary
@@ -258,12 +342,16 @@ def main() -> int:
     print("Knowledge lifecycle V1 golden-set evaluation")
     print("-" * 88)
     for result in results:
-        failed = [key for key, value in result.items() if key.endswith("_ok") and not value]
-        print(f"{result['id']}: {'PASS' if not failed else 'FAIL ' + ','.join(failed)} ({result['latency_ms']:.2f}ms)")
+        failed = [
+            key for key, value in result.items() if key.endswith("_ok") and not value
+        ]
+        print(
+            f"{result['id']}: {'PASS' if not failed else 'FAIL ' + ','.join(failed)} ({result['latency_ms']:.2f}ms)"
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     failures = []
     for metric, threshold in QUALITY_GATES.items():
-        actual = float(summary[metric])
+        actual = _as_float(summary.get(metric), metric)
         if metric == "p95_latency_ms":
             if actual > threshold:
                 failures.append(f"{metric}={actual} > {threshold}")

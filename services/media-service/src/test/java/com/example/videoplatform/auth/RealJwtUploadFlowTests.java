@@ -35,6 +35,8 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest(properties = {
 		"app.redis.enabled=false",
 		"app.mq.enabled=false",
+		"app.workflow.dispatcher-enabled=true",
+		"spring.datasource.url=jdbc:h2:mem:real-jwt-upload-flow;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
 		"spring.docker.compose.enabled=false",
 		// 显式开启配额：确保 assertCanCreateTask→lockOwner（findByUserId）真实路径被执行。
 		// 该路径在 application-test.yml 中因 quota=0 被跳过，而它正是身份语义 bug 的藏身处。
@@ -48,6 +50,9 @@ import org.springframework.test.web.servlet.MvcResult;
 class RealJwtUploadFlowTests {
 
 	private static final Duration COMPLETION_TIMEOUT = Duration.ofSeconds(10);
+	private static final byte[] MINIMAL_MP4 = {
+			0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 2, 0
+	};
 
 	@TempDir
 	static Path storageDir;
@@ -73,7 +78,7 @@ class RealJwtUploadFlowTests {
 
 		// 2. 真实 JWT 过 Bearer 上传（真实过滤器 + 真实存储 + 真实配额校验）
 		MockMultipartFile file = new MockMultipartFile(
-				"file", "demo.mp4", "video/mp4", "fake-video-content".getBytes(StandardCharsets.UTF_8));
+				"file", "demo.mp4", "video/mp4", MINIMAL_MP4);
 		MvcResult uploadResult = mockMvc.perform(multipart("/api/media/upload/file")
 						.file(file)
 						.header("Authorization", "Bearer " + token))
@@ -104,7 +109,7 @@ class RealJwtUploadFlowTests {
 
 		// 先用正常令牌上传并等待完成，拿播放令牌
 		MockMultipartFile file = new MockMultipartFile(
-				"file", "demo.mp4", "video/mp4", "fake-video-content".getBytes(StandardCharsets.UTF_8));
+				"file", "demo.mp4", "video/mp4", MINIMAL_MP4);
 		MvcResult uploadResult = mockMvc.perform(multipart("/api/media/upload/file")
 						.file(file)
 						.header("Authorization", "Bearer " + token))

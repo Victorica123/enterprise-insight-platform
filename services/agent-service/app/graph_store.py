@@ -45,10 +45,10 @@ class GraphPathStep:
 
 def init_graph_store() -> None:
     global _INITIALIZED_DB_PATH
-    current_path = database.DB_PATH.resolve()
-    if _INITIALIZED_DB_PATH == current_path and current_path.exists():
+    current_path = database.database_identity()
+    if database.initialization_marker_is_current(_INITIALIZED_DB_PATH):
         return
-    database.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    database.prepare_database_storage()
     with database.connect() as conn:
         _ensure_scoped_graph_schema(conn)
     _INITIALIZED_DB_PATH = current_path
@@ -67,11 +67,11 @@ def _ensure_scoped_graph_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         create table if not exists graph_entities (
-            entity_id text primary key,
-            tenant_id text not null default 'legacy',
-            owner_id text not null default 'legacy',
-            name text not null,
-            entity_type text not null,
+            entity_id varchar(128) primary key,
+            tenant_id varchar(128) not null default 'legacy',
+            owner_id varchar(128) not null default 'legacy',
+            name varchar(128) not null,
+            entity_type varchar(64) not null,
             mention_count integer not null default 1,
             document_ids text not null default '[]',
             created_at text not null,
@@ -82,17 +82,17 @@ def _ensure_scoped_graph_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         create table if not exists graph_relations (
-            relation_id text primary key,
-            tenant_id text not null default 'legacy',
-            owner_id text not null default 'legacy',
-            source_name text not null,
-            source_type text not null,
-            relation_type text not null,
-            target_name text not null,
-            target_type text not null,
+            relation_id varchar(128) primary key,
+            tenant_id varchar(128) not null default 'legacy',
+            owner_id varchar(128) not null default 'legacy',
+            source_name varchar(128) not null,
+            source_type varchar(64) not null,
+            relation_type varchar(64) not null,
+            target_name varchar(128) not null,
+            target_type varchar(64) not null,
             evidence text not null default '',
-            document_id text not null default '',
-            filename text not null default '',
+            document_id varchar(128) not null default '',
+            filename varchar(191) not null default '',
             chunk_index integer not null default 0,
             created_at text not null,
             unique(tenant_id, owner_id, source_name, relation_type, target_name, document_id, chunk_index)
@@ -102,9 +102,9 @@ def _ensure_scoped_graph_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         create table if not exists graph_meta (
-            tenant_id text not null default 'legacy',
-            owner_id text not null default 'legacy',
-            key text not null,
+            tenant_id varchar(128) not null default 'legacy',
+            owner_id varchar(128) not null default 'legacy',
+            key varchar(128) not null,
             value text not null default '',
             primary key (tenant_id, owner_id, key)
         )

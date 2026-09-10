@@ -41,7 +41,8 @@ import { AnalysisWorkspace } from "./features/AnalysisWorkspace";
 import { EvidencePlayer, MediaWorkspace, type VideoEvidenceRequest } from "./features/MediaWorkspace";
 import { WorkspaceSwitcher } from "./features/WorkspaceSwitcher";
 import { logout as logoutWorkspace } from "./mediaApi";
-import { clearSession, loadSession, saveSession, type WorkspaceSession } from "./session";
+import { clearOidcSession, oidcRefreshAvailable, refreshOidcLogin } from "./oidc";
+import { clearSession, loadSession, saveSession, tokenExpiresAt, type WorkspaceSession } from "./session";
 import { useMediaWorkspace } from "./hooks/useMediaWorkspace";
 import {
   ApiFailureDialog,
@@ -105,7 +106,7 @@ function App() {
   const [isSendingFeedback, setIsSendingFeedback] = React.useState(false);
 	const [videoEvidence, setVideoEvidence] = React.useState<VideoEvidenceRequest | null>(null);
 	const {
-		tasks: mediaTasks, loading: isLoadingMedia, selectedAssetIds,
+		tasks: mediaTasks, runtime: mediaRuntime, loading: isLoadingMedia, selectedAssetIds,
 		setSelectedAssetIds, refresh: refreshMedia,
 	} = useMediaWorkspace(session, setError);
 
@@ -160,6 +161,59 @@ function App() {
     void refreshTickets();
   }, [session, refreshWorkspace, refreshTickets]);
 
+	React.useEffect(() => {
+		if (!session) return;
+		const expiresAt = tokenExpiresAt(session.token);
+		if (expiresAt === null) return;
+		const canRefresh = oidcRefreshAvailable();
+		const refreshLeadMs = canRefresh ? 60_000 : 0;
+		let active = true;
+		let pending = false;
+		let timer: number;
+		const checkExpiry = () => {
+			if (!active || pending || loadSession()?.token !== session.token) return;
+			window.clearTimeout(timer);
+			const delay = expiresAt - Date.now() - refreshLeadMs;
+			if (delay > 0) {
+				timer = window.setTimeout(checkExpiry, Math.min(delay, 2_147_483_647));
+				return;
+			}
+			pending = true;
+			if (canRefresh) {
+				void refreshOidcLogin(session.tenantId)
+					.then((nextSession) => {
+						if (!active || loadSession()?.token !== session.token) return;
+						if (nextSession.tenantId !== session.tenantId) {
+							handleWorkspaceSwitched(nextSession);
+						} else {
+							saveSession(nextSession);
+							setSession(nextSession);
+						}
+					})
+					.catch(() => {
+						if (!active || loadSession()?.token !== session.token) return;
+						clearOidcSession();
+						clearSession();
+						setSession(null);
+						setError("统一身份会话已过期，请重新登录。");
+					});
+				return;
+			}
+			clearSession();
+			setSession(null);
+			setError("登录已过期，请重新登录。");
+		};
+		checkExpiry();
+		window.addEventListener("focus", checkExpiry);
+		document.addEventListener("visibilitychange", checkExpiry);
+		return () => {
+			active = false;
+			window.clearTimeout(timer);
+			window.removeEventListener("focus", checkExpiry);
+			document.removeEventListener("visibilitychange", checkExpiry);
+		};
+	}, [session]);
+
   async function handleUpload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedFile) {
@@ -200,7 +254,10 @@ function App() {
       const failedApiStep = response.trace.find(
         (step) => step.name === "answer" && ["api_failed", "local_fallback"].includes(step.status),
       );
-      if (failedApiStep) {
+      // `auto` with no configured key is an expected local capability, not a
+      // failed user action. Keep the blocking dialog for an explicit API
+      // request or for a provider call that was actually attempted and failed.
+      if (failedApiStep && (answerMode === "api" || failedApiStep.status === "api_failed")) {
         setApiFailureNotice({
           reason: getApiFailureReason(failedApiStep.detail),
           requestedMode: answerMode,
@@ -331,10 +388,12 @@ function App() {
 	}
 
 	async function handleLogout() {
-		try { await logoutWorkspace(); } catch { /* local token is cleared even if a service is unavailable */ }
+		const revocation = logoutWorkspace();
+		clearOidcSession();
 		clearSession();
 		setSession(null);
 		setChatResponse(null);
+		try { await revocation; } catch { /* local session is already cleared */ }
 	}
 
 	function handleOpenVideoEvidence(assetId: string, startMs: number) {
@@ -417,7 +476,7 @@ function App() {
       </nav>
 
 		{activeTab === "media" ? (
-			<MediaWorkspace tasks={mediaTasks} loading={isLoadingMedia} selectedAssetIds={selectedAssetIds}
+			<MediaWorkspace tasks={mediaTasks} runtime={mediaRuntime} loading={isLoadingMedia} selectedAssetIds={selectedAssetIds}
 				onSelectionChange={setSelectedAssetIds} onRefresh={refreshMedia} onError={setError}
 				onPlay={setVideoEvidence} />
 		) : activeTab === "qa" ? (

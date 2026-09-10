@@ -1,7 +1,6 @@
 package com.example.videoplatform.transcript;
 
 import com.example.videoplatform.config.AppProperties;
-import java.time.Instant;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -18,9 +17,10 @@ public class MockTranscriptService implements TranscriptService {
 	@Override
 	public TranscriptResult extract(String storagePath, String fileName) {
 		simulateProcessingDelay();
+		// storagePath is an internal deployment detail. Even mock evidence enters
+		// the cross-service transcript event and must never disclose it to users.
 		String text = "模拟转写结果: 文件 " + fileName + " 已完成音频识别。"
-				+ " 存储路径 " + storagePath + "。"
-				+ " 处理时间 " + Instant.now() + "。";
+				+ " 该内容仅用于验证处理与证据链路。";
 		return new TranscriptResult(
 				text,
 				java.util.List.of(new TranscriptResult.Segment("segment-0", 0, 0, 5_000, "演示说话人", text)),

@@ -15,7 +15,6 @@ from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
@@ -24,7 +23,6 @@ from app import database  # noqa: E402
 from app.analysis_evidence import build_analysis_evidence_snapshot  # noqa: E402
 from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis  # noqa: E402
 from app.retrievers import RetrievalScope, clear_chunk_cache  # noqa: E402
-
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden" / "prd_golden_set.jsonl"
 BASELINE_PATH = Path(__file__).resolve().parent / "golden" / "baseline_prd_v1.json"
@@ -189,7 +187,10 @@ def summarize(results: list[dict[str, object]]) -> dict[str, float | int]:
     total = len(results)
     latencies = sorted(float(item["latency_ms"]) for item in results)
     p95_index = max(0, int(len(latencies) * 0.95) - 1)
-    mean = lambda key: sum(float(bool(item[key])) for item in results) / total
+
+    def mean(key: str) -> float:
+        return sum(float(bool(item[key])) for item in results) / total
+
     return {
         "cases": total,
         "decision_accuracy": round(mean("decision_ok"), 4),

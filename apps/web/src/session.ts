@@ -34,3 +34,17 @@ export function clearSession(): void {
 export function accessToken(): string | null {
   return loadSession()?.token ?? null;
 }
+
+/** Client-side scheduling hint only; API services still verify signature and expiry. */
+export function tokenExpiresAt(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const decoded = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof decoded.exp === "number" ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}

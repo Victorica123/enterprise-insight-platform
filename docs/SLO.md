@@ -13,18 +13,19 @@ These objectives are release gates today:
 | Controlled writes | zero exact-once violations; every side effect has approval audit | tool metrics and approval tests |
 | Web release | TypeScript and production build pass | `npm run build` |
 
-## Candidate production SLOs — approval required
+## Accepted production-pilot SLO baseline
 
-The following are engineering recommendations, not a production promise. They need workload baselines, retention policy and user approval before an ADR can activate them:
+ADR-0014 activates the following objectives for the limited pilot. They start as measurement targets; localhost tests do not prove compliance:
 
-- authenticated API availability: 99.9% monthly;
+- authenticated API availability: 99.5% monthly;
 - non-model API latency: p95 ≤ 1.5 seconds, p99 ≤ 3 seconds;
+- local/fallback Agent answer latency: p95 ≤ 3 seconds; external-provider completion latency is tracked separately;
 - transcript-to-searchable-evidence delay: p95 ≤ 5 minutes for supported media sizes;
-- accepted outbox event delivery: 99.9% within 60 seconds, zero silent drops;
+- accepted outbox event delivery: 99.5% within 60 seconds, zero silent drops;
 - evidence integrity: 100% of returned video citations contain accessible tenant-owned asset, segment and valid time range;
 - recovery point objective: 24 hours for pilot data; recovery time objective: 2 hours.
 
-Availability excludes declared maintenance and user-controlled external model outages only after the product defines that policy. Model fallback must still expose stored facts, processing state and approval state.
+Availability excludes declared maintenance. An external model outage is excluded from model-call latency only; the application must still expose stored facts, processing state and approval state through its local/fallback path.
 
 ## Measurement and alerting
 

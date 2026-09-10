@@ -7,13 +7,11 @@ import time
 import unittest
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from app.auth import JwtValidationError, decode_shared_jwt, validate_auth_configuration
 from app.main import app
 from app.models import ChatResponse
 from app.retrievers import RetrievalScope
-
+from fastapi.testclient import TestClient
 
 SECRET = "integration-test-shared-secret-32-bytes-minimum"
 
@@ -57,6 +55,7 @@ class UnifiedAuthTests(unittest.TestCase):
                 "AGENT_AUTH_MODE": "jwt",
                 "APP_ENV": "test",
                 "SHARED_JWT_SECRET": SECRET,
+                "JWT_ALGORITHM": "HS256",
                 "APP_JWT_ISSUER": "enterprise-insight",
                 "APP_JWT_AUDIENCE": "enterprise-insight-api",
             },
@@ -144,6 +143,21 @@ class UnifiedAuthTests(unittest.TestCase):
     def test_production_rejects_development_auth_mode(self) -> None:
         with patch.dict(os.environ, {"APP_ENV": "production", "AGENT_AUTH_MODE": "development"}):
             with self.assertRaises(RuntimeError):
+                validate_auth_configuration()
+
+    def test_rs256_mode_requires_jwks_and_rejects_unknown_algorithm(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"AGENT_AUTH_MODE": "jwt", "JWT_ALGORITHM": "RS256", "JWT_JWKS_URL": ""},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "JWT_JWKS_URL"):
+                validate_auth_configuration()
+
+        with patch.dict(
+            os.environ,
+            {"AGENT_AUTH_MODE": "jwt", "JWT_ALGORITHM": "none"},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "HS256 or RS256"):
                 validate_auth_configuration()
 
 

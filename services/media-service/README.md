@@ -174,7 +174,7 @@ mvn test "-Dtest=WorkflowControllerTests,WorkflowProcessorTests,VideoTaskService
 node --check src/main/resources/static/app.js
 ```
 
-当前基线：108 个测试，测试环境使用 H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API。
+当前基线：124 个测试，测试环境使用受支持的 Temurin JDK 18、H2 和 Mock，不依赖 Redis、RocketMQ、Docker、FFmpeg 或外部 AI API；可选真实中间件脚本不等于本地测试已覆盖生产依赖。
 
 ## 关键设计取舍
 

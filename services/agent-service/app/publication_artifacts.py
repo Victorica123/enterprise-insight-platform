@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 from app import database, knowledge_lifecycle_store
+from app.evidence_provenance import validate_and_normalize_evidence
 from app.graph_store import index_document_graph, init_graph_store, rebuild_graph_scope
 from app.analysis_models import (
     ActionItemDraft,
@@ -292,6 +293,7 @@ def decide_knowledge_candidate(
     actor_id: str,
     approved: bool,
     decided_at: datetime,
+    evidence_owner_id: str | None = None,
 ) -> KnowledgeCandidate | None:
     init_publication_artifact_store()
     init_graph_store()
@@ -316,11 +318,17 @@ def decide_knowledge_candidate(
         knowledge_published_at: str | None = None
         knowledge_version_id: str | None = None
         if approved:
+            evidence = validate_and_normalize_evidence(
+                conn,
+                json.loads(candidate["evidence_json"]),
+                tenant_id=tenant_id,
+                owner_id=evidence_owner_id,
+            )
             version = knowledge_lifecycle_store.materialize_knowledge_version(
                 conn,
                 candidate,
                 statement=candidate["statement"],
-                evidence=json.loads(candidate["evidence_json"]),
+                evidence=evidence,
                 version_number=1,
                 predecessor_version_id=None,
                 actor_id=actor_id,
@@ -366,6 +374,7 @@ def request_knowledge_lifecycle(
     replacement_statement: str | None,
     replacement_evidence: list[dict[str, object]],
     requested_at: datetime,
+    evidence_owner_id: str | None = None,
 ) -> KnowledgeLifecycleRequest | None:
     init_publication_artifact_store()
     return knowledge_lifecycle_store.request_knowledge_lifecycle(
@@ -377,6 +386,7 @@ def request_knowledge_lifecycle(
         replacement_statement=replacement_statement,
         replacement_evidence=replacement_evidence,
         requested_at=requested_at,
+        evidence_owner_id=evidence_owner_id,
     )
 
 
@@ -388,6 +398,7 @@ def decide_knowledge_lifecycle(
     actor_id: str,
     approved: bool,
     decided_at: datetime,
+    evidence_owner_id: str | None = None,
 ) -> KnowledgeLifecycleRequest | None:
     init_publication_artifact_store()
     init_graph_store()
@@ -400,6 +411,7 @@ def decide_knowledge_lifecycle(
         decided_at=decided_at,
         index_document_graph=index_document_graph,
         rebuild_graph_scope=rebuild_graph_scope,
+        evidence_owner_id=evidence_owner_id,
     )
 
 

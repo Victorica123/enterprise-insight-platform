@@ -22,16 +22,23 @@ public class AgentOutboxDispatcher {
 
 	@Scheduled(fixedDelayString = "${app.integration.agent.dispatch-interval-ms:2000}")
 	public void dispatchPending() {
-		for (IntegrationEventOutbox event : outboxService.pendingBatch()) {
+		for (IntegrationEventOutbox event : outboxService.claimBatch()) {
+			String claimId = event.getClaimId();
 			try {
 				client.send(event.getPayload());
-				outboxService.markSent(event.getEventId());
+				if (!outboxService.markSent(event.getEventId(), claimId)) {
+					log.warn("Transcript event {} lost its delivery lease before completion", event.getEventId());
+				}
 			} catch (AgentTranscriptClient.PermanentDeliveryException exception) {
 				log.error("Transcript event {} permanently rejected: {}", event.getEventId(), exception.getMessage());
-				outboxService.markFailed(event.getEventId(), exception.getMessage(), true);
+				if (!outboxService.markFailed(event.getEventId(), claimId, exception.getMessage(), true)) {
+					log.warn("Transcript event {} lost its delivery lease before failure persistence", event.getEventId());
+				}
 			} catch (Exception exception) {
 				log.warn("Transcript event {} delivery failed: {}", event.getEventId(), exception.getMessage());
-				outboxService.markFailed(event.getEventId(), exception.getMessage(), false);
+				if (!outboxService.markFailed(event.getEventId(), claimId, exception.getMessage(), false)) {
+					log.warn("Transcript event {} lost its delivery lease before retry scheduling", event.getEventId());
+				}
 			}
 		}
 	}

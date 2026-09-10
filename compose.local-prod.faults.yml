@@ -1,0 +1,29 @@
+services:
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18474:8474"
+
+  toxiproxy-init:
+    image: curlimages/curl:8.10.1
+    restart: "no"
+    depends_on:
+      - toxiproxy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        until curl -fsS http://toxiproxy:8474/version; do sleep 1; done;
+        curl -fsS -X POST http://toxiproxy:8474/populate -H 'Content-Type: application/json'
+        -d '[{"name":"mysql","listen":"0.0.0.0:8666","upstream":"mysql:3306"},{"name":"redis","listen":"0.0.0.0:8667","upstream":"redis:6379"},{"name":"minio","listen":"0.0.0.0:8668","upstream":"minio:9000"},{"name":"agent","listen":"0.0.0.0:8669","upstream":"agent:8000"}]'
+
+  media:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://toxiproxy:8666/videoplatform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      REDIS_HOST: toxiproxy
+      REDIS_PORT: "8667"
+      APP_STORAGE_S3_ENDPOINT: http://toxiproxy:8668
+      AGENT_SERVICE_BASE_URL: http://toxiproxy:8669
+    depends_on:
+      toxiproxy-init:
+        condition: service_completed_successfully

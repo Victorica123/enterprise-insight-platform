@@ -1,11 +1,10 @@
 """Deterministic V4 release gate: graph extraction quality + Graph Agent integration."""
-from pathlib import Path
 import statistics
 import sys
 import tempfile
+from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "agent-service"))
@@ -15,7 +14,6 @@ from app.graph_rag import lookup_graph  # noqa: E402
 from app.graph_store import find_paths, get_graph_overview, list_relations, rebuild_graph  # noqa: E402
 from app.rag import ingest_document  # noqa: E402
 from app.ticket_store import create_ticket  # noqa: E402
-
 
 FIXTURE_TEXT = (
     "客户 B 的项目原计划在 2026 年 6 月 20 日交付。\n"

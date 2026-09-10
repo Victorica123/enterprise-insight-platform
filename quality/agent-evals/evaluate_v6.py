@@ -25,7 +25,6 @@ from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "services" / "agent-service"
 sys.path.insert(0, str(API_DIR))
@@ -36,7 +35,6 @@ os.environ.setdefault("LLM_ROUTER_ENABLED", "0")
 from app.agentic_rag import answer_agentic_question  # noqa: E402
 from app.embeddings import warm_up_embeddings  # noqa: E402
 from app.rag import ingest_document  # noqa: E402
-
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 FIXTURES_DIR = GOLDEN_DIR / "fixtures"
@@ -112,7 +110,7 @@ def run_mode(cases: list[dict[str, object]], mode: str) -> dict[str, object]:
         results.append(judge_case(case, response))
 
     total = len(results)
-    answered_cases = [r for r, c in zip(results, cases) if c["should_answer"]]
+    answered_cases = [r for r, c in zip(results, cases, strict=True) if c["should_answer"]]
     decision_ok = sum(bool(r["decision_ok"]) for r in results) / total
     retrieval_ok = (
         sum(bool(r["retrieval_ok"]) for r in answered_cases) / len(answered_cases)
@@ -159,7 +157,9 @@ def print_mode_summary(summary: dict[str, object], baseline: dict[str, object] |
         f"p95={summary['p95_latency_ms']:.1f}ms"
     )
     if baseline:
-        delta = lambda cur, base: f"{cur - base:+.1%}"
+        def delta(cur: float, base: float) -> str:
+            return f"{cur - base:+.1%}"
+
         print(
             f"    vs baseline: decision {delta(summary['decision_accuracy'], baseline['decision_accuracy'])}"
             f" recall3 {delta(summary['recall3'], baseline['recall3'])}"

@@ -1,12 +1,11 @@
 import json
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-
-from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import AgentSummary, ChatResponse, TraceStep
+from fastapi.testclient import TestClient
 
 
 class ApiContractTests(unittest.TestCase):
@@ -184,6 +183,37 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(
             schema["allOf"][0]["if"]["properties"]["status"]["const"], "APPROVED",
         )
+
+    def test_media_runtime_contract_exposes_real_or_mock_processing_modes(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "http" / "media-runtime-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+
+        self.assertTrue(schema["$id"].endswith("/media-runtime-v1.schema.json"))
+        self.assertEqual(
+            set(schema["properties"]["transcriptMode"]["enum"]),
+            {"mock", "whisper-api"},
+        )
+        self.assertEqual(
+            set(schema["properties"]["summaryMode"]["enum"]),
+            {"mock", "llm-api"},
+        )
+        self.assertTrue({
+            "jwtAlgorithm", "oidcEnabled", "modelEgressAllowed", "retentionEnabled",
+            "mediaRetentionDays", "transcriptRetentionDays", "auditRetentionDays",
+        }.issubset(schema["required"]))
+
+    def test_jwks_contract_is_rs256_public_material_only(self) -> None:
+        contract = (
+            Path(__file__).resolve().parents[3]
+            / "contracts" / "identity" / "jwks-v1.schema.json"
+        )
+        schema = json.loads(contract.read_text(encoding="utf-8"))
+        key = schema["properties"]["keys"]["items"]
+        self.assertEqual("RS256", key["properties"]["alg"]["const"])
+        self.assertNotIn("d", key["properties"])
 
     def test_knowledge_lifecycle_contract_defines_version_chain_and_governance(self) -> None:
         contract = (

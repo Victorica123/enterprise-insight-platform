@@ -4,11 +4,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from app import database
 from app.main import app
 from app.retrievers import clear_chunk_cache
+from fastapi.testclient import TestClient
+
 from tests.test_unified_auth import SECRET, access_token
 
 

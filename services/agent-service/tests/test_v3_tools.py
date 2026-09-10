@@ -3,8 +3,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from app.agentic_rag import answer_agentic_question
 from app.main import app
 from app.ticket_store import (
@@ -16,7 +14,7 @@ from app.ticket_store import (
 )
 from app.tool_observability_store import get_tool_metrics_summary, list_tool_call_logs
 from app.tools import execute_tool, resolve_tool_action
-
+from fastapi.testclient import TestClient
 
 CREATE_PAYLOAD = {
     "title": "客户 A 延期跟进",

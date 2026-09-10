@@ -8,7 +8,6 @@ from pathlib import Path
 
 from knowledge_index import update_index
 
-
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "knowledge" / "generated" / "CURRENT_STATE.md"
 

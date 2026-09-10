@@ -4,7 +4,6 @@ import com.example.videoplatform.config.AppProperties;
 import com.example.videoplatform.workflow.DistributedLockService;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
-import com.example.videoplatform.workflow.WorkflowPublisher;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -37,17 +36,15 @@ public class ChunkUploadService {
 	private final StringRedisTemplate redisTemplate;
 	private final AppProperties appProperties;
 	private final VideoTaskService videoTaskService;
-	private final WorkflowPublisher workflowPublisher;
 	private final DistributedLockService lockService;
 	private final MediaStorageService mediaStorageService;
 
 	public ChunkUploadService(StringRedisTemplate redisTemplate, AppProperties appProperties,
-			VideoTaskService videoTaskService, WorkflowPublisher workflowPublisher,
+			VideoTaskService videoTaskService,
 			DistributedLockService lockService, MediaStorageService mediaStorageService) {
 		this.redisTemplate = redisTemplate;
 		this.appProperties = appProperties;
 		this.videoTaskService = videoTaskService;
-		this.workflowPublisher = workflowPublisher;
 		this.lockService = lockService;
 		this.mediaStorageService = mediaStorageService;
 	}
@@ -69,7 +66,6 @@ public class ChunkUploadService {
 								? videoTaskService.createTask(owner, safeName, existingPath, fileMd5)
 								: videoTaskService.createTaskInWorkspace(
 										owner, tenantId, safeName, existingPath, fileMd5);
-						workflowPublisher.publish(task.getTaskId());
 						return new MediaDtos.InitUploadResponse(
 								task.getTaskId(), null, request.totalChunks(), null, fileMd5, true, java.util.List.of());
 					}
@@ -303,7 +299,6 @@ public class ChunkUploadService {
 				redisTemplate.delete(inprogressMd5Key(tenantId, owner, fileMd5));
 			}
 
-			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.MergeResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());
 		} catch (IOException e) {

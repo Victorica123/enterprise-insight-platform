@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, Iterator
 
+from app.db_compat import MySqlConnectionCompat, connect_mysql
 from app.embeddings import build_embedding, embed_real, embedding_to_json
 
 
@@ -13,16 +14,59 @@ DB_PATH = Path(os.getenv(
     str(Path(__file__).resolve().parents[1] / "data" / "knowledge_base.sqlite3"),
 ))
 
-_INITIALIZED_DB_PATH: Path | None = None
+_INITIALIZED_DB_PATH: str | Path | None = None
+
+
+def mysql_database_url() -> str:
+    return os.getenv("AGENT_DATABASE_URL", "").strip()
+
+
+def uses_mysql() -> bool:
+    return mysql_database_url().lower().startswith(("mysql://", "mysql+pymysql://"))
+
+
+def database_identity() -> str:
+    """Stable cache/migration identity without including database credentials."""
+    if uses_mysql():
+        from urllib.parse import urlparse
+
+        parsed = urlparse(mysql_database_url())
+        return f"mysql://{parsed.hostname}:{parsed.port or 3306}/{parsed.path.lstrip('/')}"
+    return str(DB_PATH.resolve())
+
+
+def initialization_marker_is_current(marker: str | Path | None) -> bool:
+    identity = database_identity()
+    if str(marker) != identity:
+        return False
+    return uses_mysql() or DB_PATH.exists()
+
+
+def prepare_database_storage() -> None:
+    if not uses_mysql():
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+def validate_database_configuration() -> None:
+    if (
+        os.getenv("APP_ENV", "development").strip().lower() == "production"
+        and os.getenv("AGENT_REQUIRE_MYSQL", "0").strip().lower() in {"1", "true", "yes", "on"}
+        and not uses_mysql()
+    ):
+        raise RuntimeError(
+            "Production pilot requires AGENT_DATABASE_URL=mysql://... when "
+            "AGENT_REQUIRE_MYSQL is enabled."
+        )
 
 
 def init_db() -> None:
     """建库建表；按 DB_PATH 记忆化，避免每个请求重复执行 DDL（测试改路径自动失效）。"""
     global _INITIALIZED_DB_PATH
-    current_path = DB_PATH.resolve()
-    if _INITIALIZED_DB_PATH == current_path and current_path.exists():
+    validate_database_configuration()
+    current_path = database_identity()
+    if initialization_marker_is_current(_INITIALIZED_DB_PATH):
         return
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    prepare_database_storage()
     with connect() as conn:
         conn.execute(
             """
@@ -225,7 +269,7 @@ def init_db() -> None:
 
 
 @contextmanager
-def connect() -> Iterator[sqlite3.Connection]:
+def connect() -> Iterator[sqlite3.Connection | MySqlConnectionCompat]:
     """Yields a connection that is committed (or rolled back) and CLOSED on exit.
 
     相比裸 sqlite3.connect 的上下文用法（只 commit 不 close，句柄泄漏到 GC）：
@@ -234,6 +278,18 @@ def connect() -> Iterator[sqlite3.Connection]:
     - 退出时真正 close，Windows 上 WAL 的 -wal/-shm 文件才能被删除/替换。
     只读文件系统等场景下 WAL pragma 失败不影响读写，忽略即可。
     """
+    if uses_mysql():
+        conn = connect_mysql(mysql_database_url())
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return
+
     conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("pragma busy_timeout = 5000")
@@ -446,7 +502,12 @@ def list_chunk_rows(
         parameters.append(owner_id)
     if asset_ids:
         placeholders = ",".join("?" for _ in asset_ids)
-        predicates.append(f"chunks.asset_id in ({placeholders})")
+        # Asset selection narrows video evidence only. Uploaded documents and
+        # governed knowledge remain available inside the already-authorized
+        # workspace scope, matching the UI and product retrieval contract.
+        predicates.append(
+            f"(chunks.source_type != 'video' or chunks.asset_id in ({placeholders}))"
+        )
         parameters.extend(asset_ids)
     where_clause = f"where {' and '.join(predicates)}" if predicates else ""
     with connect() as conn:
@@ -582,21 +643,32 @@ def get_embedding_stats() -> dict[str, int]:
 
 
 def rebuild_chunk_embeddings() -> dict[str, int]:
+    """Rebuild deterministic vectors without destroying a good v2 fallback.
+
+    Real-model inference is intentionally batched.  If a batch cannot be
+    embedded (offline model download, transient inference failure, etc.), the
+    existing ``embedding_v2`` value is preserved and retrieval can continue to
+    use the previously indexed semantic vector.
+    """
     init_db()
     updated_count = 0
+    batch_size = max(1, _read_positive_int_env("EMBEDDING_REBUILD_BATCH_SIZE", 64))
     with connect() as conn:
-        rows = conn.execute("select id, content from chunks").fetchall()
-        real_vectors = embed_real([row["content"] for row in rows])
-        for index, row in enumerate(rows):
-            conn.execute(
-                "update chunks set embedding = ?, embedding_v2 = ? where id = ?",
-                (
-                    embedding_to_json(build_embedding(row["content"])),
-                    embedding_to_json(real_vectors[index]) if real_vectors else None,
-                    row["id"],
-                ),
-            )
-            updated_count += 1
+        rows = conn.execute("select id, content from chunks order by id").fetchall()
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            real_vectors = embed_real([row["content"] for row in batch])
+            for index, row in enumerate(batch):
+                conn.execute(
+                    "update chunks set embedding = ? where id = ?",
+                    (embedding_to_json(build_embedding(row["content"])), row["id"]),
+                )
+                if real_vectors is not None:
+                    conn.execute(
+                        "update chunks set embedding_v2 = ? where id = ?",
+                        (embedding_to_json(real_vectors[index]), row["id"]),
+                    )
+                updated_count += 1
         if updated_count:
             bump_content_revision(conn)
 
@@ -605,6 +677,13 @@ def rebuild_chunk_embeddings() -> dict[str, int]:
         **stats,
         "updated_chunks": updated_count,
     }
+
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except ValueError:
+        return default
 
 
 def get_content_revision() -> int:

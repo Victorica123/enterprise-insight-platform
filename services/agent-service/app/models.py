@@ -68,6 +68,13 @@ class SystemStatus(BaseModel):
     default_answer_mode: str
     default_retriever_mode: str
     embedding: EmbeddingCoverageStatus
+    database_backend: Literal["sqlite", "mysql"] = "sqlite"
+    jwt_algorithm: Literal["HS256", "RS256"] = "HS256"
+    model_egress_policy: str = "allow"
+    model_egress_allowlist_configured: bool = False
+    retention_enabled: bool = False
+    transcript_retention_days: int = 180
+    audit_retention_days: int = 365
 
 
 class ToolCallRecord(BaseModel):

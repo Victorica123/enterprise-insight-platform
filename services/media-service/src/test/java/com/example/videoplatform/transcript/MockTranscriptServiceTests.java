@@ -15,7 +15,10 @@ class MockTranscriptServiceTests {
 		TranscriptResult transcript = service.extract("storage/demo.mp4", "demo.mp4");
 		long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
-		assertThat(transcript.text()).contains("demo.mp4").contains("storage/demo.mp4");
+		assertThat(transcript.text())
+				.contains("demo.mp4")
+				.doesNotContain("storage/demo.mp4")
+				.doesNotContain("存储路径");
 		assertThat(transcript.segments()).singleElement().satisfies(segment -> {
 			assertThat(segment.startMs()).isZero();
 			assertThat(segment.endMs()).isEqualTo(5_000);

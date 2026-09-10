@@ -12,14 +12,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from app.config import get_llm_pricing
 from app.database import connect, init_db
-from app.llm import LLMAnswer, build_user_prompt
+from app.llm import LLMAnswer, build_user_prompt, is_llm_configured
 from app.main import app
 from app.models import Source
 from app.rag import build_answer
+from fastapi.testclient import TestClient
 
 
 def _make_sources() -> list[Source]:
@@ -55,7 +54,7 @@ class UploadLimitTests(unittest.TestCase):
         ), patch("app.routes.documents.MAX_UPLOAD_BYTES", 1024 * 1024):
             response = self.client.post(
                 "/documents",
-                files={"file": ("ok.txt", "客户:测试客户\n项目:测试项目".encode("utf-8"), "text/plain")},
+                files={"file": ("ok.txt", "客户:测试客户\n项目:测试项目".encode(), "text/plain")},
                 headers={"X-User-Role": "operator"},
             )
         self.assertEqual(response.status_code, 200)
@@ -151,6 +150,45 @@ class PricingByProviderTests(unittest.TestCase):
             pricing = get_llm_pricing()
         self.assertEqual(pricing.prompt_per_1m_usd, 0.123)
         self.assertEqual(pricing.completion_per_1m_usd, 0.456)
+
+
+class LlmConfigurationSafetyTests(unittest.TestCase):
+    def test_template_api_keys_are_not_reported_as_configured(self) -> None:
+        for placeholder in ("", "sk-your-deepseek-api-key", "CHANGE_ME_LLM_KEY"):
+            with patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "deepseek",
+                    "DEEPSEEK_API_KEY": placeholder,
+                    "OPENAI_API_KEY": "",
+                },
+                clear=False,
+            ):
+                self.assertFalse(is_llm_configured())
+
+    def test_non_template_api_key_is_reported_as_configured(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "deepseek",
+                "DEEPSEEK_API_KEY": "test-key-for-mocked-provider",
+                "OPENAI_API_KEY": "",
+            },
+            clear=False,
+        ):
+            self.assertTrue(is_llm_configured())
+
+    def test_deepseek_provider_does_not_borrow_openai_credentials(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_PROVIDER": "deepseek",
+                "DEEPSEEK_API_KEY": "",
+                "OPENAI_API_KEY": "test-openai-key",
+            },
+            clear=False,
+        ):
+            self.assertFalse(is_llm_configured())
 
 
 if __name__ == "__main__":

@@ -36,6 +36,8 @@ Media 在业务事实提交的同一事务写 outbox，避免“任务成功但�
 
 当前实现通过 HTTP + SQLite 完成业务阶段恢复，不是 WebSocket/AppServer，也不是节点级执行 continuation。同一 resume token 由条件 CAS 原子消费，并发回归验证一个 200、一个 409；如果被问到模型调用中断或实时交互，应明确它们仍未实现，而不是借用实习架构作答。
 
+问答侧的 Router、Planner 和 Tool Agent 可以在配置 Key 后启用 LLM：`LLM_RESPONSE_FORMAT=auto` 对 OpenAI 请求 strict JSON Schema，对 DeepSeek 请求 JSON Object，服务端继续做枚举、白名单和参数校验；provider 不支持、网络失败或解析失败会记录并回退规则。这个增量只证明“LLM 决策接口有结构化边界”，不等于六阶段 specialist 已经模型化。
+
 ### 5. “知识自进化”到底落在哪里
 
 PRD 发布只生成 `PENDING` 候选，不能自动改共享知识。候选再次通过 personal OWNER 或 team 不同成员决定后，系统在同一事务中：
@@ -83,7 +85,7 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 
 ### 如何证明不是 happy path Demo
 
-- Agent Service 130 个测试；Media Service 108 个测试。
+- Agent Service 157 个测试；Media Service 135 个测试。
 - keyword / embedding / hybrid 三路黄金集门禁。
 - 33 项双用户 localhost 纵向验收。
 - PRD V1 12 个手工场景十项质量门禁，以及 Knowledge Lifecycle V1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。
@@ -106,7 +108,7 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 | 你个人做了什么 | 契约、两后端整合、统一前端、授权 RAG、Agent 状态机、验收和知识维护 | 区分原媒体能力、迁移整合与本轮新增能力，不把团队或模型产出全部说成手写 |
 | 最难的工程问题 | 检索前授权、outbox 双幂等、等待恢复、四眼审批、知识原子物化 | 选择一到两个展开，不罗列所有技术名词 |
 | 为什么这样选型 | 两类状态机保留两个服务；当前规模用 SQLite/BGE 基线；副作用用确定性事务治理 | 说明替代方案与触发迁移的条件，不说“这是最佳实践所以用了” |
-| 如何证明正确 | 130 Agent、108 Media、V6 RAG + PRD V1 + Knowledge Lifecycle V1、33 项 localhost、浏览器截图与负向用例 | mock/local 证明链路，不证明真实模型质量和生产吞吐 |
+| 如何证明正确 | 157 Agent、135 Media、V6 RAG + PRD V1 + Knowledge Lifecycle V1、33 项 localhost、浏览器截图与负向用例 | mock/local 证明链路，不证明真实模型质量和生产吞吐 |
 | 出过什么问题 | sticky header 造成 fixed 弹窗越界；知识批准曾只有状态没有未来召回；缓存需把授权 scope 纳入 key | 讲发现方式、根因、修复和回归测试，形成真实工程故事 |
 | 如何上线和排障 | trace、状态机、outbox、监控、备份恢复手册和分故障域 CI | 正式 IdP、迁移、告警、灾备与真实中间件统一 smoke 仍是上线缺口 |
 | 和实习经历有什么关系 | 方法论延续：六阶段、等待恢复、知识治理、可观测和人机边界 | 不宣称复刻公司内部 AppServer/WebSocket 或使用了公司代码 |

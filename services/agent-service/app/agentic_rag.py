@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
+from typing import Literal, TypedDict, cast
 
-from app.config import get_llm_pricing
-from app.graph_rag import lookup_graph
 from app.agent_planning import (
     build_intent_queries,
     build_retry_queries,
@@ -12,6 +11,8 @@ from app.agent_planning import (
     split_complex_question,
 )
 from app.citation_review import review_citations
+from app.config import get_llm_pricing
+from app.graph_rag import lookup_graph
 from app.llm_router import (
     llm_plan_queries,
     llm_route_question,
@@ -27,7 +28,6 @@ from app.models import (
     TraceStep,
 )
 from app.rag import (
-    EvidenceCheck,
     MAX_SOURCES,
     build_answer,
     build_insufficient_evidence_answer,
@@ -55,8 +55,14 @@ from app.tools import (
     init_tools,
 )
 
-
 logger = logging.getLogger(__name__)
+
+
+class ToolScopeKwargs(TypedDict):
+    tenant_id: str
+    owner_id: str
+    workspace_type: str
+
 
 MAX_RETRIEVAL_ROUNDS = 2
 
@@ -142,7 +148,9 @@ def answer_agentic_question(
 
     if state.evidence_status == "not_required":
         answer = build_tool_only_answer(state)
-        state.token_usage = build_local_usage(state.question, [], answer, "local_template")
+        state.token_usage = build_local_usage(
+            state.question, [], answer, "local_template"
+        )
         state.citation_status = "not_applicable"
         state.agents.extend(["Answer Agent", "Reviewer Agent"])
         state.trace.append(
@@ -181,7 +189,9 @@ def answer_agentic_question(
     state.trace.extend(answer_trace)
     state.agents.append("Answer Agent")
 
-    reviewed_answer, citation_status, citation_detail = review_citations(answer, state.sources)
+    reviewed_answer, citation_status, citation_detail = review_citations(
+        answer, state.sources
+    )
     state.citation_status = citation_status
     state.agents.append("Reviewer Agent")
     state.trace.append(
@@ -197,6 +207,7 @@ def answer_agentic_question(
 # ---------------------------------------------------------------------------
 # V4: Graph Agent
 # ---------------------------------------------------------------------------
+
 
 def run_graph_agent(state: AgenticRagState) -> None:
     """Graph Agent：识别问题实体，取子图并生成关系链上下文。"""
@@ -218,7 +229,9 @@ def run_graph_agent(state: AgenticRagState) -> None:
 
     state.graph_paths = lookup.paths
     state.graph_context = lookup.context
-    risk_note = f"，其中风险链路 {len(lookup.risk_chains)} 条" if lookup.risk_chains else ""
+    risk_note = (
+        f"，其中风险链路 {len(lookup.risk_chains)} 条" if lookup.risk_chains else ""
+    )
     state.trace.append(
         TraceStep(
             name="graph_lookup",
@@ -236,10 +249,23 @@ def run_graph_agent(state: AgenticRagState) -> None:
 # ---------------------------------------------------------------------------
 
 _TOOL_KEYWORDS = [
-    "工单", "创建工单", "查工单", "查询工单", "更新工单",
-    "跟进", "指派", "分配", "处理状态", "工单状态",
-    "ticket", "create ticket", "query ticket",
-    "要不要创建", "帮我创建", "生成工单", "建一个工单",
+    "工单",
+    "创建工单",
+    "查工单",
+    "查询工单",
+    "更新工单",
+    "跟进",
+    "指派",
+    "分配",
+    "处理状态",
+    "工单状态",
+    "ticket",
+    "create ticket",
+    "query ticket",
+    "要不要创建",
+    "帮我创建",
+    "生成工单",
+    "建一个工单",
 ]
 
 
@@ -248,7 +274,7 @@ def _question_needs_tools(question: str) -> bool:
     return any(kw.lower() in lowered for kw in _TOOL_KEYWORDS)
 
 
-def _tool_scope_kwargs(state: AgenticRagState) -> dict[str, str]:
+def _tool_scope_kwargs(state: AgenticRagState) -> ToolScopeKwargs:
     """Keep tool reads, drafts and approvals in the same scope as retrieval."""
     scope = state.retrieval_scope
     return {
@@ -262,15 +288,26 @@ def _is_tool_only_question(question: str) -> bool:
     """Direct ticket operations can bypass RAG; knowledge-backed creation cannot."""
     query_or_update = any(
         keyword in question
-        for keyword in ["查工单", "查询工单", "工单列表", "有哪些工单", "更新工单", "修改状态", "关闭工单", "解决工单"]
+        for keyword in [
+            "查工单",
+            "查询工单",
+            "工单列表",
+            "有哪些工单",
+            "更新工单",
+            "修改状态",
+            "关闭工单",
+            "解决工单",
+        ]
     )
     if query_or_update:
         return True
     create_requested = any(
-        keyword in question for keyword in ["创建工单", "生成工单", "帮我创建", "建一个工单"]
+        keyword in question
+        for keyword in ["创建工单", "生成工单", "帮我创建", "建一个工单"]
     )
     needs_knowledge = any(
-        keyword in question for keyword in ["为什么", "原因", "风险", "根据", "资料", "延期", "负责人"]
+        keyword in question
+        for keyword in ["为什么", "原因", "风险", "根据", "资料", "延期", "负责人"]
     )
     return create_requested and not needs_knowledge
 
@@ -283,10 +320,14 @@ def run_tool_agent(state: AgenticRagState) -> None:
         state.router_prompt_tokens += llm_result.prompt_tokens
         state.router_completion_tokens += llm_result.completion_tokens
         # 白名单过滤：LLM 幻觉出的未注册工具名不进入执行，记日志后丢弃
-        valid_calls = [(name, args) for name, args in llm_result.data if get_tool(name) is not None]
+        valid_calls = [
+            (name, args) for name, args in llm_result.data if get_tool(name) is not None
+        ]
         unknown_tools = [name for name, _ in llm_result.data if get_tool(name) is None]
         if unknown_tools:
-            logger.warning("llm_tool_selection_filtered unknown_tools=%s", unknown_tools)
+            logger.warning(
+                "llm_tool_selection_filtered unknown_tools=%s", unknown_tools
+            )
             state.trace.append(
                 TraceStep(
                     name="tool_call",
@@ -320,14 +361,19 @@ def run_tool_agent(state: AgenticRagState) -> None:
     tool_results: list[ToolCallResult] = []
 
     create_requested = any(
-        kw in state.question for kw in ["创建工单", "生成工单", "帮我创建", "建一个工单", "要不要创建"]
+        kw in state.question
+        for kw in ["创建工单", "生成工单", "帮我创建", "建一个工单", "要不要创建"]
     )
     update_requested = any(
         kw in state.question for kw in ["更新工单", "修改状态", "关闭工单", "解决工单"]
     )
-    query_requested = any(
-        kw in state.question for kw in ["查工单", "查询工单", "工单状态", "工单列表", "有哪些工单"]
-    ) and not update_requested
+    query_requested = (
+        any(
+            kw in state.question
+            for kw in ["查工单", "查询工单", "工单状态", "工单列表", "有哪些工单"]
+        )
+        and not update_requested
+    )
 
     # 查询工单场景
     if query_requested:
@@ -356,11 +402,15 @@ def run_tool_agent(state: AgenticRagState) -> None:
             "create_ticket",
             {
                 "title": extract_ticket_title(state.question, state.sources),
-                "description": extract_ticket_description(state.question, state.sources),
+                "description": extract_ticket_description(
+                    state.question, state.sources
+                ),
                 "priority": extract_priority(state.question, state.sources),
                 "assignee": extract_assignee(state.question, state.sources),
                 "risk_level": extract_risk_level(state.question, state.sources),
-                "source_document_ids": deduplicate_preserve_order([s.document_id for s in state.sources]),
+                "source_document_ids": deduplicate_preserve_order(
+                    [s.document_id for s in state.sources]
+                ),
             },
             actor_role=state.actor_role,
             actor_user=state.actor_user,
@@ -398,7 +448,9 @@ def run_tool_agent(state: AgenticRagState) -> None:
                 ToolCallResult(
                     "update_ticket_status",
                     False,
-                    {"error": "未识别到明确的目标状态，请说明要变更为 open/in_progress/resolved/closed 中的哪一个。"},
+                    {
+                        "error": "未识别到明确的目标状态，请说明要变更为 open/in_progress/resolved/closed 中的哪一个。"
+                    },
                     "failed",
                     0.0,
                 )
@@ -407,28 +459,36 @@ def run_tool_agent(state: AgenticRagState) -> None:
     _record_tool_results(state, tool_results, source="关键词规则")
 
 
-def _record_tool_results(state: AgenticRagState, tool_results: list[ToolCallResult], *, source: str) -> None:
+def _record_tool_results(
+    state: AgenticRagState, tool_results: list[ToolCallResult], *, source: str
+) -> None:
     """工具调用结果的统一记账：待审批动作、调用记录、上下文与 trace。"""
     for result in tool_results:
         if not result.pending_action_id:
             continue
         pending = get_pending_action(
             result.pending_action_id,
-            tenant_id=(state.retrieval_scope.tenant_id if state.retrieval_scope else None),
+            tenant_id=(
+                state.retrieval_scope.tenant_id if state.retrieval_scope else None
+            ),
         )
         if pending is not None:
-            state.pending_actions.append(PendingActionResponse(**pending.to_dict()))
+            state.pending_actions.append(
+                PendingActionResponse.model_validate(pending.to_dict())
+            )
 
     # 记录工具调用
     for tr in tool_results:
-        state.tool_calls.append(ToolCallRecord(
-            tool_name=tr.tool_name,
-            success=tr.success,
-            result_summary=_summarize_tool_result(tr.result),
-            pending_action_id=tr.pending_action_id,
-            status=tr.status,
-            duration_ms=tr.duration_ms,
-        ))
+        state.tool_calls.append(
+            ToolCallRecord(
+                tool_name=tr.tool_name,
+                success=tr.success,
+                result_summary=_summarize_tool_result(tr.result),
+                pending_action_id=tr.pending_action_id,
+                status=tr.status,
+                duration_ms=tr.duration_ms,
+            )
+        )
 
     # 生成工具上下文供 Answer Agent 使用
     if tool_results:
@@ -457,6 +517,7 @@ def build_tool_only_answer(state: AgenticRagState) -> str:
 # 工具调用的辅助函数
 # ---------------------------------------------------------------------------
 
+
 def _summarize_tool_result(result: dict) -> str:
     """生成工具调用结果摘要。"""
     if "count" in result:
@@ -472,7 +533,9 @@ def _summarize_tool_result(result: dict) -> str:
     return "工具调用完成"
 
 
-def _build_tool_context(tool_results: list[ToolCallResult], pending_actions: list[PendingActionResponse]) -> str:
+def _build_tool_context(
+    tool_results: list[ToolCallResult], pending_actions: list[PendingActionResponse]
+) -> str:
     """为 Answer Agent 构建工具调用上下文。"""
     parts = ["【工具调用结果】"]
 
@@ -481,9 +544,11 @@ def _build_tool_context(tool_results: list[ToolCallResult], pending_actions: lis
         if tr.result.get("count") is not None:
             parts.append(f"查询结果：共 {tr.result['count']} 条记录")
             for ticket in tr.result.get("tickets", [])[:5]:
-                parts.append(f"  - [{ticket['status']}] {ticket['title']} (优先级: {ticket['priority']})")
+                parts.append(
+                    f"  - [{ticket['status']}] {ticket['title']} (优先级: {ticket['priority']})"
+                )
         elif tr.result.get("action") in ("create_ticket", "update_ticket_status"):
-            parts.append(f"状态：已生成草稿，等待人工确认")
+            parts.append("状态：已生成草稿，等待人工确认")
             parts.append(f"消息：{tr.result.get('message', '')}")
         elif "error" in tr.result:
             parts.append(f"错误：{tr.result['error']}")
@@ -491,7 +556,9 @@ def _build_tool_context(tool_results: list[ToolCallResult], pending_actions: lis
     if pending_actions:
         parts.append("\n【待审批操作】")
         for pa in pending_actions:
-            parts.append(f"  - [{pa.action_type}] {pa.action_id[:8]} (状态: {pa.status})")
+            parts.append(
+                f"  - [{pa.action_type}] {pa.action_id[:8]} (状态: {pa.status})"
+            )
 
     return "\n".join(parts)
 
@@ -508,7 +575,9 @@ def route_question(state: AgenticRagState) -> None:
     else:
         intents = detect_intents(state.question)
         state.intent = intents[0] if intents else "general"
-        state.complexity = "complex" if is_complex_question(state.question, intents) else "simple"
+        state.complexity = (
+            "complex" if is_complex_question(state.question, intents) else "simple"
+        )
         router_source = "规则路由"
     state.agents.append("Router Agent")
     state.trace.append(
@@ -603,7 +672,9 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
             state.evidence_status = check.status
 
 
-def merge_hits(target: dict[tuple[str, int], RetrievalHit], hits: list[RetrievalHit]) -> None:
+def merge_hits(
+    target: dict[tuple[str, int], RetrievalHit], hits: list[RetrievalHit]
+) -> None:
     for hit in hits:
         if hit.score <= 0:
             continue
@@ -612,7 +683,9 @@ def merge_hits(target: dict[tuple[str, int], RetrievalHit], hits: list[Retrieval
         if existing is None or hit.score > existing.score:
             target[key] = hit
         elif existing:
-            existing.matched_queries = deduplicate_preserve_order(existing.matched_queries + hit.matched_queries)
+            existing.matched_queries = deduplicate_preserve_order(
+                existing.matched_queries + hit.matched_queries
+            )
 
 
 def hits_to_sources(
@@ -627,7 +700,10 @@ def hits_to_sources(
     return [
         Source(
             source_type="video" if hit.chunk.source_type == "video" else "document",
-            origin_type=hit.chunk.origin_type,
+            origin_type=cast(
+                Literal["uploaded_document", "media_transcript", "approved_knowledge"],
+                hit.chunk.origin_type,
+            ),
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
@@ -644,7 +720,10 @@ def hits_to_sources(
             content_sha256=hit.chunk.content_sha256,
             knowledge_version_id=hit.chunk.knowledge_version_id,
             knowledge_version_number=hit.chunk.knowledge_version_number,
-            knowledge_lifecycle_status=hit.chunk.knowledge_lifecycle_status,
+            knowledge_lifecycle_status=cast(
+                Literal["ACTIVE", "SUPERSEDED", "REVOKED"] | None,
+                hit.chunk.knowledge_lifecycle_status,
+            ),
             superseded_by_document_id=hit.chunk.superseded_by_document_id,
         )
         for hit in ranked
@@ -676,15 +755,19 @@ def build_response(state: AgenticRagState, answer: str) -> ChatResponse:
             token_usage = TokenUsage(
                 prompt_tokens=state.router_prompt_tokens,
                 completion_tokens=state.router_completion_tokens,
-                total_tokens=state.router_prompt_tokens + state.router_completion_tokens,
+                total_tokens=state.router_prompt_tokens
+                + state.router_completion_tokens,
                 estimated_cost_usd=router_cost,
                 source="router",
             )
         else:
             token_usage = TokenUsage(
                 prompt_tokens=token_usage.prompt_tokens + state.router_prompt_tokens,
-                completion_tokens=token_usage.completion_tokens + state.router_completion_tokens,
-                total_tokens=token_usage.total_tokens + state.router_prompt_tokens + state.router_completion_tokens,
+                completion_tokens=token_usage.completion_tokens
+                + state.router_completion_tokens,
+                total_tokens=token_usage.total_tokens
+                + state.router_prompt_tokens
+                + state.router_completion_tokens,
                 estimated_cost_usd=token_usage.estimated_cost_usd + router_cost,
                 source=token_usage.source,
             )

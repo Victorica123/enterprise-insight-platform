@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 INDEX_VERSION = "enterprise-insight-knowledge-index-v3"
 CHUNKING_ALGORITHM = "markdown-heading-body-1800-v2"
 EMBEDDING_ALGORITHM = "hash-ngram-topic-embedding-v1"
@@ -241,7 +240,7 @@ def build_embedding(text: str, dimension: int = EMBEDDING_DIMENSION) -> list[flo
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or len(left) != len(right):
         return 0.0
-    dot = sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
     left_norm = math.sqrt(sum(value * value for value in left))
     right_norm = math.sqrt(sum(value * value for value in right))
     if left_norm == 0 or right_norm == 0:

@@ -37,6 +37,26 @@ python scripts/update_knowledge.py --check
 
 Web 只绑定 `127.0.0.1`，nginx 同源代理 `/agent` 与 `/media`；H2、SQLite 和媒体文件保存在已忽略的 `runtime/`。完整步骤见 `docs/LOCAL_RELEASE_RUNBOOK.md`。
 
+需要在不租服务器的前提下验证真实中间件、并发和故障恢复时，使用隔离的准生产 Compose：
+
+```powershell
+./scripts/start_local_prod.ps1 -Build -Observability
+k6 run quality/load/k6/e2e-smoke.js
+k6 run quality/load/k6/platform-soak.js
+./scripts/capture_local_diagnostics.ps1
+```
+
+准生产 Compose 默认允许 mock/local AI，以便离线验证状态机。要把一次运行计为真实 AI 联调，先在 `runtime/local-prod/.env` 配置 `LOCAL_PROD_TRANSCRIPT_*`、`LOCAL_PROD_SUMMARY_*` 和所选 Agent provider，再运行：
+
+```powershell
+./scripts/check_local_prod_ai.ps1 -EnvFile runtime/local-prod/.env
+./scripts/start_local_prod.ps1 -Build -Observability -RequireRealAi
+```
+
+`-RequireRealAi` 会在启动 Docker 前检查真实转写、媒体摘要和 Agent 回答三条通道；任何 mock/local 模式、空值或模板凭证都会失败，且检查输出不会打印凭证。Media 的已鉴权 runtime 响应与 Web 视频工作台同时展示转写、摘要、调度和存储模式。
+
+该栈在本机组装 Keycloak、三个独立 MySQL schema、Redis、RocketMQ、MinIO、两个后端和统一 Web，默认只绑定 loopback。启动脚本在忽略的 `runtime/local-prod/keys` 生成 RS256 密钥对，浏览器走 OIDC PKCE，Agent 通过 Media JWKS 验签；生产配置强制 Agent MySQL、模型 tenant allowlist 和 30/180/365 天保留任务。JVM 启用有界 JFR、NMT 退出统计和 OOM heap dump。`quality/memory/agent_tracemalloc_probe.py` 单独量化 Python 预热后的净分配增长。加 `-Faults` 启动 Toxiproxy 后，可用 `scripts/set_local_fault.ps1` 注入数据库、Redis、对象存储或 Agent 的延迟/断连。判定阈值、命令和证据边界见 `docs/LOCAL_RELIABILITY_RUNBOOK.md`。
+
 统一 Web 本地启动：
 
 ```powershell
@@ -51,7 +71,10 @@ npm run dev
 
 - 密钥只通过环境变量或密钥服务注入，不进入仓库和事件。
 - JWT issuer/audience/signing trust、内部服务地址、队列和存储使用显式环境变量。
+- 生产试点只把 RS256 私钥挂载给 Media；Keycloak 管理密码、数据库密码和模型凭证只进入忽略的 runtime env/secret store。
+- 真实模型启动门禁还要求 `LOCAL_PROD_MODEL_EGRESS_ALLOWED_TENANTS` 非空，且每个值必须是已审批 Workspace tenant ID。
 - 启动时验证关键配置，避免以不安全默认值静默进入生产模式。
+- OIDC 页面在平台令牌到期前 60 秒自动续期，重新聚焦时再次检查；保留当前 Workspace 的请求由 Media 重新验证成员关系。IdP 会话失效后需重新登录；新增标签页或浏览器会话可能没有原标签页的 refresh token，不能仅凭 localStorage 中的平台令牌假定可持续续期。
 - 开发 light/mock 配置与真实集成配置分开命名并在健康接口中可识别。
 
 ## 可观测性
@@ -64,14 +87,16 @@ npm run dev
 
 ## 恢复策略
 
-- 媒体任务可安全重试，不能重复创建资产。
-- 转写事件可重放，Agent 消费必须幂等。
+- 媒体任务可安全重试，不能重复创建资产；处理中的 worker 以可续租 fencing lease 保持所有权，reaper 只通过过期条件更新重新获得调度权。
+- 上传接单、人工重试和 stale requeue 与 `workflow_dispatch_outbox` 在同一事务提交。dispatcher 对本地线程池拒绝或 MQ 发送失败做有上限的指数退避；成功响应表示“任务与调度意图已持久化”，不表示后台处理已完成。重复投递继续由任务 CAS/lease 保证安全。
+- 转写事件可重放，Agent 消费必须幂等。Media outbox 采用至少一次投递语义，dispatcher 先以条件更新将 `PENDING`/过期 `CLAIMED` 领取为带 `claimId + claimExpiresAt` 的 `CLAIMED`，网络发送后的 `SENT/FAILED/DEAD` 也必须校验持有者和 lease；重复出站仍由下游幂等兜底。当前已完成 H2/JPA 集成回归，但正式多实例应继续验证数据库方言、锁行为、重试/DEAD 告警与故障注入。
 - Agent 业务会话、阶段结果、人工答案和冻结证据 revision/hash 可持久化读回；确认保留阶段 1–4，只重算收敛与 PRD，并以数据库 CAS 原子消费 token。它仍不宣称执行栈级 checkpoint continuation。
 - 发布 PRD、知识合并和外部写操作使用幂等键及审计记录；知识批准与 document/chunk/图索引同事务，失败回滚为 `PENDING`。
 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
+- 上述归档工具只覆盖轻量栈的 runtime 文件与 SQLite/H2；它不备份准生产 Docker 命名卷中的 MySQL、Keycloak 或 MinIO。准生产灾备须在目标主机另行完成数据库与对象存储备份、恢复及一致性演练。
 
 ## 当前运行状态与缺口
 
-统一 localhost Compose、启动/停止脚本、备份校验恢复工具、本地发布手册和本地质量目标已提供。无容器验收链路已实际通过；当前主机没有 Docker，因此 Compose 本轮只完成静态配置校验，不能声明容器运行已验证。
+统一 localhost Compose、启动/停止脚本、备份校验恢复工具、本地发布手册和本地质量目标已提供。无容器验收链路已实际通过；准生产 Compose、k6、JFR/NMT、tracemalloc 和 Toxiproxy 入口也已提供。当前主机没有 Docker/k6，因此准生产配置只完成静态解析，不能声明真实容器、中间件或故障注入已经运行通过。
 
-真实 Redis、RocketMQ、MySQL、S3、外部模型与正式身份提供方 smoke，生产数据库迁移编排、灾备演练、监控告警接入和生产 SLO 批准仍待目标环境与业务决策。`docs/SLO.md` 中的生产数值只是候选项，不是已经兑现的服务承诺。
+真实 Redis、RocketMQ、MySQL、S3 与 Keycloak 的可重复本机验证路径已经定义，但仍需在安装 Docker/k6 的主机执行并留存结果；外部模型 smoke、生产数据库迁移编排、灾备演练与监控告警接入仍待目标环境验证。两个 outbox 的 claim/lease 已在 H2/JPA 集成测试验证，但尚未在真实数据库、多实例和故障注入环境验证；当前实现仍应按至少一次投递、消费者幂等来理解。`docs/SLO.md` 已记录获批的生产试点目标，但在取得目标环境观测证据前不能宣称已经兑现。

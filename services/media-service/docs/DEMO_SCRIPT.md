@@ -4,7 +4,7 @@
 
 ## 演示前准备
 
-最稳妥的顺序：先用轻量模式演示业务，再展示已经保存的真实中间件验证证据。需要现场验证完整链路时再运行 full-stack 脚本。
+最稳妥的顺序：先用轻量模式演示业务；只有目标容器已启动且证据来源明确时，才展示真实中间件验证结果。需要现场验证完整链路时运行 full-stack 脚本，否则明确标注为历史记录或静态脚本。
 
 轻量模式：
 
@@ -68,7 +68,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 打开页面“异步实验室”的本地/RocketMQ 对比；也可以展示 `README.md` 的 MQ A/B 表格或 `loadtest/results/RESULTS.md`。
 
-短压测数据：
+以下短压测是历史目标环境记录，不是本机本轮验收结果；现场展示时必须同时说明 Redis、MySQL、RocketMQ、Mock 延迟和 worker 配置：
 
 | 指标 | MQ 关 | MQ 开 |
 | --- | ---: | ---: |
@@ -99,7 +99,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 ### 9:00-10:00 诚实边界与收尾
 
-> 当前已经完成代码测试、本地真实中间件链路、MQ A/B、媒体删除重试和过期分片清理，但没有虚构公网用户量、SLA 或收入。如果未来真实上线，还要补独立上传会话审计、Flyway、备份恢复演练和 CI/CD。
+> 当前已经完成受支持 JDK 18 下的代码测试、H2/Mock 本地链路、MQ/outbox 代码回归、媒体删除重试和过期分片清理；真实 Redis/MySQL/RocketMQ/MinIO 链路需要在目标容器环境重新运行并留证。我没有虚构公网用户量、SLA 或收入；如果未来真实上线，还要补独立上传会话审计、Flyway、备份恢复演练和 CI/CD。
 
 一句话收尾：
 
@@ -125,10 +125,10 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=h2"
 
 ## 演示失败备用路径
 
-- Docker 不可用：用 H2 轻量模式走完整用户链路，再展示保存的 A/B 数据和验证矩阵。
+- Docker 不可用：用 H2 轻量模式走完整用户链路；历史 A/B 数据只能作为已标注的参考，不能冒充本轮真实中间件通过。
 - AI API 不可用：关闭 transcript/summary 外部调用，使用 Mock 结果，明确这是链路演示而非模型质量评测。
 - 8081 被占用：先用 `Get-NetTCPConnection -LocalPort 8081` 查占用，不要随意修改已提交配置。
 - 登录状态异常：浏览器控制台执行 `localStorage.clear(); location.reload();`。
-- 完整验证：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1`。
+- 完整验证：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1 -MysqlPassword $env:MEDIA_MYSQL_PASSWORD`。脚本会拒绝空密码，避免把提交的默认值当成凭证。
 
 每项能力的测试层级和通过标准见 `docs/VERIFICATION_MATRIX.md`。

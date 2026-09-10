@@ -1,12 +1,11 @@
-from dataclasses import dataclass
-from pathlib import Path
 import os
 import statistics
 import sys
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "services" / "agent-service"

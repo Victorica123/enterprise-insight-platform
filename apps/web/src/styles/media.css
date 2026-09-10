@@ -19,6 +19,10 @@
 .media-hero { display: flex; justify-content: space-between; gap: 24px; align-items: end; }
 .media-hero h2 { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
 .media-hero p { color: var(--text-secondary); max-width: 720px; }
+.media-runtime { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: 12px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; }
+.media-runtime strong { width: 100%; }
+.media-runtime.mock { color: var(--warning-text); background: var(--warning-soft); border-color: var(--warning-border); }
+.media-runtime.real { color: var(--success-text); background: var(--success-soft); }
 .eyebrow { color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
 .video-upload { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: end; }
 .video-upload input { max-width: 240px; }

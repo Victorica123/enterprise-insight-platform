@@ -18,9 +18,14 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 app:
+  jwt:
+    secret: ${APP_JWT_SECRET:${random.uuid}}
+    expiration-seconds: 900
   redis:
     enabled: false
   mq:
     enabled: false
+  workflow:
+    dispatcher-enabled: false
   quota:
     max-active-tasks-per-user: 0

@@ -41,7 +41,7 @@
 - PRD 仍按目标排序后的前 8 个 chunk 投影需求；
 - 该路径没有 Main LLM Agent、专家 Prompt 或生成模型调用。
 
-因此仍不能回答“我在个人项目里复刻了实习中的多 LLM Agent 编排”。准确说法是：迁移了阶段划分、人机确认和治理方法，独立实现了 objective-aware 证据快照、有界领域执行、冲突升级与业务 checkpoint；问答路径另有 Agentic RAG，但交付 specialist 目前不是模型角色。
+因此仍不能回答“我在个人项目里复刻了实习中的多 LLM Agent 编排”。准确说法是：迁移了阶段划分、人机确认和治理方法，独立实现了 objective-aware 证据快照、有界领域执行、冲突升级与业务 checkpoint；问答路径另有 Agentic RAG，其 Router、Planner 和 Tool Agent 已支持受 provider 约束的结构化 JSON（OpenAI strict JSON Schema、DeepSeek JSON Object），但交付 specialist 目前不是模型角色。结构化输出也不等于模型质量，provider 拒绝、网络错误或解析失败仍回退规则路径。
 
 ### 2. “从 checkpoint 恢复”目前是业务恢复，不是执行恢复
 
@@ -68,7 +68,7 @@ V6 黄金集是 42 个手工问题、4 份固定文档，其中 37 个应回答�
 
 ### 5. 测试数量不能替代生产事实
 
-130、108 和 33/33 是可信的工程证据，但面试官会继续问：
+157、135 和 33/33 是可信的工程证据，但面试官会继续问：
 
 - 数据量和并发量是多少？
 - MySQL、Redis、RocketMQ、对象存储和真实模型是否在统一链路跑过？

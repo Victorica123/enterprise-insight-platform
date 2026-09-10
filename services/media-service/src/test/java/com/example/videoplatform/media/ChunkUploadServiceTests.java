@@ -13,7 +13,6 @@ import com.example.videoplatform.config.AppProperties;
 import com.example.videoplatform.workflow.DistributedLockService;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
-import com.example.videoplatform.workflow.WorkflowPublisher;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -39,7 +38,6 @@ class ChunkUploadServiceTests {
 	private final HashOperations<String, Object, Object> hashOperations = org.mockito.Mockito.mock(HashOperations.class);
 	private final SetOperations<String, String> setOperations = org.mockito.Mockito.mock(SetOperations.class);
 	private final VideoTaskService videoTaskService = org.mockito.Mockito.mock(VideoTaskService.class);
-	private final WorkflowPublisher workflowPublisher = org.mockito.Mockito.mock(WorkflowPublisher.class);
 	private final DistributedLockService lockService = org.mockito.Mockito.mock(DistributedLockService.class);
 	private ChunkUploadService service;
 
@@ -50,7 +48,7 @@ class ChunkUploadServiceTests {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 		when(redisTemplate.opsForHash()).thenReturn(hashOperations);
 		when(redisTemplate.opsForSet()).thenReturn(setOperations);
-		service = new ChunkUploadService(redisTemplate, appProperties, videoTaskService, workflowPublisher, lockService,
+		service = new ChunkUploadService(redisTemplate, appProperties, videoTaskService, lockService,
 				new LocalMediaStorageService(appProperties));
 	}
 
@@ -170,7 +168,6 @@ class ChunkUploadServiceTests {
 		verify(redisTemplate).delete("upload:upload-1:meta");
 		verify(redisTemplate).delete("upload:upload-1:chunks");
 		verify(videoTaskService).createTask(eq("alice"), eq("demo.mp4"), any(), any());
-		verify(workflowPublisher).publish("task-1");
 		verify(lockService).unlock("lock:merge:upload-1");
 	}
 
@@ -260,7 +257,6 @@ class ChunkUploadServiceTests {
 		MediaDtos.MergeResponse response = service.mergeChunks("alice", new MediaDtos.MergeRequest("upload-1"));
 
 		assertThat(response.taskId()).isEqualTo("task-1");
-		verify(workflowPublisher).publish("task-1");
 		verify(redisTemplate).delete("upload:inprogress:" + md5);
 	}
 

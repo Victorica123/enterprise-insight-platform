@@ -2,9 +2,12 @@
 
 全部用例用 mock 模拟 LLM，不依赖真实 API Key；无 Key 环境必须走规则降级。
 """
+
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.agentic_rag import answer_agentic_question
@@ -12,15 +15,97 @@ from app.citation_review import find_unsupported_claims, review_citations
 from app.llm_router import (
     LLMJsonResult,
     RouterDecision,
+    _chat_json,
     llm_plan_queries,
     llm_route_question,
     llm_select_tool_calls,
 )
 from app.models import Source
+
 from tests.test_agentic_rag import FakeRetriever, build_relevant_hit
 
 
 class LlmRouterUnitTests(unittest.TestCase):
+    def test_chat_json_uses_strict_schema_for_openai(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))],
+            usage=SimpleNamespace(prompt_tokens=3, completion_tokens=2),
+        )
+        schema = {
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": False,
+        }
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "openai",
+                    "LLM_RESPONSE_FORMAT": "auto",
+                    "LLM_ROUTER_ENABLED": "1",
+                },
+            ),
+            patch("app.llm_router.is_llm_configured", return_value=True),
+            patch(
+                "app.llm_router.create_chat_completion", return_value=response
+            ) as create,
+        ):
+            result = _chat_json("system", "user", schema_name="test_v1", schema=schema)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.data, {"ok": True})
+        response_format = create.call_args.kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        self.assertEqual(response_format["json_schema"]["schema"], schema)
+
+    def test_chat_json_uses_json_object_for_deepseek_compatibility(self) -> None:
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))],
+            usage=None,
+        )
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "deepseek",
+                    "LLM_RESPONSE_FORMAT": "auto",
+                    "LLM_ROUTER_ENABLED": "1",
+                },
+            ),
+            patch("app.llm_router.is_llm_configured", return_value=True),
+            patch(
+                "app.llm_router.create_chat_completion", return_value=response
+            ) as create,
+        ):
+            _chat_json(
+                "system",
+                "user",
+                schema_name="test_v1",
+                schema={"type": "object"},
+            )
+
+        self.assertEqual(
+            create.call_args.kwargs["response_format"], {"type": "json_object"}
+        )
+
+    def test_chat_json_malformed_response_falls_back(self) -> None:
+        response = SimpleNamespace(choices=[])
+        with (
+            patch.dict(os.environ, {"LLM_ROUTER_ENABLED": "1"}),
+            patch("app.llm_router.is_llm_configured", return_value=True),
+            patch("app.llm_router.create_chat_completion", return_value=response),
+        ):
+            result = _chat_json(
+                "system",
+                "user",
+                schema_name="test_v1",
+                schema={"type": "object"},
+            )
+        self.assertIsNone(result)
+
     def test_route_question_parses_decision(self) -> None:
         with patch(
             "app.llm_router._chat_json",
@@ -44,21 +129,58 @@ class LlmRouterUnitTests(unittest.TestCase):
     def test_plan_queries_parses_list(self) -> None:
         with patch(
             "app.llm_router._chat_json",
-            return_value=LLMJsonResult(data=["客户A项目延期", "部署失败原因"], prompt_tokens=4, completion_tokens=4),
+            return_value=LLMJsonResult(
+                data=["客户A项目延期", "部署失败原因"],
+                prompt_tokens=4,
+                completion_tokens=4,
+            ),
         ):
             result = llm_plan_queries("客户A项目为什么延期？", "causal")
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result.data, ["客户A项目延期", "部署失败原因"])
 
+    def test_plan_queries_parses_structured_object(self) -> None:
+        with patch(
+            "app.llm_router._chat_json",
+            return_value=LLMJsonResult(data={"queries": ["原问题", "扩展查询"]}),
+        ):
+            result = llm_plan_queries("问题", "general")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.data, ["原问题", "扩展查询"])
+
     def test_plan_queries_rejects_non_list(self) -> None:
-        with patch("app.llm_router._chat_json", return_value=LLMJsonResult(data={"bad": 1})):
+        with patch(
+            "app.llm_router._chat_json", return_value=LLMJsonResult(data={"bad": 1})
+        ):
             self.assertIsNone(llm_plan_queries("问题", "general"))
+
+    def test_select_tool_calls_parses_structured_object(self) -> None:
+        with patch(
+            "app.llm_router._chat_json",
+            return_value=LLMJsonResult(
+                data={
+                    "calls": [
+                        {
+                            "tool": "query_tickets",
+                            "arguments_json": '{"status": "open"}',
+                        }
+                    ]
+                }
+            ),
+        ):
+            result = llm_select_tool_calls("查一下打开的工单")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.data, [("query_tickets", {"status": "open"})])
 
     def test_select_tool_calls_parses_list(self) -> None:
         with patch(
             "app.llm_router._chat_json",
-            return_value=LLMJsonResult(data=[{"tool": "query_tickets", "arguments": {"status": "open"}}]),
+            return_value=LLMJsonResult(
+                data=[{"tool": "query_tickets", "arguments": {"status": "open"}}]
+            ),
         ):
             result = llm_select_tool_calls("查一下打开的工单")
         self.assertIsNotNone(result)
@@ -76,7 +198,9 @@ class LlmRouterUnitTests(unittest.TestCase):
 class AgenticLlmIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_patcher = patch("app.database.DB_PATH", Path(self.temp_dir.name) / "llm.sqlite3")
+        self.db_patcher = patch(
+            "app.database.DB_PATH", Path(self.temp_dir.name) / "llm.sqlite3"
+        )
         self.db_patcher.start()
 
     def tearDown(self) -> None:
@@ -87,11 +211,20 @@ class AgenticLlmIntegrationTests(unittest.TestCase):
         with (
             patch(
                 "app.agentic_rag.llm_route_question",
-                return_value=RouterDecision(intent="risk", complexity="complex", prompt_tokens=10, completion_tokens=5),
+                return_value=RouterDecision(
+                    intent="risk",
+                    complexity="complex",
+                    prompt_tokens=10,
+                    completion_tokens=5,
+                ),
             ),
-            patch("app.agentic_rag.get_retriever", return_value=FakeRetriever([build_relevant_hit()])),
+            patch(
+                "app.agentic_rag.get_retriever",
+                return_value=FakeRetriever([build_relevant_hit()]),
+            ),
         ):
             response = answer_agentic_question("项目为什么延期？", "local", "keyword")
+        assert response.agent_summary is not None
         self.assertEqual(response.agent_summary.intent, "risk")
         self.assertEqual(response.agent_summary.complexity, "complex")
         self.assertTrue(any("LLM 路由" in step.detail for step in response.trace))
@@ -103,20 +236,31 @@ class AgenticLlmIntegrationTests(unittest.TestCase):
         with (
             patch(
                 "app.agentic_rag.llm_plan_queries",
-                return_value=LLMJsonResult(data=["客户A项目延期", "部署失败原因"], prompt_tokens=4, completion_tokens=4),
+                return_value=LLMJsonResult(
+                    data=["客户A项目延期", "部署失败原因"],
+                    prompt_tokens=4,
+                    completion_tokens=4,
+                ),
             ),
-            patch("app.agentic_rag.get_retriever", return_value=FakeRetriever([build_relevant_hit()])),
+            patch(
+                "app.agentic_rag.get_retriever",
+                return_value=FakeRetriever([build_relevant_hit()]),
+            ),
         ):
             response = answer_agentic_question("项目为什么延期？", "local", "keyword")
+        assert response.agent_summary is not None
         self.assertIn("部署失败原因", response.agent_summary.queries)
         self.assertTrue(any("LLM 规划" in step.detail for step in response.trace))
 
     def test_tool_agent_uses_llm_selection_when_available(self) -> None:
         with patch(
             "app.agentic_rag.llm_select_tool_calls",
-            return_value=LLMJsonResult(data=[("query_tickets", {})], prompt_tokens=6, completion_tokens=3),
+            return_value=LLMJsonResult(
+                data=[("query_tickets", {})], prompt_tokens=6, completion_tokens=3
+            ),
         ):
             response = answer_agentic_question("查一下现有工单", "local", "keyword")
+        assert response.agent_summary is not None
         tool_calls = response.agent_summary.tool_calls
         self.assertTrue(tool_calls)
         self.assertEqual(tool_calls[0].tool_name, "query_tickets")
@@ -127,11 +271,18 @@ class AgenticLlmIntegrationTests(unittest.TestCase):
         with (
             patch(
                 "app.agentic_rag.llm_route_question",
-                return_value=RouterDecision(intent="general", complexity="simple", prompt_tokens=7, completion_tokens=2),
+                return_value=RouterDecision(
+                    intent="general",
+                    complexity="simple",
+                    prompt_tokens=7,
+                    completion_tokens=2,
+                ),
             ),
             patch("app.agentic_rag.get_retriever", return_value=FakeRetriever([])),
         ):
-            response = answer_agentic_question("火星基地的氧气供应方案是什么？", "local", "hybrid")
+            response = answer_agentic_question(
+                "火星基地的氧气供应方案是什么？", "local", "hybrid"
+            )
         self.assertIsNotNone(response.token_usage)
         assert response.token_usage is not None
         self.assertEqual(response.token_usage.prompt_tokens, 7)
@@ -152,12 +303,16 @@ class ClaimGroundingTests(unittest.TestCase):
         ]
 
     def test_unanchored_date_claim_is_flagged(self) -> None:
-        claims = find_unsupported_claims("项目将于2026年9月9日交付。负责人是李四。", self._sources())
+        claims = find_unsupported_claims(
+            "项目将于2026年9月9日交付。负责人是李四。", self._sources()
+        )
         self.assertTrue(claims)
         self.assertIn("2026年9月9日", claims[0])
 
     def test_anchored_claims_pass(self) -> None:
-        claims = find_unsupported_claims("调整后交付日期是2026年7月8日。", self._sources())
+        claims = find_unsupported_claims(
+            "调整后交付日期是2026年7月8日。", self._sources()
+        )
         self.assertEqual(claims, [])
 
     def test_review_appends_warning_for_unsupported_claims(self) -> None:

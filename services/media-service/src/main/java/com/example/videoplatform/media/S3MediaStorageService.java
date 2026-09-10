@@ -68,11 +68,12 @@ public class S3MediaStorageService implements MediaStorageService {
 	public String saveFile(String safeFileName, Path sourceFile) throws IOException {
 		String key = "uploads/" + UUID.randomUUID() + "-" + safeFileName;
 		String contentType = contentType(safeFileName);
-		byte[] body = Files.readAllBytes(sourceFile);
 		URI uri = objectUri(properties.getBucket(), key);
 		Instant now = Instant.now();
 		String amzDate = AMZ_DATE.format(now);
-		String payloadHash = sha256Hex(body);
+		// Hashing is streamed, then BodyPublishers.ofFile streams the upload again;
+		// never materialize a potentially multi-gigabyte video in the JVM heap.
+		String payloadHash = sha256Hex(sourceFile);
 		String authorization = authorizationHeader("PUT", uri, canonicalObjectPath(properties.getBucket(), key),
 				amzDate, DATE_STAMP.format(now),
 				payloadHash, contentType);
@@ -82,7 +83,7 @@ public class S3MediaStorageService implements MediaStorageService {
 				.header("Content-Type", contentType)
 				.header("x-amz-content-sha256", payloadHash)
 				.header("x-amz-date", amzDate)
-				.PUT(HttpRequest.BodyPublishers.ofByteArray(body))
+				.PUT(HttpRequest.BodyPublishers.ofFile(sourceFile))
 				.build();
 		sendExpectSuccess(request, "上传对象存储失败");
 		return PREFIX + properties.getBucket() + "/" + key;
@@ -275,6 +276,22 @@ public class S3MediaStorageService implements MediaStorageService {
 	private static String sha256Hex(byte[] data) {
 		try {
 			return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(data));
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 不可用", e);
+		}
+	}
+
+	private static String sha256Hex(Path file) throws IOException {
+		try {
+			java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+			try (InputStream input = Files.newInputStream(file)) {
+				byte[] buffer = new byte[1024 * 1024];
+				int read;
+				while ((read = input.read(buffer)) != -1) {
+					digest.update(buffer, 0, read);
+				}
+			}
+			return HexFormat.of().formatHex(digest.digest());
 		} catch (java.security.NoSuchAlgorithmException e) {
 			throw new IllegalStateException("SHA-256 不可用", e);
 		}

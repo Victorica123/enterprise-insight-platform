@@ -11,6 +11,7 @@ import java.util.Optional;
 public interface UserAccountRepository extends JpaRepository<UserAccount, String> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<UserAccount> findByUsername(String username);
+	Optional<UserAccount> findByIdentityIssuerAndIdentitySubject(String identityIssuer, String identitySubject);
 	boolean existsByUsername(String username);
 
 	/**

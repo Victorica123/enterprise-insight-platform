@@ -25,6 +25,14 @@
 - 检索结果在进入模型前完成权限过滤；模型不能扩张检索范围。
 - 最终答案校验引用存在、归属正确、时间范围有效，并拒绝伪造引用。
 
+## LLM 通道与结构化输出
+
+- `app/llm_client.py` 统一复用 OpenAI-compatible client，并允许调用方传入 `response_format`；超时、重试和最大输出 token 仍由统一配置控制。
+- `app/llm_router.py` 的 Router、Planner 和工具选择通道使用固定版本的 JSON envelope。`LLM_RESPONSE_FORMAT=auto` 时，OpenAI 使用 `json_schema + strict=true`；DeepSeek 兼容通道使用 `json_object`，随后仍执行类型、枚举、白名单和参数对象校验。
+- 为满足严格 JSON Schema 对根节点和闭合 object 的约束，Planner 返回 `{ "queries": [...] }`，工具选择返回 `{ "calls": [...] }`；工具参数以 JSON object string 传输，再由服务端解析并交给既有工具 schema/权限校验。未注册工具、非法参数、解析失败或 provider 不支持 response format 都只能进入规则降级，不能直接执行副作用。
+- 每次 LLM 路由调用读取 provider 返回的 prompt/completion token；现有聊天观测将其与答案调用合并并按配置价格估算成本。token 统计不代表模型质量，必须与独立 holdout、引用正确率、拒答质量、人工接受率、延迟和成本评测一起解释。
+- 六阶段 `analysis_pipeline.py` 仍是确定性 specialist baseline；本节的结构化 LLM 通道不应被包装成已完成的多 LLM Agent Runtime，也不改变证据快照、人工审批和授权前置不变量。
+
 ## 检索与缓存实现
 
 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 BGE 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。

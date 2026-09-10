@@ -12,6 +12,10 @@
 
 停止继续开发的原因不是“没有优化空间”，而是剩余事项主要依赖正式业务和生产环境决策。此时继续添加向量数据库、Kubernetes、更多模型或更多页面，会扩大主线并制造无法证明的复杂度。
 
+### 2026-09-04 状态补充
+
+在上述封板基线之上，本轮生产试点加固已完成并通过本机回归：Agent Service 154/154、Media Service 在 Temurin JDK 18.0.2.1 下 131/131、Web TypeScript/Vite 构建通过，localhost-only 纵向验收保持 33/33。新增的 MySQL/RS256/OIDC/保留期/模型出境门禁仍属于准生产路径；当前主机没有 Docker、k6 和经批准的外部模型凭证，因此真实中间件、容量、故障注入和生产 SLO 仍未形成通过证据。本文后续历史数字保留其对应日期，最新可审计数字以 [`knowledge/QUALITY.md`](../knowledge/QUALITY.md) 为准。
+
 ## 已封板的交付物
 
 | 交付物 | 入口 |
@@ -29,8 +33,8 @@
 
 ## 封板质量证据
 
-- Agent Service：130/130。
-- Media Service：JDK 18 下 108/108。
+- Agent Service：137/137（本轮 P0/P1 增量后）。
+- Media Service：JDK 18 下 124/124。
 - Agent V6：keyword、embedding、hybrid 均为 decision 98%、recall@3 97%、fact 97%。
 - PRD V1：12 个手工场景的 decision、问题召回与精确率、objective Top-1、冲突、证据、支持率、验收、检查点和 specialist 顺序均为 100%；该闭集不外推真实业务效果。
 - Knowledge Lifecycle V1：personal 替代、personal 撤回、team 替代三类场景的检索、版本链、历史状态、隔离、四眼、幂等、图谱和物理保留均为 100%；不外推生产容量。
@@ -38,13 +42,14 @@
 - Web：TypeScript 与 Vite 生产构建通过。
 - Web：已实现知识版本链、替代/撤回申请与审批、历史聊天失效状态展示；TypeScript 和 Vite 生产构建通过。既有浏览器截图仍只证明 Phase 1 运行，Phase 2 以自动化纵向验收为准。
 - 并发迁移复测：20 并发、40 请求，40/40 返回 200。
-- 维护知识：42 个批准来源、259 个 chunk；增量向量复用、revision 查询缓存、Skill 校验和漂移检查通过。
+- 维护知识：知识更新脚本会在代码/文档变更后重新生成批准来源、chunk、增量向量复用和 revision 查询缓存；Skill 校验与漂移检查必须以最后一次命令输出为准。
+- P0/P1 增量：Media outbox 已增加条件 claim/lease、过期接管、旧 worker fencing 和 DEAD 退避；Agent 问答侧 Router/Planner/Tool Agent 已增加 provider-compatible 结构化 JSON，但六阶段 specialist 仍是确定性 baseline。
 
 具体命令、环境与不能外推的边界以 `knowledge/QUALITY.md` 为准。
 
 ## 面试前最后准备
 
-1. 提前运行 `python scripts/local_acceptance.py`，保留 PASS 输出。
+1. 提前运行 `python scripts/local_acceptance.py`，保留 PASS 输出；本地验收使用合法 MP4 `ftyp` 头，验证上传校验不会被测试字节绕过。
 2. 按 `docs/INTERVIEW_REHEARSAL.md` 计时练习一分钟介绍、8 分钟主线和追问；现场操作细节以 `docs/DEMO_SCRIPT.md` 为准。
 3. 熟练讲出三个故事：业务闭环、并发迁移缺陷修复、两后端与授权缓存的架构取舍。
 4. 明确个人贡献，区分原媒体能力、迁移整合与新增 Agent/知识治理能力。

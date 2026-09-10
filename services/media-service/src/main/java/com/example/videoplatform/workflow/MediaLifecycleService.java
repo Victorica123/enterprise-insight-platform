@@ -18,15 +18,18 @@ public class MediaLifecycleService {
 	private static final int MAX_ERROR_LENGTH = 1000;
 
 	private final VideoTaskRepository taskRepository;
+	private final WorkflowDispatchOutboxRepository workflowDispatchOutboxRepository;
 	private final MediaCleanupJobRepository cleanupJobRepository;
 	private final MediaStorageService mediaStorageService;
 	private final MeterRegistry meterRegistry;
 
 	public MediaLifecycleService(VideoTaskRepository taskRepository,
+			WorkflowDispatchOutboxRepository workflowDispatchOutboxRepository,
 			MediaCleanupJobRepository cleanupJobRepository,
 			MediaStorageService mediaStorageService,
 			MeterRegistry meterRegistry) {
 		this.taskRepository = taskRepository;
+		this.workflowDispatchOutboxRepository = workflowDispatchOutboxRepository;
 		this.cleanupJobRepository = cleanupJobRepository;
 		this.mediaStorageService = mediaStorageService;
 		this.meterRegistry = meterRegistry;
@@ -46,6 +49,7 @@ public class MediaLifecycleService {
 		}
 
 		String storagePath = task.getStoragePath();
+		workflowDispatchOutboxRepository.deleteById(taskId);
 		taskRepository.delete(task);
 		taskRepository.flush();
 		if (storagePath == null || storagePath.isBlank()) {

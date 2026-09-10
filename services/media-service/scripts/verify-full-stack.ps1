@@ -2,10 +2,14 @@ param(
     [string]$BaseUrl = "http://localhost:8081",
     [string]$MysqlContainer = "video-platform-mysql",
     [string]$RedisContainer = "video-platform-redis",
-    [string]$MysqlPassword = "123456"
+    [string]$MysqlPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($MysqlPassword)) {
+    throw "Pass -MysqlPassword explicitly; do not rely on a committed database password."
+}
 
 function Invoke-JsonPost($Uri, $Body, $Token = $null) {
     $headers = @{}
@@ -41,7 +45,8 @@ Write-Host "3. Uploading a two-chunk video through Redis chunk APIs"
 $full = Join-Path $env:TEMP "vp-full-$suffix.mp4"
 $chunk0 = Join-Path $env:TEMP "vp-full-$suffix.part0"
 $chunk1 = Join-Path $env:TEMP "vp-full-$suffix.part1"
-[byte[]]$bytes = [Text.Encoding]::UTF8.GetBytes("HELLOWORLD-MYSQL-REDIS-MQ-$suffix")
+[byte[]]$mp4Header = @(0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d)
+[byte[]]$bytes = $mp4Header + [Text.Encoding]::UTF8.GetBytes("HELLOWORLD-MYSQL-REDIS-MQ-$suffix")
 [IO.File]::WriteAllBytes($full, $bytes)
 [IO.File]::WriteAllBytes($chunk0, $bytes[0..9])
 [IO.File]::WriteAllBytes($chunk1, $bytes[10..($bytes.Length - 1)])

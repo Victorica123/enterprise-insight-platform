@@ -32,8 +32,8 @@ class WorkflowControllerTests {
 	@Autowired MockMvc mockMvc;
 	@MockBean VideoTaskService videoTaskService;
 	@MockBean MediaLifecycleService mediaLifecycleService;
-	@MockBean WorkflowPublisher workflowPublisher;
 	@MockBean WorkflowMetrics workflowMetrics;
+	@MockBean ModelEgressPolicy modelEgressPolicy;
 	@MockBean JwtService jwtService;
 	@MockBean com.example.videoplatform.auth.TokenBlacklist tokenBlacklist;
 
@@ -66,7 +66,9 @@ class WorkflowControllerTests {
 	void exposesCurrentAsyncRuntimeForVisualLab() throws Exception {
 		mockMvc.perform(get("/api/workflow/runtime").with(workspaceUser("alice", "admin")))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.dispatchMode").value("local-async"));
+				.andExpect(jsonPath("$.data.dispatchMode").value("local-async"))
+				.andExpect(jsonPath("$.data.transcriptMode").value("mock"))
+				.andExpect(jsonPath("$.data.summaryMode").value("mock"));
 	}
 
 	@Test
@@ -118,13 +120,12 @@ class WorkflowControllerTests {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("QUEUED"));
 		verify(videoTaskService).retryFailedTaskForWorkspace("task-1", "tenant-a", "alice", true);
 		verify(workflowMetrics).incrementRequeue("manual");
-		verify(workflowPublisher).publish("task-1");
 	}
 
 	@Test
 	void rejectsAnonymousRetryRequest() throws Exception {
 		mockMvc.perform(post("/api/workflow/tasks/task-1/retry")).andExpect(status().isForbidden());
-		verifyNoInteractions(videoTaskService, workflowPublisher);
+		verifyNoInteractions(videoTaskService);
 	}
 
 	@Test

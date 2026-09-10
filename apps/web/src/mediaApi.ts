@@ -52,11 +52,31 @@ export type MediaTask = {
   transcriptLanguage: string | null;
   transcriptDurationMs: number | null;
   transcriptVersion: number;
+  mediaRetained: boolean;
+  transcriptRetained: boolean;
   summary: string | null;
   status: "QUEUED" | "TRANSCRIBING" | "SUMMARIZING" | "COMPLETED" | "FAILED";
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type MediaRuntime = {
+  dispatchMode: "local-async" | "rocketmq";
+  mqEnabled: boolean;
+  transcriptMode: "mock" | "whisper-api";
+  summaryMode: "mock" | "llm-api";
+  mockDelayMs: number;
+  maxActiveTasksPerUser: number;
+  mqConsumerThreads: number;
+  storageType: string;
+  jwtAlgorithm: string;
+  oidcEnabled: boolean;
+  modelEgressAllowed: boolean;
+  retentionEnabled: boolean;
+  mediaRetentionDays: number;
+  transcriptRetentionDays: number;
+  auditRetentionDays: number;
 };
 
 export async function authenticate(
@@ -68,6 +88,18 @@ export async function authenticate(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
+  }, false);
+}
+
+export async function exchangeOidcToken(
+  externalAccessToken: string,
+  workspaceId?: string,
+): Promise<WorkspaceSession> {
+  const headers = new Headers({ Authorization: `Bearer ${externalAccessToken}` });
+  if (workspaceId) headers.set("X-Workspace-Id", workspaceId);
+  return mediaRequest<WorkspaceSession>("/api/auth/oidc/exchange", {
+    method: "POST",
+    headers,
   }, false);
 }
 
@@ -121,6 +153,10 @@ export async function updateWorkspaceMemberRole(
 
 export async function listMediaTasks(): Promise<MediaTask[]> {
   return mediaRequest<MediaTask[]>("/api/workflow/tasks");
+}
+
+export async function getMediaRuntime(): Promise<MediaRuntime> {
+  return mediaRequest<MediaRuntime>("/api/workflow/runtime");
 }
 
 export async function uploadVideo(file: File): Promise<{ taskId: string; videoId: string; status: string }> {

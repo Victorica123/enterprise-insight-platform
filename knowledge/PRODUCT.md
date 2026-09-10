@@ -31,7 +31,7 @@ Enterprise Insight Platform 将客户访谈、需求评审、故障复盘等视�
 
 首条纵向链路已经贯通：统一登录与租户边界 → 个人/团队 Workspace 创建、邀请与显式切换 → 视频转写进入 Agent → 团队证据共享与个人隔离 → 时间戳证据问答 → 六阶段等待/恢复 → 证据化 PRD → Workspace 策略审批与审计 → 不可变版本 → 知识候选人工决定 → 行动项工单审批。旧图谱、工单与明细审计也已完成 tenant/owner 迁移，不再以 JWT 模式 503 代替授权。
 
-团队 Workspace 的邀请、角色、共享范围和活跃 Workspace 切换语义已经由 ADR-0006 固化并实现。后续仍需批准的生产决策是正式身份提供方与即时撤权、保留期限、外部模型数据策略和生产 SLO。
+团队 Workspace 的邀请、角色、共享范围和活跃 Workspace 切换语义已经由 ADR-0006 固化并实现。ADR-0014 已批准生产试点的 Keycloak OIDC、RS256/JWKS、MySQL、保留期限、外部模型 tenant 白名单和 99.5% SLO；近实时撤权、公开发布迁移与灾备仍需目标环境验证。
 
 注册用户自动获得一个个人工作区并成为 OWNER；OWNER 可创建团队空间，OWNER/ADMIN 可签发一次性短期邀请码，已注册用户接受后以 MEMBER 加入。用户必须显式切换 active Workspace，服务端才根据成员关系重签 JWT。个人资源按 owner 私有，团队资源按 tenant 共享读取，`owner_id` 始终保留创建者与审计归属。
 

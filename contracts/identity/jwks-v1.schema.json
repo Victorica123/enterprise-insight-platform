@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/identity/jwks-v1.schema.json",
+  "title": "Enterprise Insight Platform Signing Keys",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["keys"],
+  "properties": {
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kty", "use", "alg", "kid", "n", "e"],
+        "properties": {
+          "kty": { "const": "RSA" },
+          "use": { "const": "sig" },
+          "alg": { "const": "RS256" },
+          "kid": { "type": "string", "minLength": 1 },
+          "n": { "type": "string", "minLength": 1 },
+          "e": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -15,14 +15,12 @@ from unittest.mock import patch
 
 os.environ.setdefault("LLM_ROUTER_ENABLED", "0")
 
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.agentic_rag import answer_agentic_question  # noqa: E402
-from app.llm_router import LLMJsonResult  # noqa: E402
-from app.main import app  # noqa: E402
-from app.slot_extraction import extract_target_status, extract_ticket_id  # noqa: E402
-from app.tools import execute_tool, resolve_tool_action  # noqa: E402
-
+from app.agentic_rag import answer_agentic_question
+from app.llm_router import LLMJsonResult
+from app.main import app
+from app.slot_extraction import extract_target_status, extract_ticket_id
+from app.tools import execute_tool, resolve_tool_action
+from fastapi.testclient import TestClient
 
 OPERATOR = {"X-User-Role": "operator"}
 
@@ -39,7 +37,7 @@ class RoleEnforcementTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_viewer_cannot_mutate_documents(self) -> None:
-        files = {"file": ("a.txt", "客户:测试客户".encode("utf-8"), "text/plain")}
+        files = {"file": ("a.txt", "客户:测试客户".encode(), "text/plain")}
         self.assertEqual(self.client.post("/documents", files=files).status_code, 403)
         self.assertEqual(self.client.delete("/documents/doc-1").status_code, 403)
         self.assertEqual(

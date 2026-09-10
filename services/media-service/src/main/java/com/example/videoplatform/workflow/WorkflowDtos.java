@@ -20,6 +20,8 @@ public final class WorkflowDtos {
 			String transcriptLanguage,
 			Long transcriptDurationMs,
 			int transcriptVersion,
+			boolean mediaRetained,
+			boolean transcriptRetained,
 			String summary,
 			VideoTask.TaskStatus status,
 			String errorMessage,
@@ -38,6 +40,8 @@ public final class WorkflowDtos {
 					task.getTranscriptResult().language(),
 					task.getTranscriptResult().durationMs(),
 					task.getTranscriptVersion(),
+					task.getStoragePath() != null && !task.getStoragePath().isBlank(),
+					task.getTranscript() != null,
 					task.getSummary(),
 					task.getStatus(),
 					task.getErrorMessage(),
@@ -49,8 +53,11 @@ public final class WorkflowDtos {
 	public record TaskQuotaView(long activeTasks, int maxActiveTasksPerUser, long remainingSlots, boolean limited) {
 	}
 
-	public record RuntimeView(String dispatchMode, boolean mqEnabled, long mockDelayMs,
-			int maxActiveTasksPerUser, int mqConsumerThreads, String storageType) {
+	public record RuntimeView(String dispatchMode, boolean mqEnabled, String transcriptMode,
+			String summaryMode, long mockDelayMs, int maxActiveTasksPerUser,
+			int mqConsumerThreads, String storageType, String jwtAlgorithm,
+			boolean oidcEnabled, boolean modelEgressAllowed, boolean retentionEnabled,
+			int mediaRetentionDays, int transcriptRetentionDays, int auditRetentionDays) {
 	}
 
 	public record TaskDeletionView(String taskId, String mediaCleanupStatus) {

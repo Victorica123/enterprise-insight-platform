@@ -330,7 +330,7 @@ def load_chunks(scope: RetrievalScope | None = None) -> list[Chunk]:
     asset_ids = scope.asset_ids if scope else ()
     return list(
         _load_chunks_cached(
-            str(database.DB_PATH.resolve()), revision, tenant_id, owner_id, asset_ids
+            database.database_identity(), revision, tenant_id, owner_id, asset_ids
         )
     )
 
@@ -344,7 +344,7 @@ def _load_chunks_cached(
     asset_ids: tuple[str, ...],
 ) -> tuple[Chunk, ...]:
     # Both values intentionally participate in the cache key. The revision is
-    # stored in SQLite, so writes from another process invalidate this cache too.
+    # stored in the selected database, so writes from another process invalidate this cache too.
     del db_path, revision
     chunks: list[Chunk] = []
     for row in database.list_chunk_rows(

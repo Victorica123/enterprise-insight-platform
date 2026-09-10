@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-# 数据目录（SQLite 持久化挂载点）
+# 数据目录（开发模式 SQLite 持久化；生产试点通过 AGENT_DATABASE_URL 使用 MySQL）
 RUN mkdir -p /app/data && chown -R nobody:nogroup /app
 USER nobody
 

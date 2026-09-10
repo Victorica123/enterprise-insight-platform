@@ -22,21 +22,20 @@ public class WorkflowController {
 
 	private final VideoTaskService videoTaskService;
 	private final MediaLifecycleService mediaLifecycleService;
-	private final WorkflowPublisher workflowPublisher;
 	private final WorkflowMetrics workflowMetrics;
 	private final AppProperties appProperties;
 	private final boolean mqEnabled;
+	private final ModelEgressPolicy modelEgressPolicy;
 
 	public WorkflowController(VideoTaskService videoTaskService, MediaLifecycleService mediaLifecycleService,
-			WorkflowPublisher workflowPublisher,
 			WorkflowMetrics workflowMetrics, AppProperties appProperties,
-			@Value("${app.mq.enabled:false}") boolean mqEnabled) {
+			@Value("${app.mq.enabled:false}") boolean mqEnabled, ModelEgressPolicy modelEgressPolicy) {
 		this.videoTaskService = videoTaskService;
 		this.mediaLifecycleService = mediaLifecycleService;
-		this.workflowPublisher = workflowPublisher;
 		this.workflowMetrics = workflowMetrics;
 		this.appProperties = appProperties;
 		this.mqEnabled = mqEnabled;
+		this.modelEgressPolicy = modelEgressPolicy;
 	}
 
 	/**
@@ -67,14 +66,23 @@ public class WorkflowController {
 
 	@GetMapping("/runtime")
 	public ApiResponse<WorkflowDtos.RuntimeView> getRuntime(Authentication authentication) {
-		WorkspacePrincipal.require(authentication);
+		WorkspacePrincipal principal = WorkspacePrincipal.require(authentication);
 		return ApiResponse.ok(new WorkflowDtos.RuntimeView(
 				mqEnabled ? "rocketmq" : "local-async",
 				mqEnabled,
+				appProperties.getTranscript().isEnabled() ? "whisper-api" : "mock",
+				appProperties.getSummary().isEnabled() ? "llm-api" : "mock",
 				appProperties.getTranscript().getMockDelayMs(),
 				appProperties.getQuota().getMaxActiveTasksPerUser(),
 				appProperties.getMq().getConsumerThreads(),
-				appProperties.getStorage().getType()));
+				appProperties.getStorage().getType(),
+				appProperties.getJwt().getAlgorithm(),
+				appProperties.getOidc().isEnabled(),
+				modelEgressPolicy.isAllowed(principal.tenantId()),
+				appProperties.getRetention().isEnabled(),
+				appProperties.getRetention().getMediaDays(),
+				appProperties.getRetention().getTranscriptDays(),
+				appProperties.getRetention().getAuditDays()));
 	}
 
 	@DeleteMapping("/tasks/{taskId}")
@@ -93,7 +101,6 @@ public class WorkflowController {
 		VideoTask task = videoTaskService.retryFailedTaskForWorkspace(
 				taskId, principal.tenantId(), principal.userId(), principal.isTeam());
 		workflowMetrics.incrementRequeue("manual");
-		workflowPublisher.publish(taskId);
 		return ApiResponse.ok(WorkflowDtos.TaskView.from(task));
 	}
 

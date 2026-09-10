@@ -30,13 +30,19 @@ class WorkflowProcessorTests {
 	private final TranscriptService transcriptService = org.mockito.Mockito.mock(TranscriptService.class);
 	private final SummaryService summaryService = org.mockito.Mockito.mock(SummaryService.class);
 	private final MediaStorageService mediaStorageService = org.mockito.Mockito.mock(MediaStorageService.class);
+	private final ModelEgressPolicy modelEgressPolicy = org.mockito.Mockito.mock(ModelEgressPolicy.class);
 	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 	private final WorkflowMetrics workflowMetrics = new WorkflowMetrics(meterRegistry);
 	private final WorkflowProcessor processor = new WorkflowProcessor(
 			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics,
-			mediaStorageService);
+			mediaStorageService, modelEgressPolicy);
 	private static final String RESOLVED_STORAGE_PATH = Path.of("storage", "demo.mp4").toString();
 	private static final TranscriptResult TRANSCRIPT = TranscriptResult.fromPlainText("transcript");
+
+	@Test
+	void cancelledLeaseHeartbeatsAreRemovedFromSchedulerQueue() {
+		assertThat(WorkflowProcessor.removesCancelledHeartbeats()).isTrue();
+	}
 
 	private static VideoTask task(String contentMd5) {
 		return new VideoTask("task-1", "video-1", "user-1", "demo.mp4", "storage/demo.mp4", contentMd5);
@@ -45,19 +51,22 @@ class WorkflowProcessorTests {
 	@Test
 	void standaloneTaskWithoutContentMd5RunsThroughShortTransactionStages() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
-		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
+		when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+		when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
 		stubResolvedMedia();
 		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
+		when(videoTaskService.completeTranscript("task-1", TRANSCRIPT, "lease-1")).thenReturn(true);
+		when(videoTaskService.completeSummary("task-1", "summary", "lease-1")).thenReturn(true);
 
 		processor.processAsync("task-1");
 
 		InOrder inOrder = inOrder(videoTaskService, transcriptService, summaryService);
-		inOrder.verify(videoTaskService).claimForProcessing("task-1");
+		inOrder.verify(videoTaskService).claimForProcessingWithLease("task-1");
 		inOrder.verify(transcriptService).extract(RESOLVED_STORAGE_PATH, "demo.mp4");
-		inOrder.verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT);
+		inOrder.verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT, "lease-1");
 		inOrder.verify(summaryService).summarize("transcript");
-		inOrder.verify(videoTaskService).completeSummary("task-1", "summary");
+		inOrder.verify(videoTaskService).completeSummary("task-1", "summary", "lease-1");
 		verifyNoInteractions(lockService);
 	}
 
@@ -66,56 +75,61 @@ class WorkflowProcessorTests {
 		MediaAsset ready = new MediaAsset("md5-1", "storage/demo.mp4");
 		ready.markReady("cached transcript", "cached summary");
 		when(videoTaskService.requireTask("task-1")).thenReturn(task("md5-1"));
-		when(mediaAssetService.find("md5-1")).thenReturn(Optional.of(ready));
+		when(mediaAssetService.find("legacy", "md5-1")).thenReturn(Optional.of(ready));
 
 		processor.processAsync("task-1");
 
 		// 去重命中：直接复用，不抢占、不加锁、不跑 FFmpeg/Whisper/LLM
 		verify(videoTaskService).completeFromAsset(
 				"task-1", TranscriptResult.fromPlainText("cached transcript"), "cached summary");
-		verify(videoTaskService, never()).claimForProcessing(anyString());
+		verify(videoTaskService, never()).claimForProcessingWithLease(anyString());
 		verifyNoInteractions(lockService, transcriptService, summaryService);
 	}
 
 	@Test
 	void singleFlightWinnerProcessesOnceAndFansOut() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task("md5-1"));
-		when(mediaAssetService.find("md5-1")).thenReturn(Optional.empty());
-		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-		when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(true);
+		when(mediaAssetService.find("legacy", "md5-1")).thenReturn(Optional.empty());
+		when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+		when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
+		when(lockService.tryLockWithWatchdog("lock:asset:legacy:md5-1")).thenReturn(true);
 		stubResolvedMedia();
 		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
+		when(videoTaskService.completeAllByContentMd5(
+				"legacy", "md5-1", TRANSCRIPT, "summary", "task-1", "lease-1")).thenReturn(true);
 
 		processor.processAsync("task-1");
 
 		InOrder inOrder = inOrder(lockService, mediaAssetService, videoTaskService);
-		inOrder.verify(lockService).tryLockWithWatchdog("lock:asset:md5-1");
-		inOrder.verify(mediaAssetService).markProcessing("md5-1", "storage/demo.mp4");
-		inOrder.verify(mediaAssetService).markReady("md5-1", TRANSCRIPT, "summary");
-		inOrder.verify(videoTaskService).completeAllByContentMd5("md5-1", TRANSCRIPT, "summary");
-		inOrder.verify(lockService).unlock("lock:asset:md5-1");
+		inOrder.verify(lockService).tryLockWithWatchdog("lock:asset:legacy:md5-1");
+		inOrder.verify(mediaAssetService).markProcessing("legacy", "md5-1", "storage/demo.mp4");
+		inOrder.verify(mediaAssetService).markReady("legacy", "md5-1", TRANSCRIPT, "summary");
+		inOrder.verify(videoTaskService).completeAllByContentMd5(
+				"legacy", "md5-1", TRANSCRIPT, "summary", "task-1", "lease-1");
+		inOrder.verify(lockService).unlock("lock:asset:legacy:md5-1");
 	}
 
 	@Test
 	void singleFlightLoserSkipsProcessingAndLeavesCompletionToWinner() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task("md5-1"));
-		when(mediaAssetService.find("md5-1")).thenReturn(Optional.empty());
-		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-		when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(false);
+		when(mediaAssetService.find("legacy", "md5-1")).thenReturn(Optional.empty());
+		when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+		when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
+		when(lockService.tryLockWithWatchdog("lock:asset:legacy:md5-1")).thenReturn(false);
 
 		processor.processAsync("task-1");
 
 		// 抢锁失败者不处理、不释放锁（未持有），交由赢家 fan-out 完成
 		verifyNoInteractions(transcriptService, summaryService);
-		verify(mediaAssetService, never()).markProcessing(anyString(), anyString());
+		verify(mediaAssetService, never()).markProcessing(anyString(), anyString(), anyString());
 		verify(lockService, never()).unlock(anyString());
 	}
 
 	@Test
 	void idempotentSkipWhenClaimFails() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
-		when(videoTaskService.claimForProcessing("task-1")).thenReturn(false);
+		when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.empty());
 
 		processor.processAsync("task-1");
 
@@ -132,7 +146,7 @@ class WorkflowProcessorTests {
 		processor.processAsync("task-1");
 
 		verifyNoInteractions(mediaAssetService, lockService, transcriptService, summaryService);
-		verify(videoTaskService, never()).claimForProcessing(anyString());
+		verify(videoTaskService, never()).claimForProcessingWithLease(anyString());
 	}
 
 	@Test
@@ -140,19 +154,27 @@ class WorkflowProcessorTests {
 		runWithWorkflowProcessorLogLevel(Level.OFF, () -> {
 			String longMessage = "x".repeat(2100);
 			when(videoTaskService.requireTask("task-1")).thenReturn(task("md5-1"));
-			when(mediaAssetService.find("md5-1")).thenReturn(Optional.empty());
-			when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
-			when(lockService.tryLockWithWatchdog("lock:asset:md5-1")).thenReturn(true);
+			when(mediaAssetService.find("legacy", "md5-1")).thenReturn(Optional.empty());
+			when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+			when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
+			when(lockService.tryLockWithWatchdog("lock:asset:legacy:md5-1")).thenReturn(true);
 			stubResolvedMedia();
 			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4"))
 					.thenThrow(new IllegalStateException(longMessage));
+			when(videoTaskService.failAllByContentMd5(
+					org.mockito.ArgumentMatchers.eq("legacy"), org.mockito.ArgumentMatchers.eq("md5-1"),
+					anyString(), org.mockito.ArgumentMatchers.eq("task-1"), org.mockito.ArgumentMatchers.eq("lease-1")))
+					.thenReturn(true);
 
 			processor.processAsync("task-1");
 
 			ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
-			verify(mediaAssetService).markFailed(org.mockito.ArgumentMatchers.eq("md5-1"), messageCaptor.capture());
-			verify(videoTaskService).failAllByContentMd5(org.mockito.ArgumentMatchers.eq("md5-1"), anyString());
-			verify(lockService).unlock("lock:asset:md5-1");
+			verify(mediaAssetService).markFailed(org.mockito.ArgumentMatchers.eq("legacy"),
+					org.mockito.ArgumentMatchers.eq("md5-1"), messageCaptor.capture());
+			verify(videoTaskService).failAllByContentMd5(org.mockito.ArgumentMatchers.eq("legacy"),
+					org.mockito.ArgumentMatchers.eq("md5-1"), anyString(),
+					org.mockito.ArgumentMatchers.eq("task-1"), org.mockito.ArgumentMatchers.eq("lease-1"));
+			verify(lockService).unlock("lock:asset:legacy:md5-1");
 			assertThat(messageCaptor.getValue()).hasSize(2015).endsWith("... [truncated]");
 		});
 	}
@@ -161,25 +183,31 @@ class WorkflowProcessorTests {
 	void standaloneFailurePersistsFailedTask() {
 		runWithWorkflowProcessorLogLevel(Level.OFF, () -> {
 			when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
-			when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
+			when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+			when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
 			stubResolvedMedia();
 			when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 			when(summaryService.summarize("transcript")).thenThrow(new IllegalStateException("summary failed"));
+			when(videoTaskService.completeTranscript("task-1", TRANSCRIPT, "lease-1")).thenReturn(true);
+			when(videoTaskService.markFailed("task-1", "summary failed", "lease-1")).thenReturn(true);
 
 			processor.processAsync("task-1");
 
-			verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT);
-			verify(videoTaskService).markFailed("task-1", "summary failed");
+			verify(videoTaskService).completeTranscript("task-1", TRANSCRIPT, "lease-1");
+			verify(videoTaskService).markFailed("task-1", "summary failed", "lease-1");
 		});
 	}
 
 	@Test
 	void recordsProcessingAndEndToEndMetricsOnStandaloneCompletion() {
 		when(videoTaskService.requireTask("task-1")).thenReturn(task(null));
-		when(videoTaskService.claimForProcessing("task-1")).thenReturn(true);
+		when(videoTaskService.claimForProcessingWithLease("task-1")).thenReturn(Optional.of("lease-1"));
+		when(videoTaskService.leaseHeartbeatIntervalMillis()).thenReturn(60_000L);
 		stubResolvedMedia();
 		when(transcriptService.extract(RESOLVED_STORAGE_PATH, "demo.mp4")).thenReturn(TRANSCRIPT);
 		when(summaryService.summarize("transcript")).thenReturn("summary");
+		when(videoTaskService.completeTranscript("task-1", TRANSCRIPT, "lease-1")).thenReturn(true);
+		when(videoTaskService.completeSummary("task-1", "summary", "lease-1")).thenReturn(true);
 
 		processor.processAsync("task-1");
 

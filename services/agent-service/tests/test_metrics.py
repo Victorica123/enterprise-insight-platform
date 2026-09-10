@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from app.chat_observability_store import get_chat_metrics_summary, record_chat_metric
 from app.database import connect
-from app.routes.chat import infer_standard_outcome
 from app.models import ChatResponse
+from app.routes.chat import infer_standard_outcome
 
 
 def record_sample(**overrides: object) -> None:

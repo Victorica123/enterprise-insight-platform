@@ -10,18 +10,19 @@
 | 完整中间件 | `docker compose --profile mysql --profile mq up -d` + 默认启动 | Docker Desktop |
 | 观测/对象存储 | 追加 `--profile observability` / `--profile object-storage` | Docker Desktop |
 
-常用地址：工作台 http://localhost:8081 · Swagger /swagger-ui.html · Health /actuator/health · Grafana http://localhost:3000 · MinIO 控制台 http://localhost:19001。
+常用地址：工作台 <http://localhost:8081> · Swagger /swagger-ui.html · Health /actuator/health · Grafana <http://localhost:3000> · MinIO 控制台 <http://localhost:19001。>
 
 注意：JDK 25 与 Mockito inline mock 不兼容（`Could not modify all classes`），跑测试用 JDK 17/18；CI 已固定 17。
 
 ## 二、验证脚本
 
 ```powershell
-# 全量测试（90+，含真实 JWT 上传回归）
+# 全量测试（受支持 JDK 18，124 个，含真实 JWT 上传与持久化调度 outbox 回归）
 mvn test
 
-# 真实中间件端到端：注册→分片→MQ 消费→MySQL 持久化→会话清理
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1
+# 目标环境中间件端到端：注册→分片→MQ 消费→MySQL 持久化→会话清理
+# 需要已启动容器及非空 $env:MEDIA_MYSQL_PASSWORD；不是 H2 本地测试的一部分
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-full-stack.ps1 -MysqlPassword $env:MEDIA_MYSQL_PASSWORD
 
 # 公网部署前检查（.env 中所有 CHANGE_ME 已改）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preflight-deploy.ps1

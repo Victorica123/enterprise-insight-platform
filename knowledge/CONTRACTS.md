@@ -42,6 +42,10 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 
 统一前端只保存注册/登录返回的 access token；调用两个后端都使用 Bearer JWT。前端的视频筛选通过 `/chat` 的 `asset_ids` 收窄范围，不能扩大 JWT 已限定的 tenant/owner 范围。
 
+生产试点的身份交换分两层：浏览器使用 OIDC Authorization Code + PKCE 获取 Keycloak access token，再通过 `POST /api/auth/oidc/exchange` 交给 Media；Media 校验外部 issuer/audience/signature 后返回内部 active-Workspace token。`GET /api/auth/jwks` 遵循 `contracts/identity/jwks-v1.schema.json`，只发布 RS256 公钥材料。Agent 不接受 Keycloak 令牌直接访问业务资源。
+
+身份交换接受可选 `X-Workspace-Id` 请求头，用于续期时请求保持当前 Workspace；该值仅是选择参数，Media 必须重新读取已验证用户的成员关系及当前角色。省略时返回个人 Workspace；不存在或无成员关系时返回 404，外部令牌无效时返回 401。浏览器仅在 Workspace 404 后重新交换个人令牌，不能把网络故障、401/403 或 5xx 当作切换授权。返回值沿用 `AuthResponse`，平台 JWT 仍遵循身份契约 V2。
+
 团队 Workspace HTTP 契约由 `contracts/http/workspace-collaboration-v1.schema.json` 定义：
 
 - `GET /api/workspaces`：列出当前用户的全部个人/团队成员关系。
@@ -51,6 +55,7 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 - `POST /api/workspaces/invitations/accept`：已登录用户消费邀请码并以 MEMBER 加入。
 - `PATCH /api/workspaces/{tenantId}/members/{userId}`：OWNER 调整非 OWNER 成员为 VIEWER/MEMBER/ADMIN。
 - `POST /api/workspaces/{tenantId}/switch`：服务端重新查询成员关系并签发该 active Workspace 的 V2 JWT。
+- `GET /api/workflow/runtime`：除处理/存储模式外，返回 JWT 算法、OIDC、当前 Workspace 模型出境许可及 30/180/365 天保留配置；机器契约为 `contracts/http/media-runtime-v1.schema.json`。
 
 六阶段分析使用 `POST /analysis/sessions` 创建会话，`POST /analysis/sessions/{id}/confirm` 携带当前 `resume_token` 和结构化答案恢复。读取与恢复都按服务端 JWT 的 tenant/owner 定位；错误租户返回不存在，避免泄漏资源是否存在。响应由 `contracts/http/analysis-session-v1.schema.json` 约束，并返回 `checkpoint_version`、`evidence_revision`、`evidence_snapshot_sha256` 与固定的 `retrieval_mode=hybrid`。快照正文不通过该契约公开；同一 token 的竞争确认只有一次 CAS 能成功，其余返回 409。
 
@@ -79,6 +84,10 @@ PRD 发布契约：
 - `scope=process`：全部计数只代表当前 Agent 进程，进程重启后归零；多实例部署不能直接把任一实例视作全局值。
 
 公开的 `GET /system/status` 仍只返回 Embedding 覆盖情况，不返回缓存请求量和命中计数。缓存契约只包含聚合数字，不包含原文、文本摘要、tenant、owner、asset 或缓存 key；这是有意的最小暴露边界。新增 `cache` 是已鉴权 Embedding 状态响应的扩展，消费者仍应按兼容策略忽略未知字段。
+
+## 媒体运行能力可见性
+
+已鉴权的 `GET /api/workflow/runtime` 由 `contracts/http/media-runtime-v1.schema.json` 约束。除调度、并发配额和存储类型外，响应必须明确给出 `transcriptMode=mock|whisper-api` 与 `summaryMode=mock|llm-api`。Web 必须据此标记“验证模式”或“真实处理模式”，不得仅凭任务成功就把 mock 转写包装成真实 AI 能力。
 
 ## 版本策略
 

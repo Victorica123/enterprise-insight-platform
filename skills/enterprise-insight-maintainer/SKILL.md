@@ -31,6 +31,8 @@ Keep this repository a coherent product rather than two demos placed side by sid
 - Analysis creation ranks evidence by objective only after tenant/owner/asset authorization, then freezes the selected facts with a revision and SHA-256. Confirmation preserves completed stages 1-4 and atomically consumes the resume token with database compare-and-set. Do not silently re-query current evidence or regress to whole-pipeline recomputation.
 - Published PRDs are immutable, hash-addressed versions. Derived knowledge remains a candidate until a separate human decision; approval must atomically materialize a managed, retrievable source with candidate/PRD/hash/evidence provenance. Approved knowledge evolves only through audited supersede/revoke requests: never delete historical managed documents, only ACTIVE versions enter future retrieval/graph context, and team requesters cannot approve their own lifecycle request. Derived action items enter the controlled tool approval queue.
 - Media processing state and Agent analysis state are separate lifecycles, aggregated only for presentation.
+- Media outbox delivery is at-least-once and must be claimed before network I/O: `PENDING -> CLAIMED -> SENT/DEAD`, with conditional owner/lease checks, expiry takeover, bounded retries and downstream idempotency. A `pendingBatch()` read alone is not multi-instance safety evidence.
+- Agent Router/Planner/Tool Agent may use provider-compatible structured JSON (`LLM_RESPONSE_FORMAT=auto`: OpenAI strict JSON Schema, DeepSeek JSON Object), but every response remains untrusted and must pass semantic/schema, whitelist, authorization and side-effect checks before use. Unsupported provider features must degrade to rules.
 
 ## Grill the user at real decision points
 
@@ -47,9 +49,11 @@ Do not pause for discoverable implementation details, reversible refactors, test
 - Keep ticket and pending-action state in `ticket_store.py`; keep tool-call audit logs and aggregate tool metrics in `tool_observability_store.py`. Tool policy and execution orchestration remain in `tools.py`.
 - Keep `apps/web/src/api.ts` as a compatibility barrel. Add requests to the matching `*Api.ts` domain module and shared transport only to `apiClient.ts`.
 - Prefer an end-to-end vertical slice over broad scaffolding with no user-visible path.
-- Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate.
+- Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate. The localhost acceptance fixture must use bytes that pass the real media container check; do not weaken production validation to make a test fixture pass.
 - Add a regression test for a defect and an evaluation case for a changed Agent behavior.
+- Outbox changes must cover competing claimers, expired lease takeover, stale-worker fencing, retry backoff and DEAD transition; structured LLM changes must cover strict-schema/provider compatibility, malformed output and deterministic fallback.
 - Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
+- Media outbox, upload or cross-service reliability changes must run the Media integration tests and the localhost acceptance; document whether the result used H2/SQLite/mock or real MySQL/Redis/RocketMQ/S3.
 - Approved-knowledge materialization or lifecycle changes must run the focused workflow tests and `python quality/agent-evals/evaluate_knowledge_lifecycle.py`; retrieval visibility changes also run V6.
 - Use an ADR for a material architectural decision; do not silently rewrite prior decisions.
 

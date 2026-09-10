@@ -12,9 +12,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 API_DIR = ROOT / "services" / "agent-service"
@@ -25,7 +24,6 @@ from app.document_parser import parse_document  # noqa: E402
 from app.graph_store import get_graph_overview, init_graph_store, rebuild_graph  # noqa: E402
 from app.rag import delete_document, ingest_document  # noqa: E402
 from app.ticket_store import create_ticket, delete_ticket, init_ticket_store, list_tickets  # noqa: E402
-
 
 # 演示语料：字段连排的确定性 Markdown fixture；PDF 解析由 parser 测试单独覆盖。
 CORPUS = [ROOT / "quality" / "agent-evals" / "golden" / "fixtures" / "customer-a-project.md"]
@@ -87,9 +85,8 @@ def load_corpus() -> list[str]:
 def generate_traffic() -> int:
     """走真实 /chat 端点产生指标与日志，保证监控面板和失败回放都有数据。"""
     try:
-        from fastapi.testclient import TestClient
-
         from app.main import app
+        from fastapi.testclient import TestClient
     except ImportError as exc:  # pragma: no cover - 仅在缺少 httpx 时触发
         print(f"  ! 跳过监控数据生成（{exc}）。安装 requirements-dev.txt 后可用。")
         return 0

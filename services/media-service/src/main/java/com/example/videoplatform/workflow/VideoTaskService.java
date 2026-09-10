@@ -9,6 +9,7 @@ import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,13 +23,16 @@ public class VideoTaskService {
 	private final UserAccountRepository userAccountRepository;
 	private final AppProperties appProperties;
 	private final TranscriptEventOutboxService transcriptOutboxService;
+	private final WorkflowDispatchOutboxService workflowDispatchOutboxService;
 
 	public VideoTaskService(VideoTaskRepository taskRepository, UserAccountRepository userAccountRepository,
-			AppProperties appProperties, TranscriptEventOutboxService transcriptOutboxService) {
+			AppProperties appProperties, TranscriptEventOutboxService transcriptOutboxService,
+			WorkflowDispatchOutboxService workflowDispatchOutboxService) {
 		this.taskRepository = taskRepository;
 		this.userAccountRepository = userAccountRepository;
 		this.appProperties = appProperties;
 		this.transcriptOutboxService = transcriptOutboxService;
+		this.workflowDispatchOutboxService = workflowDispatchOutboxService;
 	}
 
 	@Transactional
@@ -65,7 +69,9 @@ public class VideoTaskService {
 		String traceId = MDC.get("traceId") == null ? taskId : MDC.get("traceId");
 		VideoTask task = new VideoTask(
 				taskId, videoId, tenantId, owner, fileName, storagePath, contentMd5, traceId);
-		return taskRepository.save(task);
+		taskRepository.save(task);
+		workflowDispatchOutboxService.enqueue(taskId);
+		return task;
 	}
 
 	/**
@@ -151,6 +157,7 @@ public class VideoTaskService {
 		assertCanCreateTask(userId);
 		task.setErrorMessage(null);
 		task.setStatus(VideoTask.TaskStatus.QUEUED);
+		workflowDispatchOutboxService.enqueue(taskId);
 		return task;
 	}
 
@@ -164,6 +171,7 @@ public class VideoTaskService {
 		assertCanCreateTask(owner);
 		task.setErrorMessage(null);
 		task.setStatus(VideoTask.TaskStatus.QUEUED);
+		workflowDispatchOutboxService.enqueue(taskId);
 		return task;
 	}
 
@@ -190,13 +198,39 @@ public class VideoTaskService {
 		task.setStatus(VideoTask.TaskStatus.SUMMARIZING);
 	}
 
+	/**
+	 * Lease-fenced transcript completion. The conditional update is important:
+	 * checking ownership in Java alone still leaves a race with the reaper.
+	 */
+	@Transactional
+	public boolean completeTranscript(String taskId, TranscriptResult transcript, String leaseId) {
+		return taskRepository.completeTranscriptWithLease(
+				taskId, VideoTask.TaskStatus.TRANSCRIBING, VideoTask.TaskStatus.SUMMARIZING,
+				leaseId, transcript.text(), transcript.segmentsJson(), transcript.language(),
+				transcript.durationMs(), Instant.now()) > 0;
+	}
+
 	/** 短事务：写入摘要结果并标记 COMPLETED。 */
 	@Transactional
 	public void completeSummary(String taskId, String summary) {
 		VideoTask task = requireManagedTask(taskId);
 		task.setSummary(summary);
 		task.setStatus(VideoTask.TaskStatus.COMPLETED);
+		task.clearProcessingLease();
 		transcriptOutboxService.enqueue(task);
+	}
+
+	/** Lease-fenced summary completion, including the atomic outbox write. */
+	@Transactional
+	public boolean completeSummary(String taskId, String summary, String leaseId) {
+		int updated = taskRepository.completeSummaryWithLease(
+				taskId, VideoTask.TaskStatus.SUMMARIZING, VideoTask.TaskStatus.COMPLETED,
+				leaseId, summary, Instant.now());
+		if (updated == 0) {
+			return false;
+		}
+		transcriptOutboxService.enqueue(requireManagedTask(taskId));
+		return true;
 	}
 
 	/** 短事务：标记任务失败并保存（已截断的）错误信息。 */
@@ -205,6 +239,16 @@ public class VideoTaskService {
 		VideoTask task = requireManagedTask(taskId);
 		task.setStatus(VideoTask.TaskStatus.FAILED);
 		task.setErrorMessage(errorMessage);
+		task.clearProcessingLease();
+	}
+
+	/** Lease-fenced failure transition used when an external stage fails. */
+	@Transactional
+	public boolean markFailed(String taskId, String errorMessage, String leaseId) {
+		return taskRepository.markFailedWithLease(
+				taskId,
+				List.of(VideoTask.TaskStatus.TRANSCRIBING, VideoTask.TaskStatus.SUMMARIZING),
+				VideoTask.TaskStatus.FAILED, leaseId, errorMessage, Instant.now()) > 0;
 	}
 
 	private VideoTask requireManagedTask(String taskId) {
@@ -232,8 +276,44 @@ public class VideoTaskService {
 	 */
 	@Transactional
 	public boolean claimForProcessing(String taskId) {
-		return taskRepository.updateStatusIfCurrent(
-				taskId, VideoTask.TaskStatus.QUEUED, VideoTask.TaskStatus.TRANSCRIBING, Instant.now()) > 0;
+		return claimForProcessingWithLease(taskId).isPresent();
+	}
+
+	/** Claim a task and return the fencing token used by heartbeat renewal. */
+	@Transactional
+	public Optional<String> claimForProcessingWithLease(String taskId) {
+		Instant now = Instant.now();
+		String leaseId = UUID.randomUUID().toString();
+		Duration leaseDuration = appProperties.getWorkflow().getTaskLeaseDuration();
+		if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
+			leaseDuration = Duration.ofMinutes(15);
+		}
+		int updated = taskRepository.claimWithLease(
+				taskId, VideoTask.TaskStatus.QUEUED, VideoTask.TaskStatus.TRANSCRIBING,
+				leaseId, now.plus(leaseDuration), now);
+		return updated > 0 ? Optional.of(leaseId) : Optional.empty();
+	}
+
+	/** Renew only the lease that this worker owns; a lost lease becomes a fencing signal. */
+	@Transactional
+	public boolean renewProcessingLease(String taskId, String leaseId) {
+		Instant now = Instant.now();
+		Duration leaseDuration = appProperties.getWorkflow().getTaskLeaseDuration();
+		if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
+			leaseDuration = Duration.ofMinutes(15);
+		}
+		return taskRepository.renewLease(
+				taskId, leaseId,
+				List.of(VideoTask.TaskStatus.TRANSCRIBING, VideoTask.TaskStatus.SUMMARIZING),
+				now.plus(leaseDuration), now) > 0;
+	}
+
+	public long leaseHeartbeatIntervalMillis() {
+		Duration leaseDuration = appProperties.getWorkflow().getTaskLeaseDuration();
+		if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
+			leaseDuration = Duration.ofMinutes(15);
+		}
+		return Math.max(1000L, leaseDuration.toMillis() / 3);
 	}
 
 	/** 从已就绪的资产直接复用结果，秒完成任务（内容级去重命中路径）。 */
@@ -243,6 +323,7 @@ public class VideoTaskService {
 		task.setTranscriptResult(transcript);
 		task.setSummary(summary);
 		task.setStatus(VideoTask.TaskStatus.COMPLETED);
+		task.clearProcessingLease();
 		transcriptOutboxService.enqueue(task);
 	}
 
@@ -252,12 +333,18 @@ public class VideoTaskService {
 	 */
 	@Transactional
 	public int completeAllByContentMd5(String contentMd5, TranscriptResult transcript, String summary) {
+		return completeAllByContentMd5("legacy", contentMd5, transcript, summary);
+	}
+
+	@Transactional
+	public int completeAllByContentMd5(String tenantId, String contentMd5, TranscriptResult transcript, String summary) {
 		int affected = 0;
-		for (VideoTask task : taskRepository.findByContentMd5(contentMd5)) {
+		for (VideoTask task : taskRepository.findByTenantIdAndContentMd5(tenantId, contentMd5)) {
 			if (task.getStatus() != VideoTask.TaskStatus.COMPLETED) {
 				task.setTranscriptResult(transcript);
 				task.setSummary(summary);
 				task.setStatus(VideoTask.TaskStatus.COMPLETED);
+				task.clearProcessingLease();
 				transcriptOutboxService.enqueue(task);
 				affected++;
 			}
@@ -265,27 +352,92 @@ public class VideoTaskService {
 		return affected;
 	}
 
+	/**
+	 * Lease-fenced fan-out. The coordinator is completed with a conditional
+	 * update before other duplicate tasks are copied, so a reaper takeover
+	 * cannot let an old worker complete its own task.
+	 */
+	@Transactional
+	public boolean completeAllByContentMd5(
+			String tenantId, String contentMd5, TranscriptResult transcript, String summary,
+			String coordinatorTaskId, String leaseId) {
+		List<VideoTask.TaskStatus> activeStatuses = List.of(
+				VideoTask.TaskStatus.QUEUED,
+				VideoTask.TaskStatus.TRANSCRIBING,
+				VideoTask.TaskStatus.SUMMARIZING);
+		int coordinatorUpdated = taskRepository.completeContentWithLease(
+				coordinatorTaskId, activeStatuses, VideoTask.TaskStatus.COMPLETED, leaseId,
+				transcript.text(), transcript.segmentsJson(), transcript.language(), transcript.durationMs(),
+				summary, Instant.now());
+		if (coordinatorUpdated == 0) {
+			return false;
+		}
+		transcriptOutboxService.enqueue(requireManagedTask(coordinatorTaskId));
+		for (VideoTask task : taskRepository.findByTenantIdAndContentMd5(tenantId, contentMd5)) {
+			if (!task.getTaskId().equals(coordinatorTaskId)
+					&& activeStatuses.contains(task.getStatus())) {
+				task.setTranscriptResult(transcript);
+				task.setSummary(summary);
+				task.setStatus(VideoTask.TaskStatus.COMPLETED);
+				task.clearProcessingLease();
+				transcriptOutboxService.enqueue(task);
+			}
+		}
+		return true;
+	}
+
 	/** fan-out 失败版：同内容的所有未完成任务一并标记 FAILED。 */
 	@Transactional
 	public int failAllByContentMd5(String contentMd5, String errorMessage) {
+		return failAllByContentMd5("legacy", contentMd5, errorMessage);
+	}
+
+	@Transactional
+	public int failAllByContentMd5(String tenantId, String contentMd5, String errorMessage) {
 		int affected = 0;
-		for (VideoTask task : taskRepository.findByContentMd5(contentMd5)) {
+		for (VideoTask task : taskRepository.findByTenantIdAndContentMd5(tenantId, contentMd5)) {
 			if (task.getStatus() != VideoTask.TaskStatus.COMPLETED
 					&& task.getStatus() != VideoTask.TaskStatus.FAILED) {
 				task.setStatus(VideoTask.TaskStatus.FAILED);
 				task.setErrorMessage(errorMessage);
+				task.clearProcessingLease();
 				affected++;
 			}
 		}
 		return affected;
 	}
 
+	/** Complete the coordinator failure conditionally, then fail duplicate tasks. */
+	@Transactional
+	public boolean failAllByContentMd5(
+			String tenantId, String contentMd5, String errorMessage,
+			String coordinatorTaskId, String leaseId) {
+		List<VideoTask.TaskStatus> activeStatuses = List.of(
+				VideoTask.TaskStatus.QUEUED,
+				VideoTask.TaskStatus.TRANSCRIBING,
+				VideoTask.TaskStatus.SUMMARIZING);
+		if (taskRepository.markFailedWithLease(
+				coordinatorTaskId, activeStatuses, VideoTask.TaskStatus.FAILED,
+				leaseId, errorMessage, Instant.now()) == 0) {
+			return false;
+		}
+		for (VideoTask task : taskRepository.findByTenantIdAndContentMd5(tenantId, contentMd5)) {
+			if (!task.getTaskId().equals(coordinatorTaskId)
+					&& activeStatuses.contains(task.getStatus())) {
+				task.setStatus(VideoTask.TaskStatus.FAILED);
+				task.setErrorMessage(errorMessage);
+				task.clearProcessingLease();
+			}
+		}
+		return true;
+	}
+
 	/**
-	 * 定时补偿：把长时间未推进的任务重置为 QUEUED 并返回 taskId，调用方随后重新发布。
+	 * 定时补偿：把长时间未推进的任务重置为 QUEUED，并在同一事务重建调度意图。
 	 *
 	 * <p>纳入 QUEUED 是为了覆盖 MQ 投递失败、死信前后或本地线程池拒绝后留下的老任务；
 	 * 纳入 TRANSCRIBING/SUMMARIZING 是为了覆盖进程崩溃、单飞赢家中断等导致的悬挂任务。
-	 * 重复发布可由 {@link #claimForProcessing(String)} 的状态抢占保证幂等。
+	 * 重复投递可由 {@link #claimForProcessing(String)} 的状态抢占保证幂等；返回 taskId 仅供日志与指标。
 	 */
 	@Transactional
 	public List<String> requeueStaleTasks(Instant cutoff) {
@@ -294,9 +446,13 @@ public class VideoTaskService {
 				VideoTask.TaskStatus.TRANSCRIBING,
 				VideoTask.TaskStatus.SUMMARIZING);
 		List<String> taskIds = new ArrayList<>();
-		for (VideoTask task : taskRepository.findByStatusInAndUpdatedAtBefore(retryableStatuses, cutoff)) {
-			task.setStatus(VideoTask.TaskStatus.QUEUED);
-			taskIds.add(task.getTaskId());
+		Instant now = Instant.now();
+		for (String taskId : taskRepository.findStaleTaskIds(retryableStatuses, now, cutoff)) {
+			if (taskRepository.requeueIfStale(
+					taskId, retryableStatuses, VideoTask.TaskStatus.QUEUED, now, cutoff) > 0) {
+				workflowDispatchOutboxService.enqueue(taskId);
+				taskIds.add(taskId);
+			}
 		}
 		return taskIds;
 	}

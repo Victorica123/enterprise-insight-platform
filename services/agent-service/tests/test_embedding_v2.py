@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.database import get_embedding_stats, init_db, list_chunk_rows
+from app.database import get_embedding_stats, list_chunk_rows
 from app.embeddings import (
     clear_real_embedding_cache,
     cosine_similarity,

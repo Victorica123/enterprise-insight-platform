@@ -30,8 +30,10 @@ const HOLD = __ENV.HOLD || '2m';
 const THINK = parseFloat(__ENV.THINK || '0.5');
 const FILE_KB = parseInt(__ENV.FILE_KB || '64');
 
-// 内容随意（Mock 处理不读内容），零填充即可；文件名必须过 MediaFileValidator 的视频扩展名白名单
-const fileData = new Uint8Array(FILE_KB * 1024).buffer;
+// MediaFileValidator 会检查容器魔数；构造最小 ftyp/isom 头，剩余空间用于形成可调负载。
+const fileBytes = new Uint8Array(FILE_KB * 1024);
+fileBytes.set([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 2, 0]);
+const fileData = fileBytes.buffer;
 
 export const options = {
     scenarios: {
@@ -46,8 +48,8 @@ export const options = {
         },
     },
     thresholds: {
-        // 仅作参考展示，不因超阈值中断压测（对比数据本身就是产出）
-        'http_req_duration{endpoint:upload}': [{ threshold: 'p(99)<60000', abortOnFail: false }],
+        'http_req_failed{endpoint:upload}': ['rate<0.01'],
+        'http_req_duration{endpoint:upload}': ['p(95)<2000'],
     },
 };
 
@@ -73,8 +75,7 @@ export default function (data) {
         tags: { endpoint: 'upload' },
     });
 
-    // MQ 关：线程池(队列50+max4)打满后 publish 抛 TaskRejectedException → 503，此 check 失败率即「被拒单率」
-    // MQ 开：syncSend 毫秒级返回，预期全程 200
+    // 调度 Outbox 已把接单事务与本地线程池/MQ 解耦；两种模式都应先稳定返回 taskId。
     check(res, {
         'upload accepted (200)': (r) => r.status === 200,
     });

@@ -1,12 +1,15 @@
 package com.example.videoplatform.config;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
 
 	private final Jwt jwt = new Jwt();
+	private final Oidc oidc = new Oidc();
 	private final Storage storage = new Storage();
 	private final Workflow workflow = new Workflow();
 	private final Quota quota = new Quota();
@@ -15,9 +18,15 @@ public class AppProperties {
 	private final Summary summary = new Summary();
 	private final Security security = new Security();
 	private final Integration integration = new Integration();
+	private final ModelEgress modelEgress = new ModelEgress();
+	private final Retention retention = new Retention();
 
 	public Jwt getJwt() {
 		return jwt;
+	}
+
+	public Oidc getOidc() {
+		return oidc;
 	}
 
 	public Storage getStorage() {
@@ -52,6 +61,14 @@ public class AppProperties {
 		return integration;
 	}
 
+	public ModelEgress getModelEgress() {
+		return modelEgress;
+	}
+
+	public Retention getRetention() {
+		return retention;
+	}
+
 	public static class Integration {
 		private final Agent agent = new Agent();
 
@@ -64,6 +81,7 @@ public class AppProperties {
 			private String serviceToken;
 			private long dispatchIntervalMs = 2_000;
 			private int maxAttempts = 10;
+			private long claimLeaseDurationMs = 30_000;
 
 			public String getBaseUrl() {
 				return baseUrl;
@@ -96,15 +114,32 @@ public class AppProperties {
 			public void setMaxAttempts(int maxAttempts) {
 				this.maxAttempts = maxAttempts;
 			}
+
+			public long getClaimLeaseDurationMs() {
+				return claimLeaseDurationMs;
+			}
+
+			public void setClaimLeaseDurationMs(long claimLeaseDurationMs) {
+				this.claimLeaseDurationMs = claimLeaseDurationMs;
+			}
 		}
 	}
 
 	/** 认证相关防护配置。 */
 	public static class Security {
 		private final LoginRateLimit loginRateLimit = new LoginRateLimit();
+		private boolean localAuthEnabled = true;
 
 		public LoginRateLimit getLoginRateLimit() {
 			return loginRateLimit;
+		}
+
+		public boolean isLocalAuthEnabled() {
+			return localAuthEnabled;
+		}
+
+		public void setLocalAuthEnabled(boolean localAuthEnabled) {
+			this.localAuthEnabled = localAuthEnabled;
 		}
 
 		/** 滑动窗口：窗口内失败次数达到上限后拒绝，窗口滑出后自动恢复。 */
@@ -132,6 +167,10 @@ public class AppProperties {
 
 	public static class Jwt {
 		private String secret;
+		private String algorithm = "HS256";
+		private String privateKeyPath;
+		private String publicKeyPath;
+		private String keyId = "platform-1";
 		private long expirationSeconds;
 		private String issuer = "enterprise-insight";
 		private String audience = "enterprise-insight-api";
@@ -142,6 +181,38 @@ public class AppProperties {
 
 		public void setSecret(String secret) {
 			this.secret = secret;
+		}
+
+		public String getAlgorithm() {
+			return algorithm;
+		}
+
+		public void setAlgorithm(String algorithm) {
+			this.algorithm = algorithm;
+		}
+
+		public String getPrivateKeyPath() {
+			return privateKeyPath;
+		}
+
+		public void setPrivateKeyPath(String privateKeyPath) {
+			this.privateKeyPath = privateKeyPath;
+		}
+
+		public String getPublicKeyPath() {
+			return publicKeyPath;
+		}
+
+		public void setPublicKeyPath(String publicKeyPath) {
+			this.publicKeyPath = publicKeyPath;
+		}
+
+		public String getKeyId() {
+			return keyId;
+		}
+
+		public void setKeyId(String keyId) {
+			this.keyId = keyId;
 		}
 
 		public long getExpirationSeconds() {
@@ -280,6 +351,9 @@ public class AppProperties {
 
 	public static class Workflow {
 		private Duration staleTaskTimeout = Duration.ofHours(1);
+		private Duration taskLeaseDuration = Duration.ofMinutes(15);
+		private long dispatchIntervalMs = 250;
+		private long dispatchClaimLeaseMs = 30_000;
 
 		public Duration getStaleTaskTimeout() {
 			return staleTaskTimeout;
@@ -287,6 +361,69 @@ public class AppProperties {
 
 		public void setStaleTaskTimeout(Duration staleTaskTimeout) {
 			this.staleTaskTimeout = staleTaskTimeout;
+		}
+
+		public Duration getTaskLeaseDuration() {
+			return taskLeaseDuration;
+		}
+
+		public void setTaskLeaseDuration(Duration taskLeaseDuration) {
+			this.taskLeaseDuration = taskLeaseDuration;
+		}
+
+		public long getDispatchIntervalMs() {
+			return dispatchIntervalMs;
+		}
+
+		public void setDispatchIntervalMs(long dispatchIntervalMs) {
+			this.dispatchIntervalMs = dispatchIntervalMs;
+		}
+
+		public long getDispatchClaimLeaseMs() {
+			return dispatchClaimLeaseMs;
+		}
+
+		public void setDispatchClaimLeaseMs(long dispatchClaimLeaseMs) {
+			this.dispatchClaimLeaseMs = dispatchClaimLeaseMs;
+		}
+	}
+
+	public static class Oidc extends Feature {
+		private String issuerUri;
+		private String jwkSetUri;
+		private String audience = "enterprise-insight-web";
+		private String usernameClaim = "preferred_username";
+
+		public String getIssuerUri() {
+			return issuerUri;
+		}
+
+		public void setIssuerUri(String issuerUri) {
+			this.issuerUri = issuerUri;
+		}
+
+		public String getJwkSetUri() {
+			return jwkSetUri;
+		}
+
+		public void setJwkSetUri(String jwkSetUri) {
+			this.jwkSetUri = jwkSetUri;
+		}
+
+		public String getAudience() {
+			return audience;
+		}
+
+		public void setAudience(String audience) {
+			this.audience = audience;
+		}
+
+		public String getUsernameClaim() {
+			return usernameClaim;
+		}
+
+		public void setUsernameClaim(String usernameClaim) {
+			this.usernameClaim = usernameClaim;
 		}
 	}
 
@@ -324,6 +461,66 @@ public class AppProperties {
 
 		public void setEnabled(boolean enabled) {
 			this.enabled = enabled;
+		}
+	}
+
+	public static class ModelEgress {
+		private String policy = "allow";
+		private List<String> allowedTenants = new ArrayList<>();
+
+		public String getPolicy() {
+			return policy;
+		}
+
+		public void setPolicy(String policy) {
+			this.policy = policy;
+		}
+
+		public List<String> getAllowedTenants() {
+			return allowedTenants;
+		}
+
+		public void setAllowedTenants(List<String> allowedTenants) {
+			this.allowedTenants = allowedTenants == null ? new ArrayList<>() : new ArrayList<>(allowedTenants);
+		}
+	}
+
+	public static class Retention extends Feature {
+		private int mediaDays = 30;
+		private int transcriptDays = 180;
+		private int auditDays = 365;
+		private int batchSize = 200;
+
+		public int getMediaDays() {
+			return mediaDays;
+		}
+
+		public void setMediaDays(int mediaDays) {
+			this.mediaDays = mediaDays;
+		}
+
+		public int getTranscriptDays() {
+			return transcriptDays;
+		}
+
+		public void setTranscriptDays(int transcriptDays) {
+			this.transcriptDays = transcriptDays;
+		}
+
+		public int getAuditDays() {
+			return auditDays;
+		}
+
+		public void setAuditDays(int auditDays) {
+			this.auditDays = auditDays;
+		}
+
+		public int getBatchSize() {
+			return batchSize;
+		}
+
+		public void setBatchSize(int batchSize) {
+			this.batchSize = batchSize;
 		}
 	}
 

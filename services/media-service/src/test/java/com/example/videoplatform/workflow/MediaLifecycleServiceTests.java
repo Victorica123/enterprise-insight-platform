@@ -16,12 +16,14 @@ import org.junit.jupiter.api.Test;
 class MediaLifecycleServiceTests {
 
 	private final VideoTaskRepository taskRepository = org.mockito.Mockito.mock(VideoTaskRepository.class);
+	private final WorkflowDispatchOutboxRepository workflowDispatchOutboxRepository =
+			org.mockito.Mockito.mock(WorkflowDispatchOutboxRepository.class);
 	private final MediaCleanupJobRepository cleanupJobRepository =
 			org.mockito.Mockito.mock(MediaCleanupJobRepository.class);
 	private final MediaStorageService mediaStorageService = org.mockito.Mockito.mock(MediaStorageService.class);
 	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 	private final MediaLifecycleService service = new MediaLifecycleService(
-			taskRepository, cleanupJobRepository, mediaStorageService, meterRegistry);
+			taskRepository, workflowDispatchOutboxRepository, cleanupJobRepository, mediaStorageService, meterRegistry);
 
 	@Test
 	void deletesTerminalTaskAndItsLastMediaReference() throws Exception {
@@ -37,6 +39,7 @@ class MediaLifecycleServiceTests {
 		WorkflowDtos.TaskDeletionView result = service.attemptCleanup(plan);
 
 		assertThat(result.mediaCleanupStatus()).isEqualTo("DELETED");
+		verify(workflowDispatchOutboxRepository).deleteById("task-1");
 		verify(taskRepository).delete(task);
 		verify(taskRepository).flush();
 		verify(mediaStorageService).delete("storage/demo.mp4");

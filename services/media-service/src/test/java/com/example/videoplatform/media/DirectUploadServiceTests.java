@@ -10,7 +10,6 @@ import com.example.videoplatform.auth.JwtService;
 import com.example.videoplatform.config.AppProperties;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
-import com.example.videoplatform.workflow.WorkflowPublisher;
 import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +20,6 @@ class DirectUploadServiceTests {
 
 	private final MediaStorageService mediaStorageService = org.mockito.Mockito.mock(MediaStorageService.class);
 	private final VideoTaskService videoTaskService = org.mockito.Mockito.mock(VideoTaskService.class);
-	private final WorkflowPublisher workflowPublisher = org.mockito.Mockito.mock(WorkflowPublisher.class);
 
 	private DirectUploadService service;
 	private JwtService jwtService;
@@ -32,7 +30,7 @@ class DirectUploadServiceTests {
 		properties.getJwt().setSecret("01234567890123456789012345678901");
 		properties.getJwt().setExpirationSeconds(3600);
 		jwtService = new JwtService(properties);
-		service = new DirectUploadService(mediaStorageService, jwtService, videoTaskService, workflowPublisher);
+		service = new DirectUploadService(mediaStorageService, jwtService, videoTaskService);
 	}
 
 	@Test
@@ -78,7 +76,6 @@ class DirectUploadServiceTests {
 
 		assertThat(response.taskId()).isEqualTo("task-1");
 		assertThat(response.status()).isEqualTo("QUEUED");
-		verify(workflowPublisher).publish("task-1");
 	}
 
 	@Test
@@ -97,7 +94,6 @@ class DirectUploadServiceTests {
 		assertThat(response.taskId()).isEqualTo("task-existing");
 		verify(videoTaskService, never()).createTask(org.mockito.Mockito.any(), org.mockito.Mockito.any(),
 				org.mockito.Mockito.any());
-		verify(workflowPublisher, never()).publish(org.mockito.Mockito.any());
 	}
 
 	@Test

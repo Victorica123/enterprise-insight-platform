@@ -1,5 +1,7 @@
 package com.example.videoplatform.auth;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -15,16 +17,18 @@ public class AuthService {
 	private final LoginRateLimiter loginRateLimiter;
 	private final com.example.videoplatform.config.AppProperties appProperties;
 	private final WorkspaceService workspaceService;
+	private final OidcIdentityVerifier oidcIdentityVerifier;
 
 	public AuthService(UserAccountRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
 			LoginRateLimiter loginRateLimiter, com.example.videoplatform.config.AppProperties appProperties,
-			WorkspaceService workspaceService) {
+			WorkspaceService workspaceService, OidcIdentityVerifier oidcIdentityVerifier) {
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
 		this.loginRateLimiter = loginRateLimiter;
 		this.appProperties = appProperties;
 		this.workspaceService = workspaceService;
+		this.oidcIdentityVerifier = oidcIdentityVerifier;
 	}
 
 	@Transactional
@@ -52,11 +56,31 @@ public class AuthService {
 		}
 		UserAccount user = userRepository.findByUsername(request.username())
 				.orElseThrow(() -> new IllegalArgumentException("用户名或密码错误"));
-		if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+		if (user.getPasswordHash() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
 			throw new IllegalArgumentException("用户名或密码错误");
 		}
 		loginRateLimiter.reset(request.username());
 		WorkspaceService.WorkspaceContext workspace = workspaceService.ensurePersonalWorkspace(user);
+		return response(user, workspace);
+	}
+
+	@Transactional
+	public AuthDtos.AuthResponse loginOidc(String externalAccessToken) {
+		return loginOidc(externalAccessToken, null);
+	}
+
+	@Transactional
+	public AuthDtos.AuthResponse loginOidc(String externalAccessToken, String requestedTenantId) {
+		OidcIdentityVerifier.ExternalIdentity identity = oidcIdentityVerifier.verify(externalAccessToken);
+		UserAccount user = userRepository
+				.findByIdentityIssuerAndIdentitySubject(identity.issuer(), identity.subject())
+				.orElseGet(() -> userRepository.save(UserAccount.oidc(
+						UUID.randomUUID().toString(), oidcUsername(identity),
+						identity.issuer(), identity.subject())));
+		WorkspaceService.WorkspaceContext personalWorkspace = workspaceService.ensurePersonalWorkspace(user);
+		WorkspaceService.WorkspaceContext workspace = requestedTenantId == null || requestedTenantId.isBlank()
+				? personalWorkspace
+				: workspaceService.requireContext(user.getUserId(), requestedTenantId.trim());
 		return response(user, workspace);
 	}
 
@@ -75,5 +99,25 @@ public class AuthService {
 		return new AuthDtos.AuthResponse(
 				user.getUserId(), user.getUsername(), workspace.tenantId(),
 				workspace.jwtRole(), workspace.workspaceType(), token);
+	}
+
+	private String oidcUsername(OidcIdentityVerifier.ExternalIdentity identity) {
+		String base = identity.username().replaceAll("[^A-Za-z0-9._-]", "-")
+				.replaceAll("-+", "-").replaceAll("^-|-$", "");
+		if (base.isBlank()) {
+			base = "user";
+		}
+		String suffix = identitySuffix(identity.issuer() + "\n" + identity.subject());
+		base = base.substring(0, Math.min(base.length(), 37));
+		return base + "-" + suffix;
+	}
+
+	private String identitySuffix(String value) {
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+			return java.util.HexFormat.of().formatHex(digest, 0, 6);
+		} catch (Exception impossible) {
+			throw new IllegalStateException("SHA-256 unavailable", impossible);
+		}
 	}
 }

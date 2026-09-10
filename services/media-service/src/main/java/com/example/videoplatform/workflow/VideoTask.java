@@ -13,13 +13,15 @@ import java.time.Instant;
 @Entity
 // 索引与真实查询路径一一对应（避免“建了但用不上”的装饰性索引）：
 // - (owner, createdAt)：我的视频列表 findByOwnerOrderByCreatedAtDesc
-// - (status, updatedAt)：stale-task reaper findByStatusInAndUpdatedAtBefore
-// - (contentMd5)：去重/单飞 fan-out findByContentMd5
+// - (status, updatedAt)：legacy stale-task fallback in the workflow reaper
+// - (status, processingLeaseExpiresAt)：leased-task recovery lookup
+// - (contentMd5)：tenant-scoped 去重/单飞 fan-out findByTenantIdAndContentMd5
 @Table(name = "video_task", indexes = {
 		@Index(name = "idx_video_task_owner_created", columnList = "owner, createdAt"),
 		@Index(name = "idx_video_task_tenant_owner_created", columnList = "tenantId, owner, createdAt"),
 		@Index(name = "idx_video_task_status_updated", columnList = "status, updatedAt"),
-		@Index(name = "idx_video_task_content_md5", columnList = "contentMd5")
+		@Index(name = "idx_video_task_content_md5", columnList = "contentMd5"),
+		@Index(name = "idx_video_task_lease", columnList = "status, processingLeaseExpiresAt")
 })
 public class VideoTask {
 
@@ -40,6 +42,12 @@ public class VideoTask {
 
 	/** 内容指纹（文件 MD5）。用于内容级去重与单飞处理；单文件上传等无指纹场景可为 null。 */
 	private String contentMd5;
+
+	/** Fencing token for the worker currently processing this task. */
+	private String processingLeaseId;
+
+	/** Lease expiry used by the reaper; old rows with null use updatedAt fallback. */
+	private Instant processingLeaseExpiresAt;
 
 	@Column(columnDefinition = "TEXT")
 	private String transcript;
@@ -122,8 +130,32 @@ public class VideoTask {
 		return storagePath;
 	}
 
+	public void clearStoredMedia() {
+		this.storagePath = null;
+	}
+
 	public String getContentMd5() {
 		return contentMd5;
+	}
+
+	public String getProcessingLeaseId() {
+		return processingLeaseId;
+	}
+
+	public Instant getProcessingLeaseExpiresAt() {
+		return processingLeaseExpiresAt;
+	}
+
+	public void setProcessingLease(String leaseId, Instant expiresAt) {
+		this.processingLeaseId = leaseId;
+		this.processingLeaseExpiresAt = expiresAt;
+		this.updatedAt = Instant.now();
+	}
+
+	public void clearProcessingLease() {
+		this.processingLeaseId = null;
+		this.processingLeaseExpiresAt = null;
+		this.updatedAt = Instant.now();
 	}
 
 	public String getTranscript() {
@@ -146,6 +178,13 @@ public class VideoTask {
 
 	public TranscriptResult getTranscriptResult() {
 		return TranscriptResult.fromStored(transcript, transcriptSegmentsJson, transcriptLanguage, transcriptDurationMs);
+	}
+
+	public void clearTranscriptData() {
+		this.transcript = null;
+		this.transcriptSegmentsJson = null;
+		this.transcriptLanguage = null;
+		this.transcriptDurationMs = null;
 	}
 
 	public int getTranscriptVersion() {

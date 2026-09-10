@@ -1,9 +1,7 @@
 package com.example.videoplatform.media;
 
-import com.example.videoplatform.config.AppProperties;
 import com.example.videoplatform.workflow.VideoTask;
 import com.example.videoplatform.workflow.VideoTaskService;
-import com.example.videoplatform.workflow.WorkflowPublisher;
 import java.io.IOException;
 import java.io.InputStream;
 import org.springframework.stereotype.Service;
@@ -13,18 +11,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class SingleUploadService {
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SingleUploadService.class);
 
-	private final AppProperties appProperties;
 	private final VideoTaskService videoTaskService;
-	private final WorkflowPublisher workflowPublisher;
 	private final MediaStorageService mediaStorageService;
 
-	public SingleUploadService(AppProperties appProperties,
-			VideoTaskService videoTaskService,
-			WorkflowPublisher workflowPublisher,
+	public SingleUploadService(VideoTaskService videoTaskService,
 			MediaStorageService mediaStorageService) {
-		this.appProperties = appProperties;
 		this.videoTaskService = videoTaskService;
-		this.workflowPublisher = workflowPublisher;
 		this.mediaStorageService = mediaStorageService;
 	}
 
@@ -51,7 +43,6 @@ public class SingleUploadService {
 				deleteRejectedUpload(stored);
 				throw exception;
 			}
-			workflowPublisher.publish(task.getTaskId());
 			return new MediaDtos.SingleUploadResponse(task.getTaskId(), task.getVideoId(), task.getStoragePath(),
 					task.getStatus().name());
 		} catch (IOException exception) {

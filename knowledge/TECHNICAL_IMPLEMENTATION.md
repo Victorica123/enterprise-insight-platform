@@ -31,7 +31,7 @@ Engineering knowledge plane (not customer runtime data)
 | 路径 | 技术与职责 |
 | --- | --- |
 | `services/media-service` | Spring Boot、Spring Security、JPA、H2/MySQL；拥有账号、Workspace、上传、播放、媒体任务、转写和 outbox。 |
-| `services/agent-service` | FastAPI、Pydantic、SQLite；拥有证据、检索、分析、PRD、审批、知识、图谱、工单和评测。 |
+| `services/agent-service` | FastAPI、Pydantic、SQLite/MySQL 兼容持久化；拥有证据、检索、分析、PRD、审批、知识、图谱、工单和评测。生产试点强制 MySQL，SQLite 只用于开发/回归。 |
 | `apps/web` | React 19、TypeScript、Vite；统一登录、Workspace 管理、媒体、分析、图谱、工单与监控工作台。 |
 | `contracts` | 跨服务 JSON Schema 与事件/HTTP 数据结构；用于先契约、后实现。 |
 | `knowledge` | 人工维护的产品、架构、安全、Agent、运维、质量事实及 ADR。 |
@@ -40,11 +40,13 @@ Engineering knowledge plane (not customer runtime data)
 
 第一次阅读代码应先看 `docs/START_HERE.md`。Agent Service 的核心持久化已按变化原因拆分：`database.py` 只负责 document/chunk、摄取回执、embedding 与 content revision；`chat_observability_store.py` 负责问答指标、请求日志、反馈和历史来源状态；`graph_extraction.py` 是无数据库依赖的规则抽取；`graph_store.py` 负责 SQLite 图谱 schema、原子重建和查询；`ticket_store.py` 负责工单与待审批动作；`tool_observability_store.py` 负责工具调用审计和聚合指标。这样改抽取规则不会碰迁移代码，改日志回放或指标也不会扩大核心业务状态模块。
 
+为对齐智能体技术架构全景，应用层新增 `app.architecture` façade：`orchestration` 负责 standard/agentic 对话选择，`retrieval` 统一授权检索与证据校验，`execution` 暴露六阶段分析、Agentic RAG 和受控工具，`knowledge` 聚合文档/媒体摄取，`governance` 聚合发布、生命周期、行动项和检查点，`observability` 聚合问答与工具观测。路由优先依赖这些入口，旧平铺模块仍是向后兼容的实现适配器。该重构只改变内部依赖方向，不改变外部 HTTP、事件、JWT 或审批语义。
+
 ## 3. 核心业务纵向链路
 
 ### 3.1 视频到证据
 
-1. 浏览器携带 Media Service 签发的 active-Workspace JWT。
+1. 浏览器用 OIDC Authorization Code + PKCE 登录，Media 验证 Keycloak token 并映射内部用户；之后浏览器携带 Media Service 以 RS256 签发的 active-Workspace JWT。
 2. Spring Security 将受信 claims 重建为 `WorkspacePrincipal`，后续代码不读取客户端自报角色头。
 3. 上传服务把文件写入租户范围内的媒体目录，同时创建持久化媒体任务。分片、直传和普通上传都绑定 tenant、owner 与上传会话。
 4. 媒体任务完成后生成结构化转写片段，每段带稳定 segment ID、开始/结束毫秒、说话人和文本。
@@ -54,18 +56,20 @@ Engineering knowledge plane (not customer runtime data)
 
 ### 3.2 证据问答
 
-1. Agent Service 从 JWT 得到 `tenant_id`、`owner_id` 和 `workspace_type`。personal 查询绑定 tenant + owner，team 查询绑定 tenant；过滤发生在检索前。
-2. Router 判断问题意图与复杂度，Planner 生成原问题、改写和补充 query。
+1. Agent Service 从 JWT 得到 `tenant_id`、`owner_id` 和 `workspace_type`。personal 查询绑定 tenant + owner，team 查询绑定 tenant；过滤发生在检索前。用户选定 `asset_ids` 时只收窄视频来源，当前 Workspace 内已授权的上传文档和 `ACTIVE` 受治理知识仍参与检索，避免视频筛选意外切断知识沉淀闭环。
+2. Router 判断问题意图与复杂度，Planner 生成原问题、改写和补充 query。两者与 B2 工具选择均通过 `response_format` 请求结构化 JSON：OpenAI 使用严格 JSON Schema，DeepSeek 使用 JSON Object；服务端再做枚举、类型、工具白名单和参数校验，失败统一降级到规则路径。
 3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 使用 RRF 合并排名，再用关键词/向量归一化分执行证据门控；可选 cross-encoder 只重排 Top-12 候选。
 4. Evidence Agent 判断证据是否足够；复杂问题最多进行受限轮次补查，不无限循环。
 5. 本地模板或 LLM 生成答案后，引用校验器检查 source、租户归属及视频时间范围。无法支持的结论必须标记假设或拒答。
 6. 前端点击视频引用时向 Media Service 请求短时播放 token；Agent Service 不保存对象存储凭证。
 
+`LLM_RESPONSE_FORMAT=auto` 是兼容策略，不是模型质量保证：`json_schema` 请求被 provider 拒绝、网络失败、拒答或 JSON 解析失败时，Router/Planner/Tool Agent 记录降级并继续使用确定性规则。工具选择的严格 envelope 使用 `{ "calls": [...] }`，每项将不同工具的参数编码为 `arguments_json` 字符串，解析后仍必须经过工具定义和执行前鉴权。当前 `analysis_pipeline.py` 的四个 specialist 仍是规则基线；结构化 LLM 通道不等同于完整多 LLM Agent Runtime。
+
 ### 3.3 六阶段分析和发布治理
 
 分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段输出结构化 Pydantic 结果，而不是依赖不可检查的长对话。创建会话时，`analysis_evidence.py` 先把 objective 送入 hybrid Retriever；tenant/owner/asset 过滤发生在排序前，最多保留 24 个正分 chunk。系统在检索前后读取持久化 content revision，只有稳定读才把排名、分数、query 命中和必要 chunk 事实固化为 canonical JSON，并记录 SHA-256。embedding 向量不复制进会话快照。
 
-`analysis_pipeline.py` 仍不调用生成模型，但领域阶段通过进程共享的 4-worker 线程池并行执行四个固定 specialist：业务、数据与安全、技术与集成、规则与合规。每个 specialist 最多投影 4 个证据片段；主线程按声明顺序而非完成顺序合并。单个任务异常被隔离为 `specialist_review`，显式“冲突/矛盾/口径不一致”被合并为风险并产生 `domain_conflict`，没有无限 loop 或无界 fan-out。这里的 specialist 是本地确定性领域执行器，不冒充独立 LLM Agent。
+`analysis_pipeline.py` 仍不调用生成模型，但领域阶段通过进程共享的 4-worker 线程池并行执行四个固定 specialist：业务、数据与安全、技术与集成、规则与合规。LLM 结构化输出目前只覆盖问答侧的 Router、Planner 和 Tool Agent，不改变六阶段分析的确定性 baseline。每个 specialist 最多投影 4 个证据片段；主线程按声明顺序而非完成顺序合并。单个任务异常被隔离为 `specialist_review`，显式“冲突/矛盾/口径不一致”被合并为风险并产生 `domain_conflict`，没有无限 loop 或无界 fan-out。这里的 specialist 是本地确定性领域执行器，不冒充独立 LLM Agent。
 
 证据不足时，会话进入 `WAITING_CONFIRMATION` 并保存 session、阶段结果、问题、答案、恢复 token、证据 revision/hash 和 `checkpoint_version`。用户补充后从内部快照恢复，原样保留阶段 1–4，只重算收敛和 PRD。保存使用 `WHERE session_id + tenant_id + owner_id + status=WAITING_CONFIRMATION + resume_token` 的 compare-and-set；一次成功后检查点版本递增，竞争请求得到 409。它是可重放的业务阶段 checkpoint，不是执行栈级 continuation，也没有 AppServer/WebSocket。PRD 从 `DRAFT_READY` 进入 `PUBLISH_PENDING` 后：
 
@@ -182,8 +186,8 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 ## 10. 后续生产优化顺序
 
-1. 先确定正式 IdP、JWT 即时撤权、数据保留期限和模型数据策略，这些会改变安全架构。
-2. 用真实 MySQL、Redis、RocketMQ/S3 兼容对象存储跑集成与故障注入，再给出生产可靠性声明。
+1. 已按 ADR-0014 固定生产试点的 Keycloak OIDC、RS256/JWKS、30/180/365 天保留期和模型出境 tenant allowlist；若要近实时撤权需另加集中撤销机制。
+2. 用真实 MySQL、Keycloak、Redis、RocketMQ/S3 兼容对象存储跑集成与故障注入，再给出生产可靠性声明。
 3. 当业务 chunk 数量超过单机扫描预算时，再引入支持 metadata pre-filter 的向量数据库；迁移前保留当前 SQLite 基线做行为对照。
 4. 将现有进程级 embedding LRU/检索快照指标接入 Prometheus，补充 eviction 与冷启动耗时，并依据真实流量调整容量和实例级告警。
 5. 模型供应商支持 prompt caching 时，固定 system/tool schema 前缀，动态证据后置，并以 provider 返回的 cached-token 指标验证收益。

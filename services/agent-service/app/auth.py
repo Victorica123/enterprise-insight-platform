@@ -14,6 +14,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from fastapi import Header, HTTPException, status
@@ -58,7 +59,10 @@ class JwtValidationError(ValueError):
 
 
 def get_auth_mode() -> str:
-    mode = os.getenv("AGENT_AUTH_MODE", "development").strip().lower()
+    # Fail closed when deployment configuration is absent.  The compatibility
+    # header path remains available only when development is explicitly set in
+    # .env or the process environment.
+    mode = os.getenv("AGENT_AUTH_MODE", "jwt").strip().lower()
     return mode if mode in {"development", "jwt"} else "jwt"
 
 
@@ -67,8 +71,15 @@ def validate_auth_configuration() -> None:
     environment = os.getenv("APP_ENV", "development").strip().lower()
     if environment in {"production", "prod"} and mode != "jwt":
         raise RuntimeError("Production requires AGENT_AUTH_MODE=jwt.")
-    if mode == "jwt" and len(_jwt_secret()) < 32:
-        raise RuntimeError("JWT mode requires SHARED_JWT_SECRET or APP_JWT_SECRET with at least 32 bytes.")
+    if mode != "jwt":
+        return
+    algorithm = _jwt_algorithm()
+    if algorithm == "HS256" and len(_jwt_secret()) < 32:
+        raise RuntimeError("HS256 JWT mode requires SHARED_JWT_SECRET or APP_JWT_SECRET with at least 32 bytes.")
+    if algorithm == "RS256" and not os.getenv("JWT_JWKS_URL", "").strip():
+        raise RuntimeError("RS256 JWT mode requires JWT_JWKS_URL.")
+    if algorithm not in {"HS256", "RS256"}:
+        raise RuntimeError("JWT_ALGORITHM must be HS256 or RS256.")
 
 
 def current_principal(
@@ -114,6 +125,10 @@ def current_principal(
 
 
 def decode_shared_jwt(token: str, *, now: int | None = None) -> dict[str, Any]:
+    if _jwt_algorithm() == "RS256":
+        claims = _decode_rs256_jwt(token)
+        return _validate_claim_semantics(claims, now=now, time_validated=True)
+
     parts = token.split(".")
     if len(parts) != 3:
         raise JwtValidationError("Malformed access token.")
@@ -132,16 +147,23 @@ def decode_shared_jwt(token: str, *, now: int | None = None) -> dict[str, Any]:
     if not hmac.compare_digest(provided, expected):
         raise JwtValidationError("Invalid access token signature.")
 
+    return _validate_claim_semantics(claims, now=now, time_validated=False)
+
+
+def _validate_claim_semantics(
+    claims: dict[str, Any], *, now: int | None, time_validated: bool
+) -> dict[str, Any]:
     timestamp = int(time.time()) if now is None else now
     leeway = _read_non_negative_int("JWT_CLOCK_SKEW_SECONDS", 30)
     exp = _numeric_claim(claims, "exp")
     iat = _numeric_claim(claims, "iat")
-    if exp <= timestamp - leeway:
-        raise JwtValidationError("Access token has expired.")
-    if iat > timestamp + leeway:
-        raise JwtValidationError("Access token was issued in the future.")
-    if "nbf" in claims and _numeric_claim(claims, "nbf") > timestamp + leeway:
-        raise JwtValidationError("Access token is not active yet.")
+    if not time_validated or now is not None:
+        if exp <= timestamp - leeway:
+            raise JwtValidationError("Access token has expired.")
+        if iat > timestamp + leeway:
+            raise JwtValidationError("Access token was issued in the future.")
+        if "nbf" in claims and _numeric_claim(claims, "nbf") > timestamp + leeway:
+            raise JwtValidationError("Access token is not active yet.")
 
     if claims.get("iss") != os.getenv("APP_JWT_ISSUER", "enterprise-insight"):
         raise JwtValidationError("Invalid access token issuer.")
@@ -167,6 +189,39 @@ def decode_shared_jwt(token: str, *, now: int | None = None) -> dict[str, Any]:
     if "workspace_type" in claims:
         claims["workspace_type"] = _workspace_type(str(claims["workspace_type"]))
     return claims
+
+
+def _decode_rs256_jwt(token: str) -> dict[str, Any]:
+    jwks_url = os.getenv("JWT_JWKS_URL", "").strip()
+    if not jwks_url:
+        raise JwtValidationError("JWT verification is not configured.")
+    try:
+        import jwt
+
+        signing_key = _jwk_client(jwks_url).get_signing_key_from_jwt(token)
+        decoded = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=os.getenv("APP_JWT_ISSUER", "enterprise-insight"),
+            audience=os.getenv("APP_JWT_AUDIENCE", "enterprise-insight-api"),
+            leeway=_read_non_negative_int("JWT_CLOCK_SKEW_SECONDS", 30),
+            options={"require": ["exp", "iat", "sub", "tenant_id", "jti"]},
+        )
+    except Exception as exc:
+        raise JwtValidationError("Invalid or expired access token.") from exc
+    if not isinstance(decoded, dict):
+        raise JwtValidationError("Malformed JWT object.")
+    return decoded
+
+
+@lru_cache(maxsize=8)
+def _jwk_client(jwks_url: str):
+    try:
+        from jwt import PyJWKClient
+    except ImportError as exc:  # pragma: no cover - deployment dependency guard
+        raise RuntimeError("RS256 JWT verification requires PyJWT[crypto].") from exc
+    return PyJWKClient(jwks_url, cache_keys=True, lifespan=300)
 
 
 def validate_actor_role(raw_role: str) -> str:
@@ -200,6 +255,10 @@ def normalize_actor_user(raw_user: str) -> str:
 
 def _jwt_secret() -> str:
     return os.getenv("SHARED_JWT_SECRET") or os.getenv("APP_JWT_SECRET", "")
+
+
+def _jwt_algorithm() -> str:
+    return os.getenv("JWT_ALGORITHM", "HS256").strip().upper()
 
 
 def _decode_json_part(encoded: str) -> dict[str, Any]:

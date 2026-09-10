@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.videoplatform.auth.UserAccount;
 import com.example.videoplatform.auth.UserAccountRepository;
+import com.example.videoplatform.transcript.TranscriptResult;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +29,35 @@ class VideoTaskQuotaIntegrationTests {
 
 	@Autowired
 	private UserAccountRepository userAccountRepository;
+
+	@Test
+	void leaseFencesWorkflowStageCompletionAndKeepsLeaseUntilSummary() {
+		String owner = "lease-owner-" + UUID.randomUUID();
+		userAccountRepository.save(new UserAccount(owner, "lease-user-" + UUID.randomUUID(), "hash"));
+		VideoTask task = videoTaskService.createTask(owner, "lease.mp4", "storage/lease.mp4");
+
+		String leaseId = videoTaskService.claimForProcessingWithLease(task.getTaskId()).orElseThrow();
+		TranscriptResult transcript = TranscriptResult.fromPlainText("timestamped transcript");
+
+		assertThat(videoTaskService.completeTranscript(task.getTaskId(), transcript, leaseId)).isTrue();
+		VideoTask summarizing = taskRepository.findById(task.getTaskId()).orElseThrow();
+		assertThat(summarizing.getStatus()).isEqualTo(VideoTask.TaskStatus.SUMMARIZING);
+		assertThat(summarizing.getProcessingLeaseId()).isEqualTo(leaseId);
+		assertThat(videoTaskService.completeTranscript(task.getTaskId(), transcript, "wrong-lease")).isFalse();
+
+		assertThat(videoTaskService.completeSummary(task.getTaskId(), "summary", leaseId)).isTrue();
+		VideoTask completed = taskRepository.findById(task.getTaskId()).orElseThrow();
+		assertThat(completed.getStatus()).isEqualTo(VideoTask.TaskStatus.COMPLETED);
+		assertThat(completed.getProcessingLeaseId()).isNull();
+		assertThat(videoTaskService.completeSummary(task.getTaskId(), "late-summary", leaseId)).isFalse();
+
+		VideoTask failedTask = videoTaskService.createTask(owner, "failed.mp4", "storage/failed.mp4");
+		String failureLease = videoTaskService.claimForProcessingWithLease(failedTask.getTaskId()).orElseThrow();
+		assertThat(videoTaskService.markFailed(failedTask.getTaskId(), "transcription failed", failureLease)).isTrue();
+		VideoTask persistedFailure = taskRepository.findById(failedTask.getTaskId()).orElseThrow();
+		assertThat(persistedFailure.getStatus()).isEqualTo(VideoTask.TaskStatus.FAILED);
+		assertThat(persistedFailure.getProcessingLeaseId()).isNull();
+	}
 
 	@Test
 	void concurrentCreatesCannotExceedOwnerLimit() throws Exception {

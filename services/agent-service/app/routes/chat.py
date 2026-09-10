@@ -1,65 +1,77 @@
 """聊天端点：编排 standard/agentic RAG，并记录指标与请求日志。"""
+
 import logging
 from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.agentic_rag import answer_agentic_question
+from app.agentic_rag import answer_agentic_question  # compatibility patch target
 from app.auth import ActorPrincipal, current_principal
-from app.chat_observability_store import record_chat_log, record_chat_metric
+from app.architecture.context import RequestContext
+from app.architecture.observability import record_chat_log, record_chat_metric
+from app.architecture.orchestration import answer_chat
+from app.rag import answer_question  # compatibility patch target
 from app.models import ChatRequest, ChatResponse
-from app.rag import answer_question
-from app.retrievers import RetrievalScope
-
+from app.model_egress import (
+    bind_model_egress_tenant,
+    is_model_egress_allowed,
+    reset_model_egress_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
 
-@router.post("/chat", response_model=ChatResponse, summary="知识库问答（standard / agentic）",
-             responses={200: {"description": "回答 + 来源证据 + 执行轨迹 + token 用量 + 待审批操作"}})
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="知识库问答（standard / agentic）",
+    responses={
+        200: {"description": "回答 + 来源证据 + 执行轨迹 + token 用量 + 待审批操作"}
+    },
+)
 def chat(
     request: ChatRequest,
-    principal: ActorPrincipal = Depends(current_principal),
+    principal: ActorPrincipal = Depends(current_principal),  # noqa: B008
 ) -> ChatResponse:
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
-
-    actor_role = principal.role
-    actor_user = principal.actor_user
-    retrieval_scope = (
-        RetrievalScope(
-            tenant_id=principal.tenant_id,
-            owner_id=principal.retrieval_owner_id,
-            asset_ids=tuple(dict.fromkeys(request.asset_ids)),
+    if request.answer_mode == "api" and not is_model_egress_allowed(principal.tenant_id):
+        raise HTTPException(
+            status_code=403,
+            detail="该工作区尚未获批向外部模型发送数据，请使用本地回答模式或联系管理员。",
         )
+
+    context = RequestContext.from_principal(principal)
+    actor_role = context.role
+    actor_user = context.actor_user
+    retrieval_scope = (
+        context.retrieval_scope(request.asset_ids)
         if principal.auth_mode == "jwt" or request.asset_ids
         else None
     )
     started_at = perf_counter()
+    egress_token = bind_model_egress_tenant(principal.tenant_id)
     try:
-        if request.workflow_mode == "agentic":
-            kwargs = {
-                "answer_mode": request.answer_mode,
-                "retriever_mode": request.retriever_mode,
-                "actor_role": actor_role,
-                "actor_user": actor_user,
-                "workspace_type": principal.workspace_type,
-            }
-            if retrieval_scope is not None:
-                kwargs["retrieval_scope"] = retrieval_scope
-            response = answer_agentic_question(request.question, **kwargs)
-        else:
-            kwargs = {
-                "answer_mode": request.answer_mode,
-                "retriever_mode": request.retriever_mode,
-            }
-            if retrieval_scope is not None:
-                kwargs["scope"] = retrieval_scope
-            response = answer_question(request.question, **kwargs)
+        response = answer_chat(
+            request.question,
+            workflow_mode=request.workflow_mode,
+            answer_mode=request.answer_mode,
+            retriever_mode=request.retriever_mode,
+            actor_role=actor_role,
+            actor_user=actor_user,
+            workspace_type=principal.workspace_type,
+            retrieval_scope=retrieval_scope,
+            agentic_handler=answer_agentic_question,
+            standard_handler=answer_question,
+        )
     except Exception:
-        logger.exception("chat_failed workflow=%s mode=%s", request.workflow_mode, request.answer_mode)
+        logger.exception(
+            "chat_failed workflow=%s mode=%s",
+            request.workflow_mode,
+            request.answer_mode,
+        )
         safe_record_chat_metric(
             request=request,
             response=None,
@@ -68,6 +80,8 @@ def chat(
             principal=principal,
         )
         raise
+    finally:
+        reset_model_egress_tenant(egress_token)
 
     summary = response.agent_summary
     outcome = (
@@ -97,7 +111,11 @@ def infer_standard_outcome(response: ChatResponse) -> str:
         "还没有可用资料",
         "没有在已上传资料中找到",
     ]
-    return "refused" if any(marker in response.answer for marker in refused_markers) else "answered"
+    return (
+        "refused"
+        if any(marker in response.answer for marker in refused_markers)
+        else "answered"
+    )
 
 
 def safe_record_chat_metric(
@@ -110,13 +128,24 @@ def safe_record_chat_metric(
 ) -> int:
     """记录指标 + 请求日志（含 token 成本），返回日志 ID 供反馈使用。"""
     try:
-        tenant_id = principal.tenant_id if principal and principal.auth_mode == "jwt" else "legacy"
-        owner_id = principal.user_id if principal and principal.auth_mode == "jwt" else "legacy"
+        tenant_id = (
+            principal.tenant_id
+            if principal and principal.auth_mode == "jwt"
+            else "legacy"
+        )
+        owner_id = (
+            principal.user_id
+            if principal and principal.auth_mode == "jwt"
+            else "legacy"
+        )
         summary = response.agent_summary if response else None
         usage = response.token_usage if response else None
         answer_status = "error"
         if response:
-            answer_step = next((step for step in reversed(response.trace) if step.name == "answer"), None)
+            answer_step = next(
+                (step for step in reversed(response.trace) if step.name == "answer"),
+                None,
+            )
             answer_status = answer_step.status if answer_step else "not_generated"
 
         record_chat_metric(
@@ -127,7 +156,9 @@ def safe_record_chat_metric(
             complexity=summary.complexity if summary else "standard",
             retrieval_rounds=summary.retrieval_rounds if summary else 1,
             query_count=len(summary.queries) if summary else 1,
-            evidence_status=summary.evidence_status if summary else ("passed" if outcome == "answered" else "refused"),
+            evidence_status=summary.evidence_status
+            if summary
+            else ("passed" if outcome == "answered" else "refused"),
             citation_status=summary.citation_status if summary else "not_applicable",
             source_count=len(response.sources) if response else 0,
             outcome=outcome,
@@ -162,7 +193,9 @@ def safe_record_chat_metric(
                     "content": source.content[:1000],
                 }
                 for source in response.sources
-            ] if response else [],
+            ]
+            if response
+            else [],
             tenant_id=tenant_id,
             owner_id=owner_id,
         )

@@ -6,6 +6,7 @@ This runbook is the supported release path for a reviewer who has no server, dom
 
 - Path A, zero-container acceptance: Python 3.12, JDK 17/18 and Maven.
 - Path B, persistent local workspace: Docker Engine with Compose v2.
+- Path C, production-like reliability lab: Docker Engine with Compose v2 and k6.
 - Node.js 22 is only required when rebuilding the Web outside Docker.
 
 ## Release gate
@@ -46,6 +47,10 @@ Open `http://127.0.0.1:8080`. The browser uses one origin; nginx routes `/agent/
 - `runtime/media/storage/`
 
 The Compose profile uses local H2, SQLite, mock transcription and local Agent responses. It is not evidence for Redis, RocketMQ, MySQL, S3 or an external model.
+
+## Production-like localhost reliability lab
+
+For real MySQL, Redis, RocketMQ and MinIO integration, concurrent soak, JFR/thread/heap diagnostics and optional Toxiproxy fault injection, use `docs/LOCAL_RELIABILITY_RUNBOOK.md`. This still runs entirely on the development machine and deliberately keeps external AI providers optional.
 
 ## Backup and restore drill
 

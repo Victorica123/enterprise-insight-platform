@@ -1,19 +1,17 @@
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
-from app import database
-from app import analysis_pipeline
+from app import analysis_pipeline, database
 from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis
 from app.main import app
 from app.publication_artifacts import decide_knowledge_candidate, get_publication_deliverables
 from app.rag import answer_question
 from app.retrievers import Chunk, RetrievalScope, clear_chunk_cache, load_chunks
+from fastapi.testclient import TestClient
 
 
 class SixStagePipelineTests(unittest.TestCase):
@@ -494,7 +492,7 @@ class AnalysisApiTests(unittest.TestCase):
                     tenant_id="tenant-a",
                     actor_id="user-a",
                     approved=True,
-                    decided_at=datetime.now(timezone.utc),
+                    decided_at=datetime.now(UTC),
                 )
 
         candidate = get_publication_deliverables(

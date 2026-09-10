@@ -9,9 +9,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import ActorPrincipal, current_principal, require_write_role
-from app.document_parser import is_supported_file, parse_document
+from app.architecture.knowledge import delete_document, ingest_document, is_supported_file, list_documents, parse_document
 from app.models import DocumentSummary, DocumentUploadResponse
-from app.rag import delete_document, ingest_document, list_documents
 
 
 logger = logging.getLogger(__name__)

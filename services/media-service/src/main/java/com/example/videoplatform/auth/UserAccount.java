@@ -10,7 +10,8 @@ import jakarta.persistence.UniqueConstraint;
 @Table(name = "user_account", uniqueConstraints = {
 		// existsByUsername 的 check-then-save 在并发注册下存在 TOCTOU 窗口，
 		// 唯一约束是最终防线：重名插入抛 DataIntegrityViolationException → 全局处理为 409。
-		@UniqueConstraint(name = "uk_user_account_username", columnNames = "username")
+		@UniqueConstraint(name = "uk_user_account_username", columnNames = "username"),
+		@UniqueConstraint(name = "uk_user_account_oidc_identity", columnNames = {"identityIssuer", "identitySubject"})
 })
 public class UserAccount {
 
@@ -21,6 +22,12 @@ public class UserAccount {
 	private String username;
 
 	private String passwordHash;
+
+	@Column(length = 255)
+	private String identityIssuer;
+
+	@Column(length = 255)
+	private String identitySubject;
 
 	@Column(length = 64)
 	private String primaryTenantId;
@@ -35,6 +42,13 @@ public class UserAccount {
 		this.passwordHash = passwordHash;
 	}
 
+	public static UserAccount oidc(String userId, String username, String issuer, String subject) {
+		UserAccount user = new UserAccount(userId, username, null);
+		user.identityIssuer = issuer;
+		user.identitySubject = subject;
+		return user;
+	}
+
 	public String getUserId() {
 		return userId;
 	}
@@ -45,6 +59,14 @@ public class UserAccount {
 
 	public String getPasswordHash() {
 		return passwordHash;
+	}
+
+	public String getIdentityIssuer() {
+		return identityIssuer;
+	}
+
+	public String getIdentitySubject() {
+		return identitySubject;
 	}
 
 	public String getPrimaryTenantId() {

@@ -60,7 +60,7 @@ merge 会写文件、清 Redis 会话、创建任务并发布消息，是有副�
 
 RocketMQ 不改变单个视频的处理成本，也不会凭空增加 worker 吞吐。它把高峰期线程池拒绝造成的 HTTP 失败，转换成 broker 中可恢复、可观测的排队。增加 consumer 数可以提升吞吐，但原因是 worker 增加，而不是消息经过 MQ 后计算更快。
 
-短压测使用真实 Redis、MySQL、RocketMQ，5 VU、2 秒 Mock 延迟：
+以下短压测表是历史目标环境记录（真实 Redis、MySQL、RocketMQ，5 VU、2 秒 Mock 延迟）；本轮 P0/P1 变更未重新启动这些中间件，因此不作为当前生产通过证据：
 
 | 指标 | MQ 关 | MQ 开 |
 | --- | ---: | ---: |
@@ -150,7 +150,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 - 单元测试验证算法与服务边界；
 - Web/Security 测试验证 HTTP 与 owner 隔离；
-- Docker runtime 脚本验证真实 Redis、MySQL、RocketMQ、MinIO；
+- 若目标环境已启动，Docker runtime 脚本可验证 Redis、MySQL、RocketMQ、MinIO；本机当前仅完成脚本/Compose 的静态检查；
 - 页面人工验证完整用户体验。
 
 排障按边界进行：
@@ -162,16 +162,16 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 5. MySQL 任务状态判断是否持久化；
 6. Redis keys 判断上传会话是否合并后清理。
 
-`scripts/verify-full-stack.ps1` 验证本地真实中间件链路；页面“异步实验室”提供可观察 A/B。可选部署脚本只在讨论公网架构时使用。
+`scripts/verify-full-stack.ps1` 可在显式提供密码且目标容器已启动时验证真实中间件链路；页面“异步实验室”提供可观察 A/B。当前本机没有 Docker 运行证据，可选部署脚本只在讨论目标环境架构时使用。
 
 ## 9. 本地可复现的工程证据
 
 面试现场不依赖公网服务器，也能展示：
 
-- 108 个不依赖外部中间件的自动化测试（含真实 JWT 与 Workspace 回归）；
-- `verify-full-stack.ps1` 的 Redis、MySQL、RocketMQ 真实链路；
-- MinIO 预签名直传、完成回调和播放；
-- 页面异步实验室的本地/MQ 同参数 A/B；
+- 124 个不依赖外部中间件的自动化测试（含真实 JWT、Workspace、lease 和两个 outbox claim 回归）；
+- `verify-full-stack.ps1` 提供 Redis、MySQL、RocketMQ 目标环境 smoke 脚本，但本轮未在本机完成真实中间件运行证据；
+- MinIO 预签名直传、完成回调和播放的代码路径与测试；
+- 页面异步实验室可比较本地/MQ 路径，但真实容量结论仍需目标环境负载；
 - owner 越权、MD5 错误、重复消息、任务饱和和补偿等故障情景。
 
 证据必须同时说明环境和边界。Mock AI 证明状态机和队列行为，不代表真实模型质量或吞吐。
@@ -199,7 +199,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 ## 11. 已知边界
 
-已实现并验证：108 个自动化测试、真实 Redis/MySQL/RocketMQ 链路、MinIO 直传与播放、页面异步 A/B、重试/reaper、任务配额、媒体生命周期清理、Compose/Caddy/preflight。
+已实现并在本地验证：124 个自动化测试、H2/Mock 下的 JWT、Workspace、上传、播放、重试/reaper、lease fencing、outbox claim、任务配额和媒体生命周期清理；`verify-full-stack.ps1`、Compose/Caddy/preflight 是可选目标环境部署与 smoke 材料，不应写成已经完成的真实中间件生产验证。
 
 仍需继续完善：
 
@@ -213,7 +213,7 @@ reaper 提供的是最终恢复能力，不保证 exactly-once。副作用仍必
 
 ## 12. 一分钟回答模板
 
-> 在 Enterprise Insight Platform 中，我负责的 Media Service 重点不是 CRUD，而是大文件上传和异步 AI 工作流。上传侧有普通上传、Redis 分片断点续传和 MinIO 预签名直传；处理侧用本地异步或 RocketMQ 解耦，通过状态机 claim、内容级 single-flight、失败重试、用户任务配额和 stale-task reaper 保证可恢复。页面同参数 A/B 中，本地线程池只接收 54/80，RocketMQ 接收 80/80；两边都是 4 个 worker，单任务成本不变，差异来自削峰和补偿等待。任务删除采用持久化清理任务处理存储失败，过期分片会自动回收。子系统有 108 个自动化测试和真实中间件 smoke，并通过 outbox 向 Agent Service 提供时间戳证据。
+> 在 Enterprise Insight Platform 中，我负责的 Media Service 重点不是 CRUD，而是大文件上传和异步 AI 工作流。上传侧有普通上传、Redis 分片断点续传和 MinIO 预签名直传；处理侧用本地异步或 RocketMQ 解耦，通过持久化调度 outbox、状态机 claim、内容级 single-flight、失败重试、用户任务配额、lease fencing 和 stale-task reaper 保证可恢复。当前本地证据是 H2/Mock 下 124 个自动化测试；本机准生产可靠性脚本可组装 Redis/MySQL/RocketMQ/MinIO 并执行 smoke、soak 和故障注入，但只有实际运行留存的结果才能作为真实中间件证据。通过集成 outbox 向 Agent Service 提供时间戳证据。
 
 ## 13. 安全加固轮新考点（2026-08-23）
 

@@ -86,7 +86,7 @@ def get_llm_settings() -> LLMSettings:
 
     return LLMSettings(
         provider="deepseek",
-        api_key=os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
         **shared,

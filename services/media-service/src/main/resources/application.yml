@@ -34,9 +34,10 @@ spring:
   # ===== 默认使用 MySQL（Spring Boot 启动时由 docker-compose 自动拉起 mysql 容器）=====
   # 零依赖本地开发可用 H2：-Dspring-boot.run.profiles=h2（见文件末尾 h2 profile）
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:videoplatform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8&useUnicode=true
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:123456}
+    # Production must provide the complete URL explicitly; no database credentials or host defaults are safe.
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/videoplatform}
+    username: ${MYSQL_USERNAME:}
+    password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     open-in-view: false
@@ -83,11 +84,36 @@ logging:
 
 app:
   jwt:
-    secret: ${APP_JWT_SECRET:01234567890123456789012345678901}
-    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:86400}
+    # Fail closed when a deployment omits its secret.
+    # H2/test profiles provide an explicit test-only value below.
+    secret: ${APP_JWT_SECRET:}
+    algorithm: ${APP_JWT_ALGORITHM:HS256}
+    private-key-path: ${APP_JWT_PRIVATE_KEY_PATH:}
+    public-key-path: ${APP_JWT_PUBLIC_KEY_PATH:}
+    key-id: ${APP_JWT_KEY_ID:platform-1}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:900}
     issuer: ${APP_JWT_ISSUER:enterprise-insight}
     audience: ${APP_JWT_AUDIENCE:enterprise-insight-api}
+  oidc:
+    enabled: ${APP_OIDC_ENABLED:false}
+    issuer-uri: ${APP_OIDC_ISSUER_URI:}
+    jwk-set-uri: ${APP_OIDC_JWK_SET_URI:}
+    audience: ${APP_OIDC_AUDIENCE:enterprise-insight-web}
+    username-claim: ${APP_OIDC_USERNAME_CLAIM:preferred_username}
+  model-egress:
+    # production 环境强制按 tenant 白名单；development 可用 allow 保持离线演示兼容。
+    policy: ${APP_MODEL_EGRESS_POLICY:allow}
+    allowed-tenants: ${APP_MODEL_EGRESS_ALLOWED_TENANTS:}
+  retention:
+    enabled: ${APP_RETENTION_ENABLED:false}
+    media-days: ${APP_RETENTION_MEDIA_DAYS:30}
+    transcript-days: ${APP_RETENTION_TRANSCRIPT_DAYS:180}
+    audit-days: ${APP_RETENTION_AUDIT_DAYS:365}
+    batch-size: ${APP_RETENTION_BATCH_SIZE:200}
+    scan-interval-ms: ${APP_RETENTION_SCAN_INTERVAL_MS:3600000}
+    initial-delay-ms: ${APP_RETENTION_INITIAL_DELAY_MS:60000}
   security:
+    local-auth-enabled: ${APP_LOCAL_AUTH_ENABLED:true}
     # 登录防爆破：滑动窗口按用户名计数；Redis 可用时用 ZSET+Lua 保证多实例原子性，
     # 不可用时降级为进程内窗口（单实例语义），见 LoginRateLimiter 两个实现。
     login-rate-limit:
@@ -100,6 +126,8 @@ app:
       service-token: ${MEDIA_INGEST_SERVICE_TOKEN:}
       dispatch-interval-ms: ${APP_AGENT_DISPATCH_INTERVAL_MS:2000}
       max-attempts: ${APP_AGENT_DISPATCH_MAX_ATTEMPTS:10}
+      # 每个 outbox dispatcher 实例独占一条事件的时间；超时后允许其他实例接管。
+      claim-lease-duration-ms: ${APP_AGENT_CLAIM_LEASE_DURATION_MS:30000}
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
     type: ${APP_STORAGE_TYPE:local}
@@ -113,8 +141,8 @@ app:
       public-endpoint: ${APP_STORAGE_S3_PUBLIC_ENDPOINT:}
       region: ${APP_STORAGE_S3_REGION:us-east-1}
       bucket: ${APP_STORAGE_S3_BUCKET:video-platform}
-      access-key: ${APP_STORAGE_S3_ACCESS_KEY:minioadmin}
-      secret-key: ${APP_STORAGE_S3_SECRET_KEY:minioadmin123}
+      access-key: ${APP_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${APP_STORAGE_S3_SECRET_KEY:}
       path-style-access: ${APP_STORAGE_S3_PATH_STYLE_ACCESS:true}
   redis:
     enabled: ${APP_REDIS_ENABLED:true}
@@ -123,9 +151,16 @@ app:
     # 默认与本地 @Async maxPoolSize=4 对齐，使 MQ 开/关 A/B 只比较排队位置与接收率。
     consumer-threads: ${APP_MQ_CONSUMER_THREADS:4}
   workflow:
+    # Durable dispatcher decouples the upload transaction from a saturated local executor or unavailable MQ.
+    dispatcher-enabled: ${APP_WORKFLOW_DISPATCHER_ENABLED:true}
+    dispatch-interval-ms: ${APP_WORKFLOW_DISPATCH_INTERVAL_MS:250}
+    dispatch-claim-lease-ms: ${APP_WORKFLOW_DISPATCH_CLAIM_LEASE_MS:30000}
     # 定时补偿：超过该时间仍停留在 QUEUED/TRANSCRIBING/SUMMARIZING 的任务会被重新投递。
     # 解决进程崩溃、MQ 异常、单飞赢家中断后任务永久卡住的问题；默认保守设为 1 小时，避免误伤长视频。
     stale-task-timeout: ${APP_WORKFLOW_STALE_TASK_TIMEOUT:60m}
+    # Worker lease is renewed during long FFmpeg/Whisper/LLM stages; the reaper
+    # only requeues an expired lease (or legacy rows with no lease).
+    task-lease-duration: ${APP_WORKFLOW_TASK_LEASE_DURATION:15m}
     reaper-enabled: ${APP_WORKFLOW_REAPER_ENABLED:true}
     reaper-interval-ms: ${APP_WORKFLOW_REAPER_INTERVAL_MS:60000}
     reaper-initial-delay-ms: ${APP_WORKFLOW_REAPER_INITIAL_DELAY_MS:60000}
@@ -181,6 +216,10 @@ spring:
       enabled: true
       path: /h2-console
 app:
+  jwt:
+    # H2 may use an ephemeral key; production must set APP_JWT_SECRET.
+    secret: ${APP_JWT_SECRET:${random.uuid}}
+    expiration-seconds: ${APP_JWT_EXPIRATION_SECONDS:900}
   redis:
     enabled: false
   mq:
