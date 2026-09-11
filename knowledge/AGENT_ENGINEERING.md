@@ -37,8 +37,8 @@
 
 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 BGE 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。
 - hybrid 先独立执行 keyword 与 embedding，再以 RRF 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。RRF 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。
-- 可选 cross-encoder 只精排 Top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。
-- chunk 快照 LRU 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asset scope。写入提升 revision，多进程读不会长期复用旧授权范围或旧内容。
+- 可选 cross-encoder 只精排 Top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。`RetrievalResult.rerank_status` 区分 disabled / applied / unavailable：配置了精排却推理失败时保留 RRF 融合榜并在 trace 写入 `rerank_skipped`（status=degraded），不伪造分数也不静默降级。
+- chunk 快照 LRU 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asset scope；revision 按租户维护（`system_meta` 的 `content_revision:<tenant>`），一个租户的写入只让该租户与未指定租户的快照失效，全局重建仍让全部租户失效。快照构建时为每个 chunk 预计算词项集并建立词项倒排，关键词检索只对共享至少一个词项的 chunk 打分；hybrid 两路共用一次快照并并行执行。多进程读不会长期复用旧授权范围或旧内容。
 - BGE 向量 LRU 以 model identity + 文本 SHA-256 为 key，最大 512 项；同 batch 去重，缓存只保存向量，不保存原文。该缓存是 embedding 计算复用，不等同于 LLM attention KV cache。
 - 两个业务缓存都通过已鉴权的 `/embeddings/status` 暴露进程级 entries、capacity、hits、misses、requests 与 hit rate；统一 Web 监控页展示这些指标。计数不按租户展开、不暴露 key，公开 `/system/status` 不返回缓存流量。
 - 工程维护文档另有独立的确定性语义索引，不能被业务检索 API 查询。实现和缓存矩阵见 `TECHNICAL_IMPLEMENTATION.md` 与 ADR-0007。

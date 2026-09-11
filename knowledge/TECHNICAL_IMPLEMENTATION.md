@@ -108,7 +108,7 @@ Media Service 是成员关系和 active Workspace 令牌的唯一权威。OWNER 
 
 真实模型惰性加载并支持显式 warm-up。新增的向量缓存以 `(model object identity, SHA-256(text))` 为 key，value 是不可变向量 tuple：同一 batch 的重复文本只推理一次，跨请求重复文本命中最大 512 项的进程内 LRU。key 不保存原始文本，降低缓存扩大敏感信息驻留面的风险。
 
-文档 chunk 快照另有一个最大 64 项的 LRU，key 包含数据库路径、持久化 `content_revision`、tenant、owner 和 asset 范围。任何摄取或重建都会提升 revision，因此多进程写入也能让旧快照自然失效，不需要依赖“当前进程记得清缓存”。
+文档 chunk 快照（`app/chunk_index.py`）另有一个最大 64 项的 LRU，key 包含数据库路径、持久化 revision、tenant、owner 和 asset 范围。revision 按租户存放在 `system_meta` 的 `content_revision:<tenant>`，未写过的租户读全局值：租户内摄取或删除只提升该租户与全局 revision，embedding 重建、保留清理等全局操作提升全部键，因此多进程写入也能让旧快照自然失效，不需要依赖“当前进程记得清缓存”。快照项同时保存每个 chunk 的词项集与词项倒排（`ChunkIndex.postings`），分词器统一在 `app/text.py`，摄取、检索与评测脚本共用一份。
 
 ### 4.2 维护 Skill 语义索引
 
@@ -122,7 +122,7 @@ Media Service 是成员关系和 active Workspace 令牌的唯一权威。OWNER 
 | --- | --- | --- | --- |
 | 文档向量增量复用 | chunk 内容 SHA-256 + 算法版本 | 192 维维护向量 | 内容、算法或维度变化 |
 | 维护查询缓存 | corpus revision + query digest + Top-K | 文件、标题、行号和分数 | 任一受索引文件、分块版本或向量算法变化 |
-| 业务 chunk 快照 | DB path + content revision + scope | 已授权 chunk 对象 | 数据写入提升 revision |
+| 业务 chunk 快照 | DB path + 租户 content revision + scope | 已授权 chunk 对象、词项集与词项倒排 | 该租户数据写入或全局重建提升 revision |
 | 业务真实向量 LRU | model identity + text digest | BGE 向量 | 进程重启、显式清理或 LRU 淘汰 |
 
 业务缓存的 `cache_info` 被统一归一化为 entries、max_entries、hits、misses、requests 和 hit_rate，通过已鉴权 `/embeddings/status` 返回，并在 Web 监控页并列展示。指标只聚合当前进程且重启归零，不包含缓存 key 或 tenant/owner 分组；公开 `/system/status` 只保留覆盖率。这样既能验证缓存是否真正产生收益，也不会通过公共健康检查暴露工作负载计数。多实例生产环境应由 Prometheus 按实例采集后聚合，容量调整必须基于代表性流量而非本地冷启动样本。

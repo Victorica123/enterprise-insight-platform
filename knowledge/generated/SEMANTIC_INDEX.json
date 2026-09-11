@@ -265,6 +265,166 @@
       "vector_b64": "AAAAAAD5BwAHAAAAAAAA8/kAAAAAAAAAAAAAAAAAAADYAAD4B/kA+QAAAAAADQAAAAAA0vkA+QAAAAAAAPn5AADzAAAAAAAVAAAAAAAAAAAAAAAAFAAHAAAAAAAAAAAAAAAAAAcA8wcAAAAAAPkAAAD5AAD5AAAA0gAHAAANAAAHAAAAAPkA+Q0AAAAAAA4HAAAAAAAABwAAAAAHAAAU8wAAAAAAAAAAAAAAsQAAAAAAAA0AAAAAAAAAAAAAAA0A"
     },
     {
+      "end_line": 7,
+      "fingerprint": "09d32294986fb51d4cfe1c85be579204ffcbcf8dc2fca22819768baf535d036f",
+      "heading": "架构与工作逻辑优化方案（对标 Nexus Agent）",
+      "id": "22fb2746f4c2cc1ce011",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "# 架构与工作逻辑优化方案（对标 nexus agent） > 日期：2026-09-11 > 性质：架构评审与分阶段改造计划，不是已完成的变更记录 > 参照物：nexus agent 公开文档（javaup.chat/super-agent，概览 7 页全文可读，25 页细节被付费墙截断，仅能读到设计意图与参数，读不到完整源码） > 评审对象：当前仓库 `services/agent-service`、`services/media-service`、`apps/web`",
+      "start_line": 1,
+      "vector_b64": "CQL87wDzAAAE9fn++gD+AAAP8f4A9wQAAAAGAO7uBwAA6gcAAgAACQAA9ff5AAcGEQD89gD+AAD3B+7b7/wJCf8AAAAH+e70Egf+APwAAAAAEf4ACQAAAPwRAPkAABH1/gn5AAAACQD+FgAA7wD8Av4AAAAAAAALAAcABgD2+fEHAAAP7gkA3wAAAPP5ABEIEfYRAAAS+fPuAOgFBAD+CQAHDwL3/vEAEgDxAAAA9wAHAAD69gfx+QD++f73AA35"
+    },
+    {
+      "end_line": 17,
+      "fingerprint": "ca1531547c4b0cfaf1916036d2020b17a4bf30fd1eeaca49df4d67d500f5d0f2",
+      "heading": "一、结论",
+      "id": "e7fcddcf7acaa0f12a01",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 一、结论 功能闭环已经成立，问题集中在三处： 1. **工作逻辑是\"if/else 分流\"，不是\"编排产物 + 执行器\"。** `workflow_mode` 由前端直接指定，服务端没有执行计划这一层契约；意图判定、工具直达、检索规划散落在 `agentic_rag.py` 的函数调用顺序里，无法单独测试、跳过或替换。 2. **检索链路每请求做全量重算。** 关键词检索对作用域内每个 chunk 重新分词、重算 n-gram；向量以 json 文本存储，每次缓存失效后整表解析；hybrid 的两路串行执行。语料小时看不出来，chunk 上万后会线性恶化。 3. **横切能力缺位。** 没有会话记忆、没有流式输出、trace ",
+      "start_line": 8,
+      "vector_b64": "/AINCv8H+gER/Pv8Bf8HC/gI+wsEBQcFAfoAC/kC+wIA8QgGAAAI//70BPgIB/b8BAAB2P789fER/AQA+f/2/Azx8PoH9f8FBhL8EvoG8vwFDwsABwD5Bfv/DwX4+unzDwv/BhL/+gAA//76DwoFAfMBB/UA+wX7AAD2/v70BAD+9Pv9BAsABu4AAQX7+hUNAvgGDAwBAPQLBPMYBhUB9gD69QgFBQH08wfzChH/Bv4EBQAHBwv4/Qbx9gH58OgB"
+    },
+    {
+      "end_line": 32,
+      "fingerprint": "1eee638e6554588b30cd3b6d3628f263f3c91099cf143dcf96242f24c4ec6d9c",
+      "heading": "二、Nexus Agent 的做法与本项目现状对照",
+      "id": "8c15688622bf1bef3c5c",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 二、nexus agent 的做法与本项目现状对照 | 维度 | nexus agent 做法 | 本项目现状（代码证据） | 差距判断 | | --- | --- | --- | --- | | 编排产物 | 前置编排器五步链（路由、改写、歧义检测、子问题拆分、知识域收缩）产出结构化 `executionplan`，含 `executionmode / rewrittenquestion / subquestions / knowledgedomains / clarifyquestion` | `conversationorchestrator.answer()` 只按 `workflow_mode` 二选一（`archi",
+      "start_line": 18,
+      "vector_b64": "/vv28A4CAAoCBv3/BP0ICvr/CP4CARwO+foGAQcCA/EG+wX//vkPEgALBfHw//4FCAX38AAAB/77CAv8+gL8/QL08goO9wcG+vsCBQgg9wMEHPMHBv39AP4I9P75+AH0Avn7BQL69gQL/wELFvbnCQAO//r8+AMIBAP/+PsB//7xAggC6wQDBfn6Cfj1BRP1/PICAAIE++kF/ekD/gEKD/oK/AoR9f8D9efz/gL+8AAL9gj/Bf37/gIK/f/+AwX+"
+    },
+    {
+      "end_line": 48,
+      "fingerprint": "85fa456d17154c27ba007bb45745f782a661a74adbae8ba01fe8309049817013",
+      "heading": "二、Nexus Agent 的做法与本项目现状对照",
+      "id": "42f30257da4daded6268",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "| 扩展点 | `retrievalchannel` 接口、切块策略接口、记忆策略接口、tool 注册、mcp、skill.md | `retriever` protocol 已存在（`retrievers.py:84`）；`register_tool` 已存在（`tools.py:78`）；无切块策略与记忆策略接口 | 部分 | | 职责边界 | \"python 出能力，java 做决策\"，python 返回候选与打分，java 校验后才用 | 本项目正相反：agent service（python）拥有决策与治理，media（java）拥有媒体生命周期。边界清晰，且模型输出一律经校验（adr-0012） | 不需要改 | nex",
+      "start_line": 33,
+      "vector_b64": "BvkG7f8ACBAFAw4H/v4PA/cE+fQLBfsA/vUTBPj7+QMP9wEM/QMQBgD8CfwDDPkNDgQC9P3+Eff6/PoABPTyCPb7BQIAAvwC/QIEAv4E/wEIDAb7BQH88wUI+/r2/g7xEBf+BAH7BAEDCOYD/vnr/gMBDfwYBfwCB/0I/BD+8wIK+wUD/wkIC/73AOYQCPv3APfpAPsD/+z7C/IIFvoE/gLz9P4ICgAB+/v8/gf+BgIMCvME6AgFAfH/Bu/5+xP/"
+    },
+    {
+      "end_line": 76,
+      "fingerprint": "bd25cda82673a16b454badeb3dd22546bd5614312ca30d9088c6d61bc4cf2b56",
+      "heading": "三、当前代码的量化体检",
+      "id": "a3e5f2e3b556516cf9bc",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 三、当前代码的量化体检 agent service（`services/agent-service/app`，约 13.2k 行）： | 指标 | 数值 | 含义 | | --- | --- | --- | | 路由处理函数 / 其中 async | 50 / 1 | 阻塞工作全部落在线程池 | | `os.getenv` 调用点 / 涉及文件 | 47 / 12 | 配置无单一入口，无法一次校验 | | `with connect()` 调用点 | 67 | 每次调用开关一个 sqlite 连接 | | `init_db()` 调用点 | 18 | 每次读写前都进 memo 判断，逻辑上多余 | | `create tabl",
+      "start_line": 49,
+      "vector_b64": "EPQKBQEM+AIN9P0FBvkD9QD6BgD88AEGAv8FBP35AP377gTvAfgMAv3tB/kC/f4O+//s+wwB+fIIDP8LAP8ABAfxAAf9//cM/v0DAQQD+fgH/Qf4Bwv9Cw8QAgAF+f0D/wEEAfv89wD9DPz9CAH5BQj1/QQACvj+Hwj5+N/8Cfj3+/vvABkaBA4M/esA8/kG/Pjz/P0C9wD4/fD/CQEICfgD7f8KAPTk+gD7/PsDAP8D7/cEAAEJ/An4/Pj4Aej/"
+    },
+    {
+      "end_line": 84,
+      "fingerprint": "932c9ccdbc94a9da62d1b7567a64d0fff6f70182f2b2c14da20ce82f50c805ac",
+      "heading": "三、当前代码的量化体检",
+      "id": "11d18615e6df1d42d176",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "- agent 调用 `httpclient` 连接超时 3s、请求超时 15s（`agenttranscriptclient.java:21,41`）；无熔断。 web（`apps/web`，约 3.6k 行）： - 运行时依赖只有 react、react-dom、lucide-react；无路由库、无数据请求库。 - `main.tsx` 持有 29 个 `usestate`；`qaview.tsx` 474 行；媒体列表用固定 2s `setinterval` 轮询（`hooks/usemediaworkspace.ts`）。 - 请求统一走 `apiclient.ts` 的 `safefetch`，鉴权头集中处理，这一点是对",
+      "start_line": 77,
+      "vector_b64": "/uX+APn0CwQEAAAACwAA6vP1CQAAAP4A9wD0AAcAAAAJ5QDlAAAEAP4J8wAS/AD1AAACAAAL9QAAAAAJ9PMCCf7sAAAAAAD8APcAB/kA/vkHAADs9wIAEgkAAAIJ/gAA9PkAAAf+7gDbGwsAAgD+AAkA9gkAAOgADPcA9ff09QAC7AAAAgkEAAn+AAAA8BIC9/UADAAC8wAAAOAPAAAA9wAA/goACwD19wAKDAkA9QAAAAAA6AAAAAL5AP4LBPMA"
+    },
+    {
+      "end_line": 123,
+      "fingerprint": "6d2726c8f0d17f29196a8aa0460eada4da129321cef4cb5c15dd55e7215ca131",
+      "heading": "四、目标架构（Agent Service）",
+      "id": "46da761d43aa2c161b26",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 四、目标架构（agent service） ```text post /chat /chat/stream │ ▼ requestcontext（已有：principal → scope） │ ▼ preparationchain ← 新增，可插拔步骤列表，每步只改 executionplan ├─ load_memory 会话记忆（none / window / summary） ├─ rewrite_question 结合历史做指代补全（规则优先，llm 可选） ├─ classify_intent 复用 llm_route_question / detect_intents ├─ split_subquestions 复",
+      "start_line": 85,
+      "vector_b64": "CQIC8f8C+gb48QD4Bv34Bvr5Bgj3AA0A/QIADgYJAO8D7QDhAAkOCP0AAw4A/goDAAII9eoJAO33AAAG/gDuCQj++gEJAAAAAAAA/v8QA/0K+gUA9fsI/gMP+P36+AD3GwYAAPcIAAAXBwAJAwAAAAgJAP0AAAAKBgD4+gbw9vYGAwD6/vj3CPMAEAMABhQCAPbzAAj+DQUDCPYC+AMGCfD+FOgO+Oz3/v748g8IAPMREwAF7wAABRDyCfr38fcA"
+    },
+    {
+      "end_line": 127,
+      "fingerprint": "46537237b7c21bc901d4e3ecc3b1f4014dccba9e6a001a3bf1f15b9bd33a88fc",
+      "heading": "五、分阶段改造计划",
+      "id": "849fe12a3b587893e97e",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 五、分阶段改造计划 每个阶段都以现有门禁为退出条件：agent 全量 pytest、v6 / prd / knowledge lifecycle 评测、`update_knowledge.py --check`。阶段内不改 http 契约字段的删除，只做新增。",
+      "start_line": 124,
+      "vector_b64": "AAAE3f4ACwIAEwAAAAwAAPfvAAAA/g0AAAAAAAsAAAAA5gkCAAACAAD39/4AAAAAAAAACQAA9QD3AADq/gAAAAAAAgAA5gwaABEAAP4AAAAAEQALAAQADAAAAAIAABb1HALkCQALAPX0/gDx9QAAFwAJCQD1AAAAAAAA/gAAAAAR9wAA8gv19AkAAAAAAAALAAAACwsCACkCFPQAAAAAAPcA/gAA6P4A9QAA9wAA6vcAAAIA9AAA9wL89wAACwsC"
+    },
+    {
+      "end_line": 140,
+      "fingerprint": "9a9cd394f1525ca57fdaae6a0550189c19827382ae5a58e88d9a3cbaee0eb86b",
+      "heading": "阶段 0：工作逻辑显式化（优先级最高，约 1–2 周）",
+      "id": "6da50b92ecca4a03c4f3",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "### 阶段 0：工作逻辑显式化（优先级最高，约 1–2 周） | # | 改动 | 涉及文件 | 验证 | | --- | --- | --- | --- | | 0.1 | 新增 `executionplan` 与 `preparationchain`，把 `route_question`、`plan_retrieval`、`_is_tool_only_question` 改写成链上的步骤 | 新增 `app/architecture/planning.py`；改 `orchestration.py` | `test_architecture_boundaries.py` 增加\"计划可序列化、步骤可单独跳过\"用例 | | 0.2",
+      "start_line": 128,
+      "vector_b64": "+AMK5PoFAPYD9/gBBA0O+Aj+8fkEByMG/Pj+8AYKAPYL7wUNAfz+FQT0DPsNBAMA/fD77PwABPYDAAP38QEDBQABBQMG+/wDCg70AAkWAAQFEhgABQL+DgH+BAD9/Pv/AwEGBAAGBPz2BgADAAgBDQAEAAAIAPwABQQDAPX69v0MAw4H+fsHAfb5AQACBRP/A/wJ/PgK8/H2A/cJEPsIBf8F8/0J/+oM+AcE/w8KBfcI+v729RP1Dfz/7ucI/gQG"
+    },
+    {
+      "end_line": 152,
+      "fingerprint": "eef70f1688c7aab942f17febd661904cbf5cbb7d127a2168d479497d8138903b",
+      "heading": "阶段 1：检索效率（约 1 周）",
+      "id": "57bcac48f089a3ecd8f9",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "### 阶段 1：检索效率（约 1 周） | # | 改动 | 收益 | | --- | --- | --- | | 1.1（已落地 2026-09-12） | 索引时预计算 chunk 词项集并随缓存对象存放（`chunk.terms: frozenset`），关键词检索不再每请求重新分词 | 关键词路径从 o(n·l) 降到 o(n·|q|) | | 1.2（已落地 2026-09-12） | 在缓存项内附带按词项的倒排 `dict[str, list[int]]`，查询只碰命中 posting | 大语料下接近 o(命中数) | | 1.3 | 向量改为二进制存储（`array('f')` / `struct`），解析成本降一",
+      "start_line": 141,
+      "vector_b64": "EfkL7AIA/Q0EDQT7APv7BQMB+gP7APYA+/v/+Ar8Be4A+An1/vIECv3Q8fkFAPAE9QML5A4LAekF+gDqCvwIBwrm/AAFCQEFBPj+BfzxBPkAGQz8ABL6CggH/f78BQT5AAwJ+wD+//33+vL7CBQBA/X79wX0AAv4AAX39AL/CgMB9gH09/oBBAkFAfwB9vwOCwQD//r/9gH7/wP7DvkEGv0AAQgEAAL8BQAA+v4FDPwC//z9/AAOCAX0//gADv//"
+    },
+    {
+      "end_line": 162,
+      "fingerprint": "fc9868127b8b937d4d393ac8f7f2e530a42aeef5dec43342a163c8918ff7cf61",
+      "heading": "阶段 2：会话与流式（约 1–2 周）",
+      "id": "264275113d7cc5e91a25",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "### 阶段 2：会话与流式（约 1–2 周） | # | 改动 | | --- | --- | | 2.1 | `chatrequest` 增加 `conversation_id`；新增 `conversation_turns` 表（tenant / owner / conversation / turn / question / answer / sources_json）；`memorystrategy` protocol 实现 `none` / `window(n=4)`；`summary` 策略在 llm 可用时增量摘要（每次最多推进 6 轮，摘要上限 1400 字符） | | 2.2 | `rewrite_questio",
+      "start_line": 153,
+      "vector_b64": "6foS4fcGCAEGEwD/AP0GAAD7Df4A9wwM+PgA/vn5+vwY9w3u8wAABuoH/Pn/AAABAPrz8fcB9+4YAQD9B/8CCAEIDwgZCAYTB/8ABvr6/Q7+Bu0ADAMA/wDw9//5+Qj4CAfyBv3//AD/AAAACAAGAAD5Ae/6+vkBBwAq+vMA/wD+AAj79g36AAD5/QAEBxIBDPwBAPj5/P8AAAAJDPkAEfcDAAkH8/oHAAj3/wAAAP8BBvMAAAAAAAYAAPAH/gDu"
+    },
+    {
+      "end_line": 173,
+      "fingerprint": "d84eea43f6aff423c8e2268d777281e116de9b5a027cfb54a210fcdd6be59491",
+      "heading": "阶段 3：结构收敛（可与前两阶段并行）",
+      "id": "6efcc713c8f5b7e85a81",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "### 阶段 3：结构收敛（可与前两阶段并行） | # | 改动 | | --- | --- | | 3.1 | `config.py` 扩为单一 `settings`（pydantic-settings 或 dataclass），启动时一次校验；47 处 `os.getenv` 收口 | | 3.2 | ddl 收口到 `app/schema/` 下按序号编号的迁移列表，`init_db` 只跑一次；保留 `ensure_column` 兼容旧库；mysql 路径准备 alembic | | 3.3 | 路由只导入 `app.architecture.*`；在 `test_architecture_boundaries.py` 增",
+      "start_line": 163,
+      "vector_b64": "AAQE7P4L/PDuCwoA9wAAAAD7BgAAAQf+BAAHAAX2AOX2ABIH+QAEDvv5+wD3+BEC/gACCQL8AOIAAAcE6wACAvIAEAAAFPn+7vcCAAL78gAABwAA+QD5BBD8ABAOAAsJDfcQAAD8/hEAEQAAAvvrAvwCAgDvAAAJCQAL/P4RAgDz9wAK6QcO+RMAEg4ACgcADvXwAPUJCg77/gAACQAAAAAAABQH9v4DAA4AFAcCABL+CfkBBvcE9vsMAf8FDgAA"
+    },
+    {
+      "end_line": 178,
+      "fingerprint": "22da47b58249cbc921fb16c63299ed6a1ebadaf2cc47a49f369614a79972f40e",
+      "heading": "阶段 4：Media 与 Web（按需）",
+      "id": "81ee92ce749668d008f7",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "### 阶段 4：media 与 web（按需） - media：`videotaskservice` 拆为 `taskquotaservice` / `taskleaseservice` / `taskcompletionservice`；`appproperties` 按功能拆 `@configurationproperties`；引入 flyway 替代 `ddl-auto: update`；增加任务阶段日志表（nexus 的分步任务日志），让\"转码 / 抽音频 / 转写 / 摘要 / 投递\"每一步可查；agent 客户端加熔断与退避。 - web：引入 `react-router` 与 `@tanstack/react-qu",
+      "start_line": 174,
+      "vector_b64": "AAvy+v4A9AD+AgQCCAAA9AAAAAAAAAD4BwD4AAALDvYY3wAACOcKBvz4+gAAAAgAAAD4/vYM+BAAAPz89/YGAAAAAAACCQgY9ggA+OwU/gDqCO4AAAoKBgD+BPb1/vgAAAn1APzsAAj+GAAAAOr+AAAAAggAAOcWCgD+APr2C/X2/AAA9wACAAAA+P4AACECCgDwAPUCAvMAAvUA7gAAAAACAAIAAP4A5gALAAQACBj28wgK9QD19ggAAP4IBvgE"
+    },
+    {
+      "end_line": 185,
+      "fingerprint": "40ea5a6435c75803318894f8616c2d47025287ba4971158ddaedb0fd1e622681",
+      "heading": "六、明确不做的事",
+      "id": "1b7cd006230b63e37125",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 六、明确不做的事 - 不引入 neo4j、pgvector、elasticsearch、kafka。`docs/architecture_panorama.md` 已约定：只有真实指标证明 sqlite 扫描或本地缓存成为瓶颈才迁移。 - 不把确定性 specialist 改成无界自治 agent。 - 不改变 media / agent 两服务边界，不新增共享表。 - 不删除 `workflow_mode` 等既有契约字段，只新增。",
+      "start_line": 179,
+      "vector_b64": "APgAEfr2+AL49ggAAAD+8AACAP74ABfyAAAAAgz+AAAA/AAA+OsOAALpEeIAAPb2AAj4CBD/+OkACgAR/u0AAAjtCPgACPUhABAACPwA9AAAF/YAAAACAB8AAAIQAPMCAv4ACAAAAAALFwD4AAACAgAAAAAA9AAAAAoAAPQCAvYA/gAA/AD2CAAADPr++AAACAIAAAAICvYABur4AADtBAAA/gAKAAQAAPYAAAAK7QgAAOf+9RX49QgAEQAAAgr+"
+    },
+    {
+      "end_line": 189,
+      "fingerprint": "e8bd4d1466dfb12220df474c3448b4167a5343a65ff27fcc6ee530965df99aee",
+      "heading": "七、建议的起手顺序",
+      "id": "12bc03567039c1bc46a3",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 七、建议的起手顺序 先做 0.1 + 0.2 + 0.3（执行计划、注册表、阶段耗时），因为它们不改算法、不改数据，只重排现有函数，风险最低，且之后所有阶段都挂在这层契约上。随后做 1.1 + 1.4（词项预计算、两路并行），这是最直接的效率收益。会话记忆和 sse 放在第三步，因为它们要动契约和前端。",
+      "start_line": 186,
+      "vector_b64": "D/fs7AMCEQIHDQDsBwkABwMCAAD+AAoK9wAA9wcHAAkHBwkDAgD7AwcO/QDmAAcAAxEA+fcC+QAACQARCQX/CQoA+QAA9gkqAAcJAPkJ/gAAFAD3AgP+5Q7+APH+AAkAAPkR9+oJ9gATAAD0CQMCAP77+Qz57wn9AAn3FgIDAgD9+QD9/fEPAAD+AP4A8hQD9/H5AA8JDgAJAAD2AAAA+fkC9O0H+QAA9Pb9AP0AB/sOAAcD9gIACQLtAAAJAgD3"
+    },
+    {
+      "end_line": 193,
+      "fingerprint": "7ecb2ba12987271b435d2886f031130740c20bb9ff8238ad871f62b40e5de84d",
+      "heading": "八、落地记录",
+      "id": "a0ad7d4fdfa4dba87220",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "## 八、落地记录 - 2026-09-12：阶段 1 的 1.1、1.2、1.4、1.6 与 0.6 中“精排降级可见”部分落地。新增 `app/text.py`（唯一分词器与 cjk 窗口 / 锚点函数）和 `app/chunk_index.py`（授权 chunk 快照、预计算词项、词项倒排、按租户 revision 缓存）；`retrievers.py` 只保留检索通道与融合逻辑，并向后兼容地重导出 `chunk`、`retrievalscope`、`load_chunks` 等符号，测试与评测脚本无需改动。`embeddings.py`、`rag.py`、`agentic_rag.py` 的重复文本函数收敛到 `app/t",
+      "start_line": 190,
+      "vector_b64": "CfwJ5QICBQkA+AIHBQAL6QEACAAA6v0LB/cKDRQMB/cGAAv4AAXvB//v+AUFCf/7BgAD6g/6++j3CQAA+gAQAAfzAAAA+QYM7gIA9vkX9wUAHv4BAQgCAfYA9QD2AAgABv0ACgD4AAD9AOcDAQ36+u8LBvsD+wD+EQD8/wX4AffvAvr27A8N6wAL/wr7APUCDv/9AAIDA/8F+vr4AAAAAAMB7QEJCfkMBQEA+w8AD/gF/wYA/AD7Bf3qCv8ADwD+"
+    },
+    {
       "end_line": 4,
       "fingerprint": "e6b17d5b52b266bee7b9de529dd7072be04ce08c8b495a55b8883f42f40686db",
       "heading": "智能体技术架构全景与本项目映射",
@@ -586,13 +746,13 @@
     },
     {
       "end_line": 94,
-      "fingerprint": "0711b9886ae6dbaa41fbdf9ad82d09bf11f466fb8ff7b4cc36064a548595c67e",
+      "fingerprint": "e92e787d31c4470ec5b47f8f46beb80aa941a6e012b7e18f966d5c5cc6bb1aa2",
       "heading": "如何证明不是 happy path Demo",
-      "id": "f110f1c33b5006a3e7d6",
+      "id": "b1e95f7b9e7f6e06ee80",
       "path": "docs/INTERVIEW_GUIDE.md",
-      "preview": "### 如何证明不是 happy path demo - agent service 157 个测试；media service 135 个测试。 - keyword / embedding / hybrid 三路黄金集门禁。 - 33 项双用户 localhost 纵向验收。 - prd v1 12 个手工场景十项质量门禁，以及 knowledge lifecycle v1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。 - tenant/owner 负向用例、四眼审批、事务回滚、重复事件与冲突用例。 - web 类型与生产构建、知识漂移检查和 ci 分故障域 job。",
+      "preview": "### 如何证明不是 happy path demo - agent service 170 个测试；media service 135 个测试。 - keyword / embedding / hybrid 三路黄金集门禁。 - 33 项双用户 localhost 纵向验收。 - prd v1 12 个手工场景十项质量门禁，以及 knowledge lifecycle v1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。 - tenant/owner 负向用例、四眼审批、事务回滚、重复事件与冲突用例。 - web 类型与生产构建、知识漂移检查和 ci 分故障域 job。",
       "start_line": 86,
-      "vector_b64": "CPkL/gsAAgD+CADz+QD7BwD5CAL5Efj5AAAHB/n4CgcA6fnxAP0R+fAA+f4Q+PUCBwANDQAHAADz9wDs+PQH6Qj+EAcAAPf++QcAAvsI8AAAFAAADwUD+gIDAPjg/vkAHO4VCAAACAIAFOkD8QD4+Pn3Cgj9AvcJAAPzAPkIAgIIAAj77AD+7wUAAPkAABUCBwAABwAN+AkAB+8A9hb+CAAA+P7+A/AI+AANB/YACAgD9vMC+QIKAgD2APsA/f4C"
+      "vector_b64": "CPkL/gsAAgD+CADz+QD7BwD5CAL5Efj5AAAHB/n4CgcA6fnxAP0R+fAA+f4Q+PUCBwANDQAHAADz9wDs+PQH6Qj+EAcAAPf++QcAAvsI8AAAFAAADwUD+gIDAPjg/vkAHO4VCAAACAIAFOkD8QD4+Pn3Cgj9AvcJAAPzAPkIAgIIAAj77AD+7wUAAPkAABUCBwAABwAN+AkA/e8A9hb+CAAA+P7+A/AI+AANB/YACAgD9vMC+QIKAgD2APsAB/4C"
     },
     {
       "end_line": 98,
@@ -616,13 +776,13 @@
     },
     {
       "end_line": 121,
-      "fingerprint": "6c78bd3371840746be0d15f45293d170ff07df7791bb53a56b6c796a6b9bd2e4",
+      "fingerprint": "d511c4b3814225654f124cda75cbdcc503bf5d5ca74e441f0b04e0e71d1e5d2a",
       "heading": "面试缺漏自查",
-      "id": "2f483bd164c71dec6ef4",
+      "id": "2e22dcc0097b369186c1",
       "path": "docs/INTERVIEW_GUIDE.md",
       "preview": "## 面试缺漏自查 | 面试官想确认什么 | 当前证据 | 回答边界 | | --- | --- | --- | | 你解决了什么业务问题 | 视频/文档到证据、prd、知识、工单的一条用户旅程 | 尚无真实客户节省工时数据，只能讲目标价值，不能编造 roi | | 你个人做了什么 | 契约、两后端整合、统一前端、授权 rag、agent 状态机、验收和知识维护 | 区分原媒体能力、迁移整合与本轮新增能力，不把团队或模型产出全部说成手写 | | 最难的工程问题 | 检索前授权、outbox 双幂等、等待恢复、四眼审批、知识原子物化 | 选择一到两个展开，不罗列所有技术名词 | | 为什么这样选型 | 两类状态机保留两个服务；当前规模",
       "start_line": 103,
-      "vector_b64": "DPf7/O8S7wUCBRj9+vAH//wA/vv1Bw738PkABRDyDAUE9RAL+/8C+AYBC/8DCfwB+QcH8AICB/QH9gD++vT9Cf8NAwQE/fwF8Pv9/wH5BAIAAg75//cHAPr+7/f+8AIKBwf0APbxEAsK9un8+goQAAkBA/4F/Pz4CvwA+RMFAQMP/gcK8gUU8fkHC/IDAAwM+P4D/Pr5/gv3EfUI8PwFA+31AwkSBwsA/fr8Eg3++wkL+/X58QIC8wMFC/YBAADx"
+      "vector_b64": "DPf7/O4S7wUCBRn9+vAH//wA/vv1Bw738PkABRDyDAUE9RAL+/8C+AYBC/8DCfwB+QcH7wICB/QH9gD++vT9Cf8NAwQE/fwF8Pv9/wH5BAIAAg75//cHAPr+7/f+8AIKBwf0APbxEAsK9un8+goQAAkBA/4F/Pz4CvwA+RMFAQMP/gcK8gUU8fkHC/IDAAwM+P4D/Pr5/gv3DfUI8PwFA+31AwkSBwsA/fr8Eg3++wkL+/X58QIC8wMFC/YBBADx"
     },
     {
       "end_line": 136,
@@ -696,13 +856,13 @@
     },
     {
       "end_line": 39,
-      "fingerprint": "387b7741fa6e19929170eaac176d0799ff4d90ade2e1c12901963f2e46fc95d6",
+      "fingerprint": "4e259a97b2142a0ecfee01c61cecfc642c6a22e2013ea07a5124562645db0911",
       "heading": "必须记住的四个锚点",
-      "id": "5c684c94e72d229c3de8",
+      "id": "4f4d854455f70ee10422",
       "path": "docs/INTERVIEW_REHEARSAL.md",
-      "preview": "### 必须记住的四个锚点 | 锚点 | 一句话 | | --- | --- | | 业务 | 把非结构化会议材料变成可追溯、可评审、可执行的交付链路 | | 架构 | 两个职责清晰的后端、一个统一前端，不共享数据库 | | agent | 授权证据、六阶段等待恢复、确定性审批与副作用 | | 证据 | agent 157、media 135、localhost 纵向验收 33/33；另有 v6 rag、prd v1 与 knowledge lifecycle v1 三套黄金门禁 |",
+      "preview": "### 必须记住的四个锚点 | 锚点 | 一句话 | | --- | --- | | 业务 | 把非结构化会议材料变成可追溯、可评审、可执行的交付链路 | | 架构 | 两个职责清晰的后端、一个统一前端，不共享数据库 | | agent | 授权证据、六阶段等待恢复、确定性审批与副作用 | | 证据 | agent 170、media 135、localhost 纵向验收 33/33；另有 v6 rag、prd v1 与 knowledge lifecycle v1 三套黄金门禁 |",
       "start_line": 31,
-      "vector_b64": "APHz+QcVAAL9AggA+AAAAP4C/gAAEwf2AOz98QIICAAU6v35APcCAA8HEQD7AP4DDfsA+QcM+AgAAA0AAP4ABwoIAAAAAAj+AvkIAPkA/QACCPsI9wADCAMA7AgAAAAZFAIADQAAAwAAFOwPAAf7AAcA+QgC8QAQB/H5/vkABP4HCP4A4gAF7gz7CAAHABQCEf75AAcHDwADAu0K5wUI8wgADxgCCfkAEfkIAAIACgAHCO8C/gDzAAgIAP0R+AUA"
+      "vector_b64": "APHz+QcVAAL9AggA+AAAAP4C/gAAEwf2AOz98QIICAAU6v35APcCAA8HEQD7AP4DDfsA+QcM+AgAAA0AAP4ABwoIAAAAAAj+AvkIAPkA/QACCPsI9wADCAMA7AgAAAAZFAIADQAAAwAAFOwPAAf7AAcA+QgC8QAQB/H5/vkABP4HCP4A4gAF7gz7CAAHABQCEf75AAcHDwAD+O0K5wUI8wgADxgCCfkAEfkIAAIACgAHCO8C/gDzAAgIAP0RAgUA"
     },
     {
       "end_line": 63,
@@ -876,13 +1036,13 @@
     },
     {
       "end_line": 79,
-      "fingerprint": "29882a5919c88f3e3ecb0750a71d39537a173757d04dcb44b4f69e73fc0ea9b6",
+      "fingerprint": "6464b4b5503aeffb0a16089a6f06aefb17794328c80fa059fa888ffea155c75d",
       "heading": "5. 测试数量不能替代生产事实",
-      "id": "1559c352a9e59e7f0da8",
+      "id": "4bd9ad3640f81fb4db82",
       "path": "docs/INTERVIEWER_STRESS_REVIEW.md",
-      "preview": "### 5. 测试数量不能替代生产事实 157、135 和 33/33 是可信的工程证据，但面试官会继续问： - 数据量和并发量是多少？ - mysql、redis、rocketmq、对象存储和真实模型是否在统一链路跑过？ - p95、错误预算、容量、数据保留、撤权和灾备是否经过业务批准？ - 是否有真实用户、采用率、节省工时或 prd 人工修改率？ 当前答案分别是“只有局部/历史子系统证据”“统一 localhost 主线使用 light/mock”“生产决策未批准”“没有真实 roi 数据”。主动说明会显得成熟，回避或编数字会反噬整个项目。",
+      "preview": "### 5. 测试数量不能替代生产事实 170、135 和 33/33 是可信的工程证据，但面试官会继续问： - 数据量和并发量是多少？ - mysql、redis、rocketmq、对象存储和真实模型是否在统一链路跑过？ - p95、错误预算、容量、数据保留、撤权和灾备是否经过业务批准？ - 是否有真实用户、采用率、节省工时或 prd 人工修改率？ 当前答案分别是“只有局部/历史子系统证据”“统一 localhost 主线使用 light/mock”“生产决策未批准”“没有真实 roi 数据”。主动说明会显得成熟，回避或编数字会反噬整个项目。",
       "start_line": 69,
-      "vector_b64": "AfXqAfoB/ADz/PkE+QD8AAT8AAH5BgAH//kN/woKAf8L6AcAAQD6CwD68wb1AAD/AAEOAAQTAAb6BgfvAwYDAAv6+gAAB/MH9wD/APL1/wEAAAAP+A4HHvr6Dg35DQb6Aw0A/xT6Bgf3BgEDDQkRAPn5AwAXAPwYAPkA9fcB/wAD8AAE7+wJ9QoA+vcABvkO//oADgYB/OILCvIEAAEU9QP1DQARCAf/7QERBgEA/AABAAsB9voDCQkB8voB9f/y"
+      "vector_b64": "AfTqAfoB/ADz/PkE+QD8AAT8AAH5BgAH//kN/woKAf8M5wcAAQD6DAD68wb0AAD/AAEOAAQTAAb6BgfvAwYDAAz6+gAAB/MH9gD/APL0/wEAAAAP+A4HHvr6Dg35DQb6Aw0A/xT6Bgf3BgEDDQkRAPn5AwAXAPwYAPkA9PcB/wAD8AAE7+wJ9AoA+vcABvkO//oADgYB/OIMAvIEAAEU9AP0DQARCAf/7QERBgEA/AABAAwB9voDCQkB8voB/f/y"
     },
     {
       "end_line": 100,
@@ -1556,13 +1716,13 @@
     },
     {
       "end_line": 58,
-      "fingerprint": "746276630cdb552b14b813ef9247a024c476a3ec3204a57fc1423d026830f3d9",
+      "fingerprint": "51bc7adbc8f8f9fb1d0fd36eb72d5f4afcfee084de0685916602db11efa0b925",
       "heading": "Agent Service",
-      "id": "694bc8824f075b7263a9",
+      "id": "336e43aa7c8e6d5d5a39",
       "path": "docs/START_HERE.md",
       "preview": "### agent service 新增业务入口统一位于 `services/agent-service/app/architecture/`；它们组合下表中的实现模块，并保留旧导入路径供兼容测试使用。优先按全景层选择 façade：`orchestration.py`（对话）、`retrieval.py`（检索与证据）、`execution.py`（三层执行器）、`knowledge.py`（知识底座）、`governance.py`（审批与生命周期）、`observability.py`（观测与审计）。完整映射见 [architecture_panorama.md](architecture_panorama.md)。 | 要找",
       "start_line": 40,
-      "vector_b64": "DwXkD/gLCg358wQJCfkB/vkD/voE7wwA+f8NDQ4BAPAH7AH69AQNCQP2/QX8/xIABQsIAf4GCwkGAAL8DwTzBwoA9AD69Ov2BAYD/QATBQkBFg/4+v/5Af359wj++QT4DgP1AwcCBwAIHPIJAwT3AAb89fzx/wAEGAAA+g0SAPYP8/oA7wEEDQwABv4PAAEIC/8A/fz2/gr+Cv8D/vMRCvgBAAYLAP8A+QAD8QD/Afr6CgMH9QHy/AEG/Pj0/O7z"
+      "vector_b64": "EAXkD/gLCg358wQJCfkB/vkD/voE7wwA+f8NDQ4BAPAH7AH69AQOAwP2/QX8/xIABQQIAf4GCwkGAAL8EATzBwoA9AD69Ov2BAYD/QATBQkBFhD4+v/5Af359wj++QT4DgP1AwcCBwAIHPIJAwT3AAb89fzw/wAEGAAA+g0SAPYP8/oA7wEEDQwABv4PAAEIC/8A/fz2/gr+Cv8D/vMRCvgBAAYLAP8A+QAD8AD/Afr6CgMH9QHy/AEG/Pj0/O7z"
     },
     {
       "end_line": 70,
@@ -1636,13 +1796,13 @@
     },
     {
       "end_line": 45,
-      "fingerprint": "95a574d92d6b4fc99b1cf381256606ce76509b5bc678119b869276a82f924567",
+      "fingerprint": "e4e56009bd4995e8559357a8f9258fae38644b8f606019aa618d2b8f1f943d59",
       "heading": "检索与缓存实现",
-      "id": "bed273a592096157f7d1",
+      "id": "e100737ae6dba026466f",
       "path": "knowledge/AGENT_ENGINEERING.md",
-      "preview": "## 检索与缓存实现 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 bge 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。 - hybrid 先独立执行 keyword 与 embedding，再以 rrf 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。rrf 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。 - 可选 cross-encoder 只精排 top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。 - chunk 快照 ",
+      "preview": "## 检索与缓存实现 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 bge 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。 - hybrid 先独立执行 keyword 与 embedding，再以 rrf 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。rrf 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。 - 可选 cross-encoder 只精排 top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。`retrievalre",
       "start_line": 36,
-      "vector_b64": "C/b9APQA+//+EAEAEAoEAgz4/AX7+/8H7gD+/A/o+AIK8wj9DgkFBv7dAhD//Qf+/w0B9QYD8e8A5ff8+Ar2AQEA9gULAP8A//0E9/f/AvP2FgcCBgkF+/4DBgEB8wUTBgP6BPYECAL39/MJCff/AfsECQH8+/rqEPAA+wH2CgAD+P/5+fsOCvf8DQb29RAAEf4JAAAF+fsE+gT+CQr2Cvj/AfEAAQYN9wz/AAf3/gEIAf4I7/z8AvwVBO4Q+voB"
+      "vector_b64": "DfkK8/X8/AMDDv38Dg0DBQ31Bwr89/4G8QD9Aw7s8gQI6wn9CQMACgbs/RIDAQUDARMC8wcI9+EA4vD9+wn3/v78+AMPDP/9+/oL9Pn/CPT0Egn9CQgA/v4DA/398vwUCQADAvgDBgH4+PUGBAIABfcIBAH8+//oDPcB/ATvEQP+9Qjy8vwOEQEBCwn48wkIDAIMBP8E/vsE+wP+CwT8Cfz/BPf8AAUJ9Qr//gH1/QEKCPsJ8/0CBvwKAOwH+/74"
     },
     {
       "end_line": 53,
@@ -2536,13 +2696,13 @@
     },
     {
       "end_line": 12,
-      "fingerprint": "8b976ffd46e8c4abf40f88d2da8ec88f8656dd9f4c7d9ff9765216189bfc08e2",
+      "fingerprint": "6079ba9dfaac452ebb7056e1a1c1b4b66beb503b8bb00053ec4f0f5631bf275d",
       "heading": "Workspace inventory",
-      "id": "60c97679c343230f89b8",
+      "id": "4cd440c20a7400ef18cf",
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "preview": "## workspace inventory - media service: 92 production java files; 36 test files; 135 `@test` methods. - agent service: 58 application python files; 24 test files; 158 pytest test functions. - react web: 28 typescript/tsx/css source files. - machine-readable contracts: 12 files. - local localhost-only acceptance runner:",
+      "preview": "## workspace inventory - media service: 92 production java files; 36 test files; 135 `@test` methods. - agent service: 60 application python files; 25 test files; 170 pytest test functions. - react web: 28 typescript/tsx/css source files. - machine-readable contracts: 12 files. - local localhost-only acceptance runner:",
       "start_line": 5,
-      "vector_b64": "APQAAAAA9AAZAAAA5wzn9AAAAAAAAPQAAAAAAAAAAPQb5QDlAPQADAAAAAAMAAAAAAAA9AAAAAAAAPQAACUAAAAAAAAAAAAbAAAAAAAAAAAAAAAAAAAAAAAA9AAAAAAADgAAAAAAAAAAGwwAAPQMDAD0AAAAAAAMAAAAAAAAAAAAMgAA5QAADAAAAPQAABsAAAAAAAwA9AAAAPQAAAAAAAAAAAAAAAAAAPQAAAAAAAAADBkAAOcAAAAAAAAAAAAA"
+      "vector_b64": "AAAAAAAA8wAZAAAA5w3nAAAAAAAAAPMAAAAAAAAAAPMb5QDlAPMADQAAAAANAAAAAAAA8wAAAAAAAPMAACYAAAAAAAAAAAAbAAAAAAAAAAAAAAAAAAAAAAAA8wAAAAAADgAAAAAAAAAAGw0AAPMNDQDzAAAAAAANAAAAAAAAAAAAMgAA5QAADQAAAPMAABsAAAAAAA0A8wAA8/MAAAAAAAAAAAAAAAAAAAAAAAAAAAAADRkAAOcAAAAAAAAAAAAA"
     },
     {
       "end_line": 18,
@@ -2595,23 +2755,23 @@
       "vector_b64": "AA4A8v0AAP0A/QAAAA4LAAAA+gAAAPIAAAAAAB4ACwAAAPIAAAAAC/0AAAsLAAAAAAADAPUAAAsADgAA/QD1AAAAAAAAAAAAAPUADvoAHwAACwAADv0AAPUAAP0A/QAAAAMAAAAAAA4AAAAAAAAAAPoAAAAAAAAAAADyAAsA/fIAAAD9AOkA0/IAAAAOAAD9AAAAAADc6uH6AAsDAP02AAAAAA4A/fIAAP0A9QAL8g4AAAAACwAACPgAAP0ACwb9"
     },
     {
-      "end_line": 23,
-      "fingerprint": "b58a6d32f02e65e04378646f856514b3cf5307ad1cb4ec574bc8578478d0e64d",
+      "end_line": 24,
+      "fingerprint": "c998ac045a530a801463c5a0739f8559ec08169ad6356ccd90646abedf7b24cc",
       "heading": "阅读路由",
-      "id": "2f9d6051f2aaa3652bca",
+      "id": "20c9177532c5994d6c0b",
       "path": "knowledge/INDEX.md",
-      "preview": "## 阅读路由 | 需要了解 | 入口 | | --- | --- | | 产品定位、用户、业务闭环、范围 | [product.md](product.md) | | 服务边界、数据流、运行架构 | [architecture.md](architecture.md) | | 架构图全景与 agent service 六层映射 | [全景映射](../docs/architecture_panorama.md) 与 [adr-0015](decisions/0015-agent-service-bounded-context-facades.md) | | http、事件、共享数据结构 | [contracts.md](contr",
+      "preview": "## 阅读路由 | 需要了解 | 入口 | | --- | --- | | 产品定位、用户、业务闭环、范围 | [product.md](product.md) | | 服务边界、数据流、运行架构 | [architecture.md](architecture.md) | | 架构图全景与 agent service 六层映射 | [全景映射](../docs/architecture_panorama.md) 与 [adr-0015](decisions/0015-agent-service-bounded-context-facades.md) | | 对标 nexus agent 的架构与工作逻辑优化计划（执行计划、执行器注",
       "start_line": 5,
-      "vector_b64": "APr3/P4CCwX+GBYGBv8A5/wBBPb6APQA+v/+AA75AQoP7wYBAfoDBQX19QUABwET8fsHB/IFB/ES7gAKAgX2+vwA/AAG+vYP+h38APsA+/8BD/sBAPcH///2+wX+7fAADQrvAA37CQAC+u78/Av9DfsA//8AAvv+BQb6+hIACPr+BQDv6SIF/gIAAAvsABYE9gUMC/4B8gAE//H7/wAKEPoMBAcNAvsN//8B/gEA//8KBQEEAQb8CgAA+/EFBgTz"
+      "vector_b64": "+vr4/f3+BwT+EhQGBv8A6f0B//f6APgA+v/+AAf0AQkN8AUBAfUCBATw9gQABgET8vwI9fMHAvMV8AAD/Qb3+v8A/AAG+vcNACT9+voA/P4BDf0BAP8HAP/2/AT+7vEADAnwABP8CAAA+u/9/gr9DPwA//8AAgf+Cgbw+hUAB/r+BQD16yAJ7wIAAAvuABQD+QQLCv4C8voD/+z+AAAJD/YLCAcSB/YMBP/8/gEAA/8JBAH/+wb4CAD+/PMEBQj5"
     },
     {
-      "end_line": 37,
+      "end_line": 38,
       "fingerprint": "78ba809487e0267279433dc7aaf7c6b1b927c2a98cdeae3953cec0336910ce03",
       "heading": "维护规则",
-      "id": "73bf0ab3572d8d1a83af",
+      "id": "dc07ccf07f628e52209c",
       "path": "knowledge/INDEX.md",
       "preview": "## 维护规则 - 业务语义变化时更新对应人工文档；生成器不能替代架构判断。 - 接口或事件变化先改 `contracts/`，再改生产者、消费者和测试。 - 重要选择新增 adr；旧 adr 只能被新 adr 显式取代。 - 代码、依赖、路由、测试或契约变化后执行： ```powershell python scripts/update_knowledge.py python scripts/update_knowledge.py --check ``` - `generated/current_state.md` 禁止手改。 - `generated/semantic_index.json` 禁止手改；它不是真实来源，只保存内容",
-      "start_line": 24,
+      "start_line": 25,
       "vector_b64": "CAgCAAINAAUABQD5AP3+/gcA/v74BQ8NAAfxDwn+CAgNCAAH8AAAFwD5+PgI+QcCAAD78wgI+ez8+QAAAgfwAA8AAAAAAAAcAAAMCAAA/gAAHA8AAPn+9wAA+Pbz+wAAFB4AABD9BwD4/v0DAAcH/gMAAv75/gD+FwAIAAUQBwAH/gchABYNCPn+APQN+fj4AAD5+AAH/vEADwD//fPr+f35/v4AABIC/QD4GQLcAAD9AAcCBwcC/ggACP34Afn7"
     },
     {
@@ -2835,43 +2995,53 @@
       "vector_b64": "AvsPCQMF/gkPAwgI9ggHDv0TA/j6DAkB/AAHBAP2CfUV8//5/fXoCPrvABEB+P/+/wH99hEI/QP++/oW+wf+AAEB/foMAgMA/Pb8Efz3+AgCAxgHAAv8AAAUBfj24/kID/f8/P8N9Pz9+QL5BPb2EwID+QMN/PH3AwgACPgCA/UGBfMF8gQCCfkEBv/5/BMG8wAT+f4A7gARA+oEAQ0CAwb2/RL+AQIPA/gH/vsE/AUBA/n//hP4/+sC+f0JBP0F"
     },
     {
-      "end_line": 161,
-      "fingerprint": "e273dce8c7917cbcb0efa3f4a285634a261e3860a23de1c6b477c0e6d46773a1",
+      "end_line": 167,
+      "fingerprint": "83db48d330d0b6b611ba336bdc191e7e131135b4cb34d786b5b7026eea0f90ad",
       "heading": "当前已知基线",
-      "id": "88744ad0ad9f20fa4d34",
+      "id": "b471add75998a5c48b0f",
       "path": "knowledge/QUALITY.md",
       "preview": "- media service 在 ci 使用的 temurin jdk 17.0.18 下 `mvn -q test` 全量 **135/135**，failures/errors/skipped 均为 0；这是 jdk 17 口径的首次全量通过记录，jdk 18 口径以 2026-09-07 条目为准。web `npm run lint` 0 error、`npm test` **7/7**、typescript/vite 生产构建通过。 - `python scripts/local_acceptance.py` 返回 `pass`，localhost-only **33/33**（临时 h2/sqlite、mock/loca",
       "start_line": 158,
-      "vector_b64": "CAABBf0A/wAF+wf49P/2BfT6/AAA/wAA//kFCP8H+wAS9wjwAOn+BQIA/QD4CfADAAwD8wsL8ggAAQQBCf77DAkODAUAAPL5BAj/BfIABA0A+w0A+gQDABb5AfT/APkNCwkTBwAI6AAFE/38AAD7DAsA/P0FB+sG8wj5+QQH9wEADvUA8PsB7gUAEPf/+BbzBAX/+fcABAD/EuXuAAAF9AXgABb/DgAH9QD/CAj7/wgFBwgMA/P/7wD//PcI8AP9"
+      "vector_b64": "DQIA/P0ACAMI/vr9AQP9A/8EAgIA+wIICfgTDAME+/YM+hX7/en2EwH5ARD1C+wF/RQE7AcK/Ob5/f0N/fv3CAYEBAP8CPz0/AAG+/sO/AP8CwQK+wr9CgT+//H9BPkM/wsQDP/97wMGFvr4/QnzEP4AAv0BBPcCAwj6+ggEBAP7B+7v8gAE9wcMDgP8+wr6Cwv9/P0D8wT8Den5BfwI/AjlAxL8DQUC//0DCQz2/QQKFP8MB/j29P71A+wM/v0C"
     },
     {
-      "end_line": 171,
+      "end_line": 169,
+      "fingerprint": "42dad4e10cceebeaaebe27057123c506b4820b0c8485b9035a49e194435994ce",
+      "heading": "当前已知基线",
+      "id": "3d4af7895127606564bf",
+      "path": "knowledge/QUALITY.md",
+      "preview": "- 面试文档中的 agent 测试数量已更新为 170；带日期的历史条目保留当时数字。",
+      "start_line": 168,
+      "vector_b64": "AAAEAAAAAAAAAAAA8QAAAPkEAAAAAAAAEgAPAAASAA8P1AAA7gAE/AAA/AAAAAAAAAAAAPwPAAAAAAsS/ADxAAAAAAAAAAAADwAAEvkAAA8AAPwA8QQAAAAEAPzxEgAAHgsAAAAA7gAAAPkEAAAA9fwAAAAAAAAAABIA8QAA/AAAAAAAAAAAAAAPAO7uAAAEABIAAA8A8e4A6+vx7gAPDwDxAAAACwAA8QAAABUSAADuEgQPAPwA6gDx8QAA7gcA"
+    },
+    {
+      "end_line": 179,
       "fingerprint": "572153ef6f43e035e6451e443e1f6eac89c34738b75cf4d02004f5bcd80de424",
       "heading": "合并门禁",
-      "id": "70ca1b93690dd7601270",
+      "id": "b6dd43a5c2bc2dccc818",
       "path": "knowledge/QUALITY.md",
       "preview": "## 合并门禁 - 相关服务全量测试通过。 - `ruff check --config ruff.toml services/agent-service scripts quality` 与 `apps/web` 的 `npm run lint` 均为 0 error。 - web 类型检查和构建通过。 - 契约校验、owner/tenant 负向测试通过。 - agent 行为变化对应评测未退化。 - `python scripts/update_knowledge.py --check` 通过。 - 无法运行的验证必须说明环境原因、影响边界和替代证据。",
-      "start_line": 162,
+      "start_line": 170,
       "vector_b64": "CfcAB/UPCQIAAAf9AAAADwDuAP4AAgD+AAAAGATvAgAP8QnmAAD2BwPsBwkAAPwEAADv+QcAAPfxAAkK9wDt9wQH5AAAAN0WBwABAAQABwoAAPcAAgv+CQELAAnx9wD+Fvz+EQkL9/Hc+foHAgAAAPcC+QIEAPb1AAD3/gD3AAAHAPkKAAAABwD1APTtABYAAvYAAAkKAAAA/vYTAAD5+vfs/vn3AAAJ/PkAAAwAAgD+/vwJDwL5AgD+9wAACgAA"
     },
     {
-      "end_line": 181,
+      "end_line": 189,
       "fingerprint": "5047e9e61d496b3786ef6cad6c598ac4ce0d0d9e806d7fa966d87651b33641ce",
       "heading": "Agent 评测适用边界",
-      "id": "803a4382700228ac8545",
+      "id": "84f5bb990a1bf357177f",
       "path": "knowledge/QUALITY.md",
       "preview": "## agent 评测适用边界 - v6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。 - `evaluate_v6.py` 显式关闭 llm router，使用确定性回答路径；judge 检查是否答/拒、top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。 - prd v1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective to",
-      "start_line": 172,
+      "start_line": 180,
       "vector_b64": "//r88vcLCfT2+w0A/vj8Cv3++gYREfcK9gQDCgL4Bf399Ar+7/kCBP7//AgD/f79EAEF+goGBO32+vwGBPb+AQwDC+kKCAgE/QAI+u8ACAT9EQIIAAADAQz8BAUJ+/wJEfYRBwMCCwgOGQwL/AD+Af7rBAYY/vwCDgYD+fL//wTyCgL54/wG+P8DFfX7+A33Evv8BPkJ+hMKA+8F+AD+AgT47/8OBP8JCvYAFAj9BvwMA/gBAQwCAOz+/vUD/vb+"
     },
     {
-      "end_line": 187,
+      "end_line": 195,
       "fingerprint": "782ebc1f856cc28a58ccf79fea53213f520bb5cedf89a498ce703788ed3f7059",
       "heading": "不允许的质量声明",
-      "id": "417e8daf7c9012bb0c2d",
+      "id": "aa498a0f6971620f4b3c",
       "path": "knowledge/QUALITY.md",
       "preview": "## 不允许的质量声明 - mock 中间件通过不等于真实 redis、mq、对象存储或模型通过。 - 有 citation 字段不等于引用真实正确。 - ui 隐藏资源不等于完成授权。 - happy path 演示不等于任务具备重试、幂等和恢复能力。",
-      "start_line": 182,
+      "start_line": 190,
       "vector_b64": "AAIA9+f3AAAAHBDyAAD5B/cA9wAJ/gD8/gAAGgf5APkjAAAAAvkHAvf3FwAAAPLuAAkFAAAAAOcAAAkHAAD+AAD+AAASHO8V9gD3Cfz5/vkAAAD5AAX+AAAEBPn2GQAAFQsABwf59+QC+fcA7gD+9wAAAPQADPkAAAD3AAcAAPkA/vcA6wkH/gAAAAAHABwAAAAAAAkAAAD+GgcAAPv3APf5AAD5CgIA/vEHAAwA+RIA+QIC+ADyAAAACQcAAAcH"
     },
     {
@@ -2956,23 +3126,23 @@
     },
     {
       "end_line": 112,
-      "fingerprint": "0378da025a1704bc93c07ccb77c86f7c9de79ef6aa90036a27bee9e7234510a5",
+      "fingerprint": "09049008d0f3458ccf453b9c1aa2213ab1f77adf5c817ab486b74cc9f55b8c91",
       "heading": "4.1 业务 RAG 向量",
-      "id": "a821277f200abef6bda5",
+      "id": "e14fe017ad02d5fc6d3f",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "### 4.1 业务 rag 向量 业务 agent 有两套向量表示： - `embedding`：64 维确定性字符 n-gram feature hashing，无下载、离线可复现，是功能保底。 - `embedding_v2`：可选 `baai/bge-small-zh-v1.5` 本地 onnx 向量；模型不可用时不会阻断摄取和检索。 真实模型惰性加载并支持显式 warm-up。新增的向量缓存以 `(model object identity, sha-256(text))` 为 key，value 是不可变向量 tuple：同一 batch 的重复文本只推理一次，跨请求重复文本命中最大 512 项的进程内 lru。key ",
       "start_line": 102,
-      "vector_b64": "APv8APcQ+gQOAAEEBQ0EBv8GBPkA/w4YBQX/BhAAB/wA8Qzx9Q8KBPrvBhQAAAvx/gX7DBAHC/H2AAr6BQX79gwF+wUBAAAFAQIA+gX6/QsMGwsBAAQK9ewG//7+BhEGBBT/Cwb5DgD5+toHFf4K+gD6BgD2DAAAB/4GBQQA/f785vr3Cfv/Cvz/DPkA9BAREgL2APv8BwQEAP38+QD+APz7AQsHEP/7BAz/AAIaBQD0/gYBBPkAAQQA9v4KAf4E"
+      "vector_b64": "BPz//P4KBP8MAPz+DwsNC/sFDfQA+wwUBQAEBhIEBvD79w/u8RcLBPbxABL8CQP4CAT8Cw4ID+f3/An7BAQAAgv/9//9BQAE+wL8+wUA/f4FGBMBAAMN/O8E/wP6BhAPEBb7CgX6DPz6/+MRFP4AAPb8Bfv3BgAGAv4LAwQACQH+6vvtDfz9CQIEC/z39QoIDgICAAD+/wIE//34+gD+APkGARQGDgT8/wf/BQER/wD6CwABAPr8BP8C8vsNDPr+"
     },
     {
       "end_line": 131,
-      "fingerprint": "16615ed38cb01b23eb1dfda188b0397b764eeb976ccb0600105a62856c46f7ad",
+      "fingerprint": "80cd8f86788d478cc1d68809e74d41865733aa4a5ee6fd20133ce9b1ad1ad0d4",
       "heading": "4.2 维护 Skill 语义索引",
-      "id": "89b10d3e5be1f13994b2",
+      "id": "9f9e5fab751fc3fdd52d",
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
       "preview": "### 4.2 维护 skill 语义索引 维护知识和客户业务数据完全分离。`scripts/knowledge_index.py` 只扫描仓库内批准的知识、adr、契约、readme、当前运维文档和 skill 参考，不读取 `docs/archive`、sqlite、媒体、上传内容或 runtime 目录。 索引使用 192 维 `hash-ngram-topic-embedding-v1`：英文/代码词、中文 1~3 gram 与领域 topic alias 共同映射到稳定向量。归一化向量进一步量化为 signed int8 并 base64 存储，把每个 chunk 的向量载荷固定为 192 字节；查询时解码并执行 cosi",
       "start_line": 113,
-      "vector_b64": "DwjvAvsGD/oN/vYCCAT79wL5/AH86/4VDfoBCwb3+/INAv/wDQoL/gLsBhj5BAL+AwX5/Or68/kI7/70/wsB+gIG+AEACPgK9fP3/PUI/vrzDv3/BAT/Ag0C/Qf6CgYIBwj+AP0BFAQM/QQMBwL6/u/8/gkGDP39CQAAAQjy9P3++Arn9P0GAQzsBf79+x8H9wARAfsC/vn++Pr2+wIIBfn6+vkQ9vz++v73BwYB9AQCCwoB+gcF/Pb49vQL5wL6"
+      "vector_b64": "Dwjz/vsFEvoN/vcCCAT79wL5/AH87P4VDPsBCwz39/INAv/xDAkL/wLsBRj5Bgb+BwX5/Ov79PMI7f70/woE+gIG+P0ADPgJ9fT3/PcI/vrzDf3/BAT/AwwC/Qf6CQILBwn+AP0BFAQI/QQPBwL6/vD8AgkGD/3+CQAEBAjy9/3++Arm9P0FAQztBf79+xsI+AAQ/fsC/vX++Pr3+wIIBfn7+v0Q9vwC+/v3BwUB9AQEDQoC9wcF/fr49vQP5wL3"
     },
     {
       "end_line": 148,
@@ -3056,13 +3226,13 @@
     },
     {
       "end_line": 50,
-      "fingerprint": "8b4e173f896450ca55f0226bf7a6401c308bfc9e1bec4175e66f247482ed52d9",
+      "fingerprint": "674c540c60e5874d2d93bc9c36b1d09738789e9655c4a9a2580c019a304797bd",
       "heading": "工程证据",
-      "id": "d56bdec4352eafac1339",
+      "id": "472a55adbe14e7d20e0f",
       "path": "README.md",
-      "preview": "## 工程证据 | 能力 | 当前可验证证据 | | --- | --- | | agent service | 157 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 cas、检索、审批、隔离、工具与知识版本治理 | | media service | 受支持的 temurin jdk 17/18 下 135 个自动化用例（ci 使用 jdk 17） | | agent 质量 | v6 rag 42 例 + prd v1 12 例 + knowledge lifecycle v1 3 类场景三套独立门禁 | | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部",
+      "preview": "## 工程证据 | 能力 | 当前可验证证据 | | --- | --- | | agent service | 170 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 cas、检索、审批、隔离、工具与知识版本治理 | | media service | 受支持的 temurin jdk 17/18 下 135 个自动化用例（ci 使用 jdk 17） | | agent 质量 | v6 rag 42 例 + prd v1 12 例 + knowledge lifecycle v1 3 类场景三套独立门禁 | | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部",
       "start_line": 37,
-      "vector_b64": "AfcG7gUO/wAF9AYB8/8EAAX8/foAFP8F+PoNDAEAAf8O/AbyBf72+/v0+gAGBPD9BA0IEQL/APD7CgD6AP3/BfwMAPoADAAAAQAGAPYF/QwMHRUFBv3/AQYAAPj7DQUGDgP7BgcBBwD7EO/7/wD/Cfz0BQEKGPQGABYG+woACAb6//v66gAF7v/2BvYE+hXyEAQCBvP5+g7z/wAK/fAFAADiAA4Q+/8ABgkG/A8AAAD8Ae4CAAztAPr0BvPzAf/w"
+      "vector_b64": "AfcG7gUO/wAF9AYB8/8EAAX8/foAFP8F+PoNDAEAAf8O/AbyBf72+/v0+gAGBPH9BA0IEQL/APH7CgD6AP3/BfwMAPoADAAAAQAGAPYF/QwMHRUFBv3/AQYAAPj7DQUGDgP7BgcBBwD7D+/7/wD/Cfz0BQEKGPQGABYG+woACAb6//v66wAF7v/2BvYE+hXyDwQCBvP5+g7z9wAK/fAFAADiAA4P+/8ABgkG/A4AAAD8Ae4CAAztAPr0BvPzCP/x"
     },
     {
       "end_line": 59,
@@ -3365,7 +3535,7 @@
       "vector_b64": "AAAAAAAAAAAAAAAAAAAAAADtAAAAAAAA7QAAAAAAAAAAAAAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAADtANoAACYA7e0AAAAAAAAAAAAAAAAAABMAAAAAAAAAAAATAAAAAAAAAAAAAAAA2u0AAADtEwAAAAAAABMAAAAA7QAAAAAAAAAAAAAAAAAAAADtACgA7QAAAADtAAAAAADtAAAAJgAAANrtAADtABMAAAAAAAAAAAAAAAAAAADtAAAAAAAA"
     }
   ],
-  "corpus_revision": "11db9cd9a39409d735ae98b319fafae8f7606138bd8d6de9709702525fd9d020",
+  "corpus_revision": "3ed7057d6bfd3f3f94235a27b75095a75b3d7d99df69c81dd65c8c24ea1d8bdd",
   "embedding": {
     "algorithm": "hash-ngram-topic-embedding-v1",
     "dimension": 192,
@@ -3427,6 +3597,10 @@
       "sha256": "15d6ef7c27120d019de3f5632252065d98ef41cce4fc3294fd19baabe2057cd2"
     },
     {
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "sha256": "011761dd73645a9eac68c214d4882b21a59bdc4f407c03e2c64b927310dbec55"
+    },
+    {
       "path": "docs/ARCHITECTURE_PANORAMA.md",
       "sha256": "6e185f969abd0ed4f989d7d007ee705649586b8e9560d86b98112f1ec1869ee2"
     },
@@ -3436,15 +3610,15 @@
     },
     {
       "path": "docs/INTERVIEW_GUIDE.md",
-      "sha256": "46133fc45a5abba1c789e32eb87bcd5e19e22ff751ab73540d0b10296a8435e4"
+      "sha256": "d8de55030785d5403bf717c5d595f2e8e7a820fcd8262abd0c7d16655648a29b"
     },
     {
       "path": "docs/INTERVIEW_REHEARSAL.md",
-      "sha256": "e66b4214ab6fae001dd21ba222b461f5b5c09d50f32d537c1e5ac9295c075a2e"
+      "sha256": "e370555028caf07a4816f8d1f81aaadbc6e1449cff1ffbb7ab5e2acd8c3d7ffb"
     },
     {
       "path": "docs/INTERVIEWER_STRESS_REVIEW.md",
-      "sha256": "8a4b096468b4b7cbf625ee8ddcc4119325ded4593f001c3008004f9655973152"
+      "sha256": "09919d59c6474fbe021bb5f3e0be9c0dc4c10b9572201b8e20802a5c116d1513"
     },
     {
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
@@ -3468,11 +3642,11 @@
     },
     {
       "path": "docs/START_HERE.md",
-      "sha256": "e0e7320d21be17fe1c6324c0d0b000e4ed1f44272ed99fc444a8665cf94640cd"
+      "sha256": "fe65f0ae0b952b40116a9b3375d08d2001a8bc900d00a8aea9f53fff45764a32"
     },
     {
       "path": "knowledge/AGENT_ENGINEERING.md",
-      "sha256": "b6e2ceef35aba7650a14e15a02799882c61c6fa46a270b9ed26e98b17a1c06f9"
+      "sha256": "8346cf65a990b9e4d4b7427973787beb23f7e18c6a62f1924786c23e08c904ee"
     },
     {
       "path": "knowledge/ARCHITECTURE.md",
@@ -3548,11 +3722,11 @@
     },
     {
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "sha256": "34d570658e36057a74965c6678e7de66cf9a43ad7950d3b16871152e5854f22f"
+      "sha256": "43b7ebe0203b6fa7f27507049de3f9c616785656199d0fb109839111689177b9"
     },
     {
       "path": "knowledge/INDEX.md",
-      "sha256": "bf5f2e67c334d29cb8f64c44aa3a5975acdf2d10ff259cc6247d7547ffe513fe"
+      "sha256": "c324e94c26d6976c87dbf1ba7450a9713ec56b98618ff2e650f095409d2b7ac1"
     },
     {
       "path": "knowledge/OPERATIONS.md",
@@ -3564,15 +3738,15 @@
     },
     {
       "path": "knowledge/QUALITY.md",
-      "sha256": "2ab6a26bd18e03ca1a45451acf7e0a7b52705dcd9cc26437dd466cc4eb1ae421"
+      "sha256": "860539fe580cb2a339c208b3ddef5a290a4067e8c6688320b6e4628e7a484f03"
     },
     {
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
-      "sha256": "7c8dc9917da1a15b753847a4553ad2040929c2f01ba8e40d787941e469986859"
+      "sha256": "a16a4c2f1d8321c43d40cd87b12b3ed0888d67dd4bd399c12dc5a3d4d8df6268"
     },
     {
       "path": "README.md",
-      "sha256": "8a5fe140bea1c9c132a4293b2dc35f6a4f0394c5859818d079c8b64ac124f9e6"
+      "sha256": "3109ab37a9483ef529aef2215816cc0b785488a4cd6d366cf5a0e8d2a18f7bb4"
     },
     {
       "path": "skills/enterprise-insight-maintainer/references/maintenance-workflow.md",

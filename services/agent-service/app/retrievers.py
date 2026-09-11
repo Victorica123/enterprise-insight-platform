@@ -1,46 +1,45 @@
-import json
+"""Retrieval channels over authorized chunk snapshots.
+
+``Chunk``/``RetrievalScope``/``load_chunks`` live in ``app.chunk_index`` and the
+tokenizer in ``app.text``; they are re-exported here for backwards compatibility
+with tests and evaluation scripts that patch ``app.retrievers.*``.
+"""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Protocol
 
-from app import database
+from app import database  # noqa: F401 - patch target for tests (app.retrievers.database)
+from app.chunk_index import (
+    Chunk,
+    ChunkIndex,
+    RetrievalScope,
+    clear_chunk_cache,
+    get_chunk_cache_stats,
+    load_chunk_index,
+    load_chunks,
+)
 from app.config import get_retriever_mode
 from app.embeddings import (
     build_embedding,
     cosine_similarity,
     embed_real,
-    embedding_from_json,
     is_real_embedding_available,
+    is_reranker_configured,
     rerank_pairs,
     similarity_to_score,
 )
-
-
-@dataclass
-class Chunk:
-    document_id: str
-    filename: str
-    chunk_index: int
-    content: str
-    embedding: list[float] | None = None
-    embedding_v2: list[float] | None = None  # A3: 真实语义 embedding（512 维）
-    title: str = ""  # A4: 块标题（最近的 markdown 标题）
-    tenant_id: str = "legacy"
-    owner_id: str = "legacy"
-    source_type: str = "document"
-    asset_id: str | None = None
-    segment_id: str | None = None
-    start_ms: int | None = None
-    end_ms: int | None = None
-    speaker: str | None = None
-    origin_type: str = "uploaded_document"
-    knowledge_candidate_id: str | None = None
-    prd_version_id: str | None = None
-    content_sha256: str | None = None
-    knowledge_version_id: str | None = None
-    knowledge_version_number: int | None = None
-    knowledge_lifecycle_status: str | None = None
-    superseded_by_document_id: str | None = None
+from app.text import (
+    CHAR_STOPS,
+    STOP_TERMS,
+    char_ngrams,
+    deduplicate_preserve_order,
+    extract_search_terms,
+    normalize_text,
+    tokenize_words,
+)
 
 
 @dataclass
@@ -54,15 +53,9 @@ class RetrievalHit:
 class RetrievalResult:
     hits: list[RetrievalHit]
     scanned_count: int
-
-
-@dataclass(frozen=True)
-class RetrievalScope:
-    """Authorization filter applied before any evidence reaches a model."""
-
-    tenant_id: str
-    owner_id: str | None = None
-    asset_ids: tuple[str, ...] = ()
+    # "disabled": no reranker configured; "applied": head re-ordered;
+    # "unavailable": configured but inference failed -> fused order kept, made visible in trace.
+    rerank_status: str = "disabled"
 
 
 # RRF 的平滑常数，取检索文献常用的 60：排名靠前的差异被放大，长尾被压平。
@@ -105,17 +98,25 @@ class KeywordRetriever:
     name = "keyword"
 
     def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
+        return self.search_index(queries, load_chunk_index(scope))
+
+    def search_index(self, queries: list[str], index: ChunkIndex) -> RetrievalResult:
         query_terms = [(query, extract_search_terms(query)) for query in queries]
         query_terms = [(query, terms) for query, terms in query_terms if terms]
         if not query_terms:
             return RetrievalResult(hits=[], scanned_count=0)
 
-        chunks = load_chunks(scope)
-        hits: list[RetrievalHit] = []
-        for chunk in chunks:
-            # A4: 标题词项并入 chunk 词项——"违约责任条款"这类标题关键词才能命中
-            searchable = f"{chunk.title} {chunk.content}" if chunk.title else chunk.content
-            chunk_terms = extract_search_terms(searchable)
+        chunks = index.chunks
+        # 只对至少共享一个词项的 chunk 打分（倒排 posting），其余 chunk 分数必为 0。
+        all_terms: set[str] = set()
+        for _, terms in query_terms:
+            all_terms.update(terms)
+        candidates = index.candidates(all_terms)
+
+        hits_by_position: dict[int, RetrievalHit] = {}
+        for position in candidates:
+            chunk = chunks[position]
+            chunk_terms = chunk.search_terms()
             scores: list[tuple[str, int]] = []
             for query, terms in query_terms:
                 # 归一化为 query 词项覆盖率（0-100），而不是原始交集计数：
@@ -123,18 +124,23 @@ class KeywordRetriever:
                 score = coverage_to_score(len(terms.intersection(chunk_terms)), len(terms))
                 if score > 0:
                     scores.append((query, score))
-
             best_score = max((score for _, score in scores), default=0)
             matched_queries = [query for query, score in scores if score == best_score]
-            hits.append(
-                RetrievalHit(
-                    chunk=chunk,
-                    score=best_score,
-                    matched_queries=matched_queries,
-                )
+            hits_by_position[position] = RetrievalHit(
+                chunk=chunk, score=best_score, matched_queries=matched_queries
             )
 
-        ranked_hits = sorted(hits, key=lambda hit: hit.score, reverse=True)
+        # 未共享任何词项的 chunk 分数必为 0，仍按语料顺序参与稳定排序并落在尾部：
+        # 调用方据此区分"没命中"和"知识库为空"，且结果顺序与逐块打分的旧实现完全一致。
+        ranked_hits = sorted(
+            (
+                hits_by_position.get(position)
+                or RetrievalHit(chunk=chunk, score=0, matched_queries=[])
+                for position, chunk in enumerate(chunks)
+            ),
+            key=lambda hit: hit.score,
+            reverse=True,
+        )
         return RetrievalResult(hits=ranked_hits, scanned_count=len(chunks))
 
 
@@ -146,8 +152,9 @@ class EmbeddingRetriever:
         if not query_texts:
             return RetrievalResult(hits=[], scanned_count=0)
 
-        chunks = load_chunks(scope)
+        return self.search_chunks(query_texts, list(load_chunk_index(scope).chunks))
 
+    def search_chunks(self, query_texts: list[str], chunks: list[Chunk]) -> RetrievalResult:
         # A3: 真实语义 embedding 优先（query 与缺失 chunk 向量各批量推理一次）；
         # 模型不可用或推理失败时整体回退哈希 n-gram 版。
         if is_real_embedding_available():
@@ -242,8 +249,22 @@ class HybridRetriever:
     name = "hybrid"
 
     def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
-        keyword_result = KeywordRetriever().search(queries, scope)
-        embedding_result = EmbeddingRetriever().search(queries, scope)
+        # 两路共用一次快照加载并并行执行：关键词路径是纯 Python，向量路径在真实模型下会释放 GIL。
+        index = load_chunk_index(scope)
+        query_texts = [query for query in queries if query.strip()]
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="hybrid") as pool:
+            keyword_future = pool.submit(KeywordRetriever().search_index, queries, index)
+            embedding_future = (
+                pool.submit(EmbeddingRetriever().search_chunks, query_texts, list(index.chunks))
+                if query_texts
+                else None
+            )
+            keyword_result = keyword_future.result()
+            embedding_result = (
+                embedding_future.result()
+                if embedding_future is not None
+                else RetrievalResult(hits=[], scanned_count=0)
+            )
 
         chunks: dict[tuple[str, int], Chunk] = {}
         keyword_scores: dict[tuple[str, int], int] = {}
@@ -295,14 +316,20 @@ class HybridRetriever:
 
         # A3: 可选 reranker 精排——只重排 RRF 候选头部，门控分保持不变。
         # 默认关闭（RERANKER_MODEL 为空）；启用后对延迟预算负责（见 embeddings.py 注释）。
-        if len(ranked_hits) > 1 and queries:
+        rerank_status = "disabled"
+        if len(ranked_hits) > 1 and queries and is_reranker_configured():
             reranked = self._rerank_head(queries[0], ranked_hits)
             if reranked is not None:
                 ranked_hits = reranked
+                rerank_status = "applied"
+            else:
+                # 精排失败不伪造分数：保留融合榜，并让调用方在 trace 中标明降级。
+                rerank_status = "unavailable"
 
         return RetrievalResult(
             hits=ranked_hits,
             scanned_count=max(keyword_result.scanned_count, embedding_result.scanned_count),
+            rerank_status=rerank_status,
         )
 
     def _rerank_head(
@@ -327,152 +354,30 @@ def get_retriever(mode: str | None = None) -> Retriever:
     return KeywordRetriever()
 
 
-def load_chunks(scope: RetrievalScope | None = None) -> list[Chunk]:
-    revision = database.get_content_revision()
-    tenant_id = scope.tenant_id if scope else None
-    owner_id = scope.owner_id if scope else None
-    asset_ids = scope.asset_ids if scope else ()
-    return list(
-        _load_chunks_cached(
-            database.database_identity(), revision, tenant_id, owner_id, asset_ids
-        )
-    )
-
-
-@lru_cache(maxsize=64)
-def _load_chunks_cached(
-    db_path: str,
-    revision: int,
-    tenant_id: str | None,
-    owner_id: str | None,
-    asset_ids: tuple[str, ...],
-) -> tuple[Chunk, ...]:
-    # Both values intentionally participate in the cache key. The revision is
-    # stored in the selected database, so writes from another process invalidate this cache too.
-    del db_path, revision
-    chunks: list[Chunk] = []
-    for row in database.list_chunk_rows(
-        tenant_id=tenant_id,
-        owner_id=owner_id,
-        asset_ids=asset_ids,
-    ):
-        source_type = row["source_type"] if "source_type" in row.keys() else "document"
-        try:
-            metadata = json.loads(row["metadata_json"] or "{}") if "metadata_json" in row.keys() else {}
-        except (TypeError, json.JSONDecodeError):
-            metadata = {}
-        chunks.append(Chunk(
-            document_id=row["document_id"],
-            filename=row["filename"],
-            chunk_index=row["chunk_index"],
-            content=row["content"],
-            embedding=embedding_from_json(row["embedding"]),
-            embedding_v2=embedding_from_json(row["embedding_v2"]) if "embedding_v2" in row.keys() else None,
-            title=row["chunk_title"] if "chunk_title" in row.keys() else "",
-            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "legacy",
-            owner_id=row["owner_id"] if "owner_id" in row.keys() else "legacy",
-            source_type=source_type,
-            asset_id=row["asset_id"] if "asset_id" in row.keys() else None,
-            segment_id=row["segment_id"] if "segment_id" in row.keys() else None,
-            start_ms=row["start_ms"] if "start_ms" in row.keys() else None,
-            end_ms=row["end_ms"] if "end_ms" in row.keys() else None,
-            speaker=row["speaker"] if "speaker" in row.keys() else None,
-            origin_type=(
-                "approved_knowledge" if source_type == "knowledge"
-                else "media_transcript" if source_type == "video"
-                else "uploaded_document"
-            ),
-            knowledge_candidate_id=(
-                row["external_id"] if source_type == "knowledge" and "external_id" in row.keys() else None
-            ),
-            prd_version_id=metadata.get("prd_version_id") if isinstance(metadata, dict) else None,
-            content_sha256=(
-                row["payload_sha256"] if source_type == "knowledge" and "payload_sha256" in row.keys() else None
-            ),
-            knowledge_version_id=(
-                metadata.get("knowledge_version_id") if source_type == "knowledge" and isinstance(metadata, dict) else None
-            ),
-            knowledge_version_number=(
-                metadata.get("knowledge_version_number") if source_type == "knowledge" and isinstance(metadata, dict) else None
-            ),
-            knowledge_lifecycle_status=(
-                row["lifecycle_status"] if source_type == "knowledge" and "lifecycle_status" in row.keys() else None
-            ),
-            superseded_by_document_id=(
-                row["superseded_by_document_id"]
-                if source_type == "knowledge" and "superseded_by_document_id" in row.keys()
-                else None
-            ),
-        ))
-    return tuple(chunks)
-
-
-def clear_chunk_cache() -> None:
-    _load_chunks_cached.cache_clear()
-
-
-def get_chunk_cache_stats() -> dict[str, int]:
-    info = _load_chunks_cached.cache_info()
-    return {
-        "entries": info.currsize,
-        "max_entries": info.maxsize or 0,
-        "hits": info.hits,
-        "misses": info.misses,
-    }
-
-
-def deduplicate_preserve_order(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        normalized = value.strip()
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            result.append(normalized)
-
-    return result
-
-
-def extract_search_terms(text: str) -> set[str]:
-    normalized = normalize_text(text)
-    terms = tokenize_words(normalized)
-
-    compact = "".join(normalized.split())
-    terms.update(char_ngrams(compact, size=1))
-    terms.update(char_ngrams(compact, size=2))
-
-    return {term for term in terms if term not in STOP_TERMS and term not in CHAR_STOPS}
-
-
-# A2: 停用词——去掉只贡献噪声、不贡献主题的通用词/字，
-# 减少"配置""情况"这类通用词制造的字面重合虚高分。
-STOP_TERMS = {
-    "什么", "怎么", "如何", "哪些", "这个", "那个", "一下",
-    "情况", "问题", "为什么", "请问", "多少", "哪里", "方案", "时候",
-}
-
-CHAR_STOPS = {
-    "的", "了", "是", "在", "与", "和", "及", "或", "吗", "呢",
-    "啊", "请", "把", "被", "对", "从", "向", "就", "都", "也",
-    "还", "会", "个", "有", "要", "为",
-}
-
-
-def normalize_text(text: str) -> str:
-    separators = " \n\t\r,.;:!?，。！？；：、（）()[]{}<>\"'“”‘’"
-    normalized = text.lower()
-    for separator in separators:
-        normalized = normalized.replace(separator, " ")
-
-    return normalized
-
-
-def tokenize_words(text: str) -> set[str]:
-    return {term for term in text.split(" ") if term}
-
-
-def char_ngrams(text: str, size: int) -> set[str]:
-    if size <= 0 or len(text) < size:
-        return set()
-
-    return {text[index : index + size] for index in range(len(text) - size + 1)}
+__all__ = [
+    "CHAR_STOPS",
+    "Chunk",
+    "EMBEDDING_WEIGHT",
+    "EmbeddingRetriever",
+    "HybridRetriever",
+    "KEYWORD_WEIGHT",
+    "KeywordRetriever",
+    "RERANK_CANDIDATES",
+    "RRF_K",
+    "RetrievalHit",
+    "RetrievalResult",
+    "RetrievalScope",
+    "Retriever",
+    "STOP_TERMS",
+    "char_ngrams",
+    "clear_chunk_cache",
+    "coverage_to_score",
+    "deduplicate_preserve_order",
+    "extract_search_terms",
+    "get_chunk_cache_stats",
+    "get_retriever",
+    "load_chunks",
+    "normalize_text",
+    "reciprocal_rank_fusion",
+    "tokenize_words",
+]

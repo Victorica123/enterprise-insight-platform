@@ -34,7 +34,9 @@ from app.rag import (
     build_local_usage,
     check_evidence,
     deduplicate_preserve_order,
+    describe_rerank,
     expand_queries,
+    rerank_trace_steps,
     title_term_boost,
 )
 from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
@@ -641,9 +643,13 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
             TraceStep(
                 name=f"retrieve_round_{round_index}",
                 status="ok" if useful_count else "no_match",
-                detail=f"第 {round_index} 轮检索：扫描 {result.scanned_count} 个 chunk，命中 {useful_count} 个，最高分 {top_score}。",
+                detail=(
+                    f"第 {round_index} 轮检索：扫描 {result.scanned_count} 个 chunk，"
+                    f"命中 {useful_count} 个，最高分 {top_score}。{describe_rerank(result)}"
+                ),
             )
         )
+        state.trace.extend(rerank_trace_steps(result))
 
         check = check_evidence(state.question, state.sources)
         state.trace.append(

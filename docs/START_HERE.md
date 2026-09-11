@@ -46,7 +46,7 @@
 | 文档/chunk/摄取回执 | `database.py` | 核心知识持久化，不含聊天观测逻辑 |
 | 问答指标、日志、反馈、历史引用 | `chat_observability_store.py` | 观测数据与回放 |
 | 标准/Agentic RAG | `rag.py`、`agentic_rag.py` | 工作流编排与回答 |
-| 授权检索和缓存 | `retrievers.py`、`embeddings.py` | 模型看到证据前的 scope 过滤 |
+| 授权检索和缓存 | `retrievers.py`、`chunk_index.py`、`text.py`、`embeddings.py` | 模型看到证据前的 scope 过滤 |
 | 六阶段分析 | `analysis_evidence.py`、`analysis_pipeline.py`、`analysis_store.py` | 冻结证据、阶段执行与恢复 |
 | PRD 发布和派生交付物 | `publication_service.py`、`publication_artifacts.py` | 审批状态与交付物投影 |
 | 知识版本与替代/撤回 | `knowledge_lifecycle_store.py` | 版本物化、CAS 与原子回滚 |

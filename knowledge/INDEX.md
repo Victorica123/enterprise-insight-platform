@@ -9,6 +9,7 @@
 | 产品定位、用户、业务闭环、范围 | [PRODUCT.md](PRODUCT.md) |
 | 服务边界、数据流、运行架构 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 架构图全景与 Agent Service 六层映射 | [全景映射](../docs/ARCHITECTURE_PANORAMA.md) 与 [ADR-0015](decisions/0015-agent-service-bounded-context-facades.md) |
+| 对标 Nexus Agent 的架构与工作逻辑优化计划（执行计划、执行器注册表、检索效率、记忆与流式） | [优化方案](../docs/ARCHITECTURE_OPTIMIZATION_PLAN.md) |
 | HTTP、事件、共享数据结构 | [CONTRACTS.md](CONTRACTS.md) 与 `../contracts/` |
 | 身份、租户、权限、隐私、审批 | [DATA_AND_SECURITY.md](DATA_AND_SECURITY.md) |
 | Agent 阶段、证据、评测、自进化 | [AGENT_ENGINEERING.md](AGENT_ENGINEERING.md) |

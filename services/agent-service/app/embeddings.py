@@ -6,6 +6,8 @@ import re
 from collections import OrderedDict
 from threading import RLock
 
+from app.text import char_ngrams, normalize_text
+
 DEFAULT_EMBEDDING_DIMENSION = 64
 
 # A3: 真实语义 embedding（fastembed/BGE-small-zh，512 维，ONNX 本地推理，无 torch 依赖）。
@@ -130,6 +132,11 @@ def get_real_embedding_cache_stats() -> dict[str, int]:
         }
 
 
+def is_reranker_configured() -> bool:
+    """True when RERANKER_MODEL is set; callers use it to tell "disabled" from "failed"."""
+    return bool(RERANKER_MODEL)
+
+
 def get_reranker():
     """惰性加载 cross-encoder reranker；未配置或不可用时返回 None。"""
     if "status" not in _reranker_state:
@@ -238,19 +245,3 @@ def extract_embedding_terms(text: str) -> set[str]:
     terms.update(char_ngrams(compact, 2))
     terms.update(char_ngrams(compact, 3))
     return terms
-
-
-def normalize_text(text: str) -> str:
-    separators = " \n\t\r,.;:!?，。！？；：、（）()[]{}<>\"'“”‘’"
-    normalized = text.lower()
-    for separator in separators:
-        normalized = normalized.replace(separator, " ")
-
-    return normalized
-
-
-def char_ngrams(text: str, size: int) -> set[str]:
-    if size <= 0 or len(text) < size:
-        return set()
-
-    return {text[index : index + size] for index in range(len(text) - size + 1)}

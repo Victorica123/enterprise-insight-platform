@@ -159,6 +159,14 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - `python scripts/local_acceptance.py` 返回 `PASS`，localhost-only **33/33**（临时 H2/SQLite、mock/local AI、随机端口、真实平台 JWT）。本机 Docker Desktop 已可用，`compose.local.yml` 的 agent、media、web 三容器构建后健康，`http://127.0.0.1:8080` 可访问；准生产 `compose.local-prod.yml`、k6 浸泡与故障注入仍未运行，真实中间件与外部模型结论不变。
 - 面试文档中的测试数量已统一为 Agent 157（本条目后为 158）、Media 135；`PROJECT_CLOSEOUT.md` 与本文带日期的历史条目按规则保留当时数字。2026-09-01 至 09-11 的全部工作区改动已提交入库，Git 历史不再停留在 2026-08-31。
 
+2026-09-12 架构优化阶段 1 首批落地（检索效率，见 `docs/ARCHITECTURE_OPTIMIZATION_PLAN.md` 第八节）：
+
+- 新增 `app/text.py`（唯一分词器：`extract_search_terms`、停用词、CJK 窗口与锚点）与 `app/chunk_index.py`（授权 chunk 快照 + 预计算词项 + 词项倒排，按租户 revision 缓存）；`embeddings.py`、`rag.py` 中重复的 `normalize_text`、`char_ngrams`、`deduplicate_preserve_order` 与 CJK 窗口函数改为从 `app.text` 导入，`retrievers.py` 向后兼容地重导出旧符号。
+- 关键词检索只对与 query 共享至少一个词项的 chunk 打分，其余按语料顺序补零分，排序与旧的逐块打分实现完全一致（新用例以暴力算法逐 query 对照）。hybrid 两路共用一次快照并以 2 线程并行；`RetrievalResult` 新增 `rerank_status`（disabled / applied / unavailable），精排配置了却失败时 trace 写 `rerank_skipped`（status=degraded），不再静默沿用融合榜。
+- `system_meta` 增加 `content_revision:<tenant>`：租户写入只提升该租户与全局 revision，未指定租户的快照跟随全局；全局 bump（embedding 重建、保留清理）提升全部租户键。新增 `tests/test_chunk_index.py` 12 个用例覆盖倒排等价、精排状态与租户隔离失效。
+- 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **170/170**，ruff 0 告警；V6 hybrid decision **98%**、recall@3 **97%**、fact **97%**（与 2026-09-11 相同；单次运行 p95 由 8.6ms 变为 6.0ms，样本量小，只作参考）；PRD **12/12** 且十项指标 100%；Knowledge Lifecycle 门禁通过（p95 148.76ms）；V5 观测门禁通过（p95 14.87ms）。日志：`runtime/opt-stage1-gates.log`。Media、Web 与 localhost 验收本轮未改动、未重跑。
+- 面试文档中的 Agent 测试数量已更新为 170；带日期的历史条目保留当时数字。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

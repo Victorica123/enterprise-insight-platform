@@ -516,7 +516,7 @@ def delete_document_and_rebuild(
         scope_owner = existing["owner_id"]
         conn.execute("delete from chunks where document_id = ?", (document_id,))
         conn.execute("delete from documents where id = ?", (document_id,))
-        database.bump_content_revision(conn)
+        database.bump_content_revision(conn, str(scope_tenant))
         rows = conn.execute(
             """
             select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content

@@ -445,7 +445,7 @@ def _insert_document_rows(
         """,
         rows,
     )
-    bump_content_revision(conn)
+    bump_content_revision(conn, tenant_id)
 
 
 def list_document_rows(
@@ -601,7 +601,7 @@ def delete_document(
         parameters.append(owner_id)
     with connect() as conn:
         existing = conn.execute(
-            f"select id, source_type from documents where {' and '.join(predicates)}",
+            f"select id, source_type, tenant_id from documents where {' and '.join(predicates)}",
             parameters,
         ).fetchone()
         if existing is None:
@@ -611,7 +611,7 @@ def delete_document(
 
         conn.execute("delete from chunks where document_id = ?", (document_id,))
         conn.execute("delete from documents where id = ?", (document_id,))
-        bump_content_revision(conn)
+        bump_content_revision(conn, str(existing["tenant_id"]))
         return True
 
 
@@ -685,19 +685,59 @@ def _read_positive_int_env(name: str, default: int) -> int:
         return default
 
 
-def get_content_revision() -> int:
+def _tenant_revision_key(tenant_id: str) -> str:
+    return f"content_revision:{tenant_id}"
+
+
+def get_content_revision(tenant_id: str | None = None) -> int:
+    """Return the global revision, or the tenant's own revision when it has one.
+
+    A tenant that has never been written reads the global value, so a global
+    bump (embedding rebuild, retention sweep) still invalidates its cache.
+    """
     init_db()
     with connect() as conn:
+        if tenant_id is not None:
+            row = conn.execute(
+                "select value from system_meta where key = ?",
+                (_tenant_revision_key(tenant_id),),
+            ).fetchone()
+            if row is not None:
+                return int(row["value"])
         row = conn.execute(
             "select value from system_meta where key = 'content_revision'"
         ).fetchone()
     return int(row["value"] if row else 0)
 
 
-def bump_content_revision(conn: sqlite3.Connection) -> None:
+def bump_content_revision(conn: sqlite3.Connection, tenant_id: str | None = None) -> None:
+    """Invalidate chunk snapshots.
+
+    With ``tenant_id`` only that tenant's snapshots (plus the global key) move;
+    without it every known tenant key is bumped so nothing stays stale.
+    """
+    if tenant_id is None:
+        conn.execute(
+            "update system_meta set value = value + 1 where key like 'content_revision%'"
+        )
+        conn.execute(
+            "insert or ignore into system_meta (key, value) values ('content_revision', 1)"
+        )
+        return
     conn.execute(
         """
         insert into system_meta (key, value) values ('content_revision', 1)
         on conflict(key) do update set value = value + 1
         """
+    )
+    row = conn.execute(
+        "select value from system_meta where key = 'content_revision'"
+    ).fetchone()
+    current = int(row["value"] if row else 1)
+    conn.execute(
+        """
+        insert into system_meta (key, value) values (?, ?)
+        on conflict(key) do update set value = excluded.value
+        """,
+        (_tenant_revision_key(tenant_id), current),
     )

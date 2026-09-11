@@ -11,7 +11,8 @@ from app.graph_store import delete_document_and_rebuild, index_document_graph, i
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
 from app.models import ChatResponse, DocumentSummary, DocumentUploadResponse, Source, TokenUsage, TraceStep
-from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
+from app.retrievers import RetrievalHit, RetrievalResult, RetrievalScope, get_retriever
+from app.text import deduplicate_preserve_order, extract_cjk_windows
 
 logger = logging.getLogger(__name__)
 
@@ -243,10 +244,11 @@ def answer_question(
             status="ok" if useful_hits else "no_match",
             detail=(
                 f"使用 {retriever.name} 检索器，共扫描 {retrieval_result.scanned_count} 个 chunk，"
-                f"命中 {len(useful_hits)} 个分数大于 0 的 chunk。"
+                f"命中 {len(useful_hits)} 个分数大于 0 的 chunk。{describe_rerank(retrieval_result)}"
             ),
         )
     )
+    trace.extend(rerank_trace_steps(retrieval_result))
     if not useful_hits:
         return ChatResponse(
             answer="我没有在已上传资料中找到足够相关的内容，因此暂时不能可靠回答这个问题。",
@@ -355,18 +357,6 @@ def title_term_boost(question: str, title: str) -> int:
     return 25 if any(bigram in title_lower for bigram in bigrams) else 0
 
 
-def deduplicate_preserve_order(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        normalized = value.strip()
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            result.append(normalized)
-
-    return result
-
-
 def build_matched_query_detail(selected_hits: list[RetrievalHit]) -> str:
     if not selected_hits:
         return ""
@@ -388,6 +378,28 @@ def format_matched_queries(queries: list[str]) -> str:
         return "无"
 
     return " / ".join(queries[:2])
+
+
+def describe_rerank(retrieval_result: RetrievalResult) -> str:
+    """精排状态的可读后缀；未配置精排时为空串，原有 trace 文案保持不变。"""
+    if retrieval_result.rerank_status == "applied":
+        return "精排已应用于候选头部。"
+    if retrieval_result.rerank_status == "unavailable":
+        return "精排不可用，保留融合排序。"
+    return ""
+
+
+def rerank_trace_steps(retrieval_result: RetrievalResult) -> list[TraceStep]:
+    """精排配置了却失败时单独写一条降级 trace，而不是静默沿用融合榜。"""
+    if retrieval_result.rerank_status != "unavailable":
+        return []
+    return [
+        TraceStep(
+            name="rerank_skipped",
+            status="degraded",
+            detail="Reranker 已配置但推理失败，本次沿用 RRF 融合排序，分数未伪造。",
+        )
+    ]
 
 
 def check_evidence(question: str, sources: list[Source]) -> EvidenceCheck:
@@ -668,7 +680,7 @@ def _topic_anchors_match(question: str, evidence_text: str) -> bool:
 
     # 2. 长锚点：3-6 字的连续中文窗口
     for size in (6, 5, 4, 3):
-        for anchor in _extract_cjk_windows(compact, size):
+        for anchor in extract_cjk_windows(compact, size):
             if anchor in evidence_lower:
                 return True
 
@@ -683,13 +695,3 @@ def _topic_anchors_match(question: str, evidence_text: str) -> bool:
     if not anchors:
         return True  # 无法提取锚点时放行
     return sum(1 for a in anchors if a in evidence_lower) >= 2
-
-
-def _extract_cjk_windows(compact: str, size: int) -> list[str]:
-    """提取连续的纯中文窗口（size 字），用于长锚点匹配。"""
-
-    windows: list[str] = []
-    for run in re.findall(r"[一-龥]+", compact):
-        if len(run) >= size:
-            windows.extend(run[i : i + size] for i in range(len(run) - size + 1))
-    return windows

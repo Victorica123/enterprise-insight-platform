@@ -506,7 +506,7 @@ def decide_knowledge_lifecycle(
                         successor.version_number, candidate_id, request_id,
                     ),
                 )
-            database.bump_content_revision(conn)
+            database.bump_content_revision(conn, str(candidate["tenant_id"]))
             rebuild_graph_scope(
                 conn=conn, tenant_id=candidate["tenant_id"], owner_id=candidate["owner_id"],
             )

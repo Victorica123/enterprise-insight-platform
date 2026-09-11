@@ -35,7 +35,7 @@
 | 业务 | 把非结构化会议材料变成可追溯、可评审、可执行的交付链路 |
 | 架构 | 两个职责清晰的后端、一个统一前端，不共享数据库 |
 | Agent | 授权证据、六阶段等待恢复、确定性审批与副作用 |
-| 证据 | Agent 157、Media 135、localhost 纵向验收 33/33；另有 V6 RAG、PRD V1 与 Knowledge Lifecycle V1 三套黄金门禁 |
+| 证据 | Agent 170、Media 135、localhost 纵向验收 33/33；另有 V6 RAG、PRD V1 与 Knowledge Lifecycle V1 三套黄金门禁 |
 
 ## 8 分钟现场演示逐分钟稿
 
