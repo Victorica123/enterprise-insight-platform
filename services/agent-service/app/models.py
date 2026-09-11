@@ -109,6 +109,14 @@ class AgentSummary(BaseModel):
     pending_approval: bool = False
     graph_entities: list[str] = Field(default_factory=list)
     graph_paths: list[str] = Field(default_factory=list)
+    execution_mode: str = Field(
+        default="agentic",
+        description="服务端最终执行模式：clarify / tool_only / retrieval / agentic；workflow_mode 只是请求输入。",
+    )
+    clarify_question: str | None = Field(
+        default=None,
+        description="execution_mode=clarify 时返回给用户的澄清问题。",
+    )
 
 
 class ChatMetricsSummary(BaseModel):
@@ -203,6 +211,10 @@ class TraceStep(BaseModel):
     name: str
     status: str
     detail: str
+    duration_ms: float | None = Field(
+        default=None,
+        description="该阶段耗时（毫秒）；由执行计划链与各执行器计时，旧日志为 null。",
+    )
 
 
 class ChatResponse(BaseModel):

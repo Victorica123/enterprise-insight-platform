@@ -167,6 +167,12 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **170/170**，ruff 0 告警；V6 hybrid decision **98%**、recall@3 **97%**、fact **97%**（与 2026-09-11 相同；单次运行 p95 由 8.6ms 变为 6.0ms，样本量小，只作参考）；PRD **12/12** 且十项指标 100%；Knowledge Lifecycle 门禁通过（p95 148.76ms）；V5 观测门禁通过（p95 14.87ms）。日志：`runtime/opt-stage1-gates.log`。Media、Web 与 localhost 验收本轮未改动、未重跑。
 - 面试文档中的 Agent 测试数量已更新为 170；带日期的历史条目保留当时数字。
 
+2026-09-12 架构优化阶段 0 首批落地（执行计划、执行器注册表、阶段耗时，见 `docs/ARCHITECTURE_OPTIMIZATION_PLAN.md` 第八节）：
+
+- 新增 `app/architecture/planning.py`；`orchestration.py` 改为执行计划链 + 执行器注册表；`agentic_rag.py` 的路由 / 规划改写为链步骤并复用计划结果。`TraceStep.duration_ms`、`AgentSummary.execution_mode` / `clarify_question` 为新增字段，不删除任何契约字段。新增 6 个边界用例（计划可序列化、步骤可跳过、澄清不调处理器、工单直达计划、注册表拒绝重复与未知模式、计时器只给未计时步骤盖章）；两处旧用例对 agentic 处理器的精确调用断言改为接受 `plan=ANY`。
+- 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **176/176**，ruff 0 告警；V6 hybrid decision **98%**、recall@3 **97%**、fact **97%**（三次运行一致）；embedding-only 模式一次运行为 88%/81%/78%，随后两次重跑均为 88%/84%/81%，该模式不受门禁约束，波动原因未定位，如实记录；PRD **12/12**；Knowledge Lifecycle 门禁通过（p95 215.38ms）；V5 观测门禁通过（p95 20.40ms）。三套黄金集共 42 个问题经澄清门与工单直达判定扫描，无一误拦。日志：`runtime/opt-stage0-gates.log`。Media、Web 与 localhost 验收本轮未改动、未重跑。
+- 面试文档中的 Agent 测试数量更新为 176。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

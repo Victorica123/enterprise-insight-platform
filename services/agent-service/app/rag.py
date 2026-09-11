@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from app import database
+from app.architecture.planning import StageTimer
 from app.config import get_llm_pricing
 from app.database import connect, init_db, insert_document, list_document_rows
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
@@ -206,8 +207,10 @@ def answer_question(
     retriever_mode: str | None = None,
     scope: RetrievalScope | None = None,
 ) -> ChatResponse:
+    trace: list[TraceStep] = []
+    timer = StageTimer(trace)
     queries = expand_queries(question)
-    trace: list[TraceStep] = [
+    trace += [
         TraceStep(
             name="question_received",
             status="ok",
@@ -219,6 +222,7 @@ def answer_question(
             detail=f"生成 {len(queries)} 个检索 query：{' / '.join(queries)}",
         )
     ]
+    timer.mark()
     retriever = get_retriever(retriever_mode)
     retrieval_result = retriever.search(queries) if scope is None else retriever.search(queries, scope)
     ranked_hits = retrieval_result.hits
@@ -231,6 +235,7 @@ def answer_question(
                 detail=f"使用 {retriever.name} 检索器，知识库中没有可检索的 chunk。",
             )
         )
+        timer.mark()
         return ChatResponse(
             answer="当前知识库中还没有可用资料。请先上传 txt 或 md 文档。",
             sources=[],
@@ -249,6 +254,7 @@ def answer_question(
         )
     )
     trace.extend(rerank_trace_steps(retrieval_result))
+    timer.mark()
     if not useful_hits:
         return ChatResponse(
             answer="我没有在已上传资料中找到足够相关的内容，因此暂时不能可靠回答这个问题。",
@@ -294,6 +300,7 @@ def answer_question(
             detail=f"选择前 {len(sources)} 个来源作为回答证据，最高分为 {sources[0].score}。{selected_query_detail}",
         )
     )
+    timer.mark()
 
     evidence_check = check_evidence(question, sources)
     trace.append(
@@ -303,6 +310,7 @@ def answer_question(
             detail=evidence_check.detail,
         )
     )
+    timer.mark()
     if not evidence_check.passed:
         return ChatResponse(
             answer=build_insufficient_evidence_answer(evidence_check),
@@ -312,6 +320,7 @@ def answer_question(
 
     answer, answer_trace, token_usage = build_answer(question, sources, answer_mode)
     trace.extend(answer_trace)
+    timer.mark()
 
     return ChatResponse(answer=answer, sources=sources, trace=trace, token_usage=token_usage)
 

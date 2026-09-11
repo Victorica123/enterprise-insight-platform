@@ -1,7 +1,7 @@
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from app.main import app
 from app.models import AgentSummary, ChatResponse, TraceStep
@@ -69,6 +69,7 @@ class ApiContractTests(unittest.TestCase):
             actor_role="viewer",
             actor_user="anonymous",
             workspace_type="personal",
+            plan=ANY,
         )
         metric_recorder.assert_called_once()
 

@@ -5,7 +5,7 @@ import json
 import os
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from app.auth import JwtValidationError, decode_shared_jwt, validate_auth_configuration
 from app.main import app
@@ -114,6 +114,7 @@ class UnifiedAuthTests(unittest.TestCase):
                 owner_id="user-123",
                 asset_ids=("asset-1", "asset-2"),
             ),
+            plan=ANY,
         )
 
     def test_team_chat_uses_tenant_wide_retrieval_scope(self) -> None:

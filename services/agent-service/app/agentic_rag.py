@@ -10,6 +10,13 @@ from app.agent_planning import (
     rewrite_question,
     split_complex_question,
 )
+from app.architecture.planning import (
+    ChainStep,
+    ExecutionPlan,
+    PlanDraft,
+    StageTimer,
+    is_tool_only_question,
+)
 from app.citation_review import review_citations
 from app.config import get_llm_pricing
 from app.graph_rag import lookup_graph
@@ -98,6 +105,9 @@ class AgenticRagState:
     # B1/B2: LLM 路由/规划/工具选择的真实 token 用量（并入成本核算）
     router_prompt_tokens: int = 0
     router_completion_tokens: int = 0
+    # 阶段 0：服务端执行计划（PreparationChain 生成）决定最终执行模式
+    execution_plan: ExecutionPlan | None = None
+    execution_mode: str = "agentic"
 
 
 def answer_agentic_question(
@@ -108,6 +118,7 @@ def answer_agentic_question(
     actor_user: str = "anonymous",
     workspace_type: str = "team",
     retrieval_scope: RetrievalScope | None = None,
+    plan: ExecutionPlan | None = None,
 ) -> ChatResponse:
     init_tools()
 
@@ -128,8 +139,19 @@ def answer_agentic_question(
         ],
     )
 
-    route_question(state)
-    if _is_tool_only_question(state.question):
+    timer = StageTimer(state.trace)
+    if plan is not None:
+        # 编排层已经跑过分类 / 规划，这里只复用，不再调用路由模型
+        apply_execution_plan(state, plan)
+        tool_only = plan.mode == "tool_only"
+        if "classify_intent" not in plan.steps:
+            route_question(state)
+    else:
+        route_question(state)
+        tool_only = _is_tool_only_question(state.question)
+    timer.mark()
+    if tool_only:
+        state.execution_mode = "tool_only"
         state.evidence_status = "not_required"
         state.agents.append("Planner Agent")
         state.trace.append(
@@ -140,13 +162,18 @@ def answer_agentic_question(
             )
         )
     else:
-        plan_retrieval(state)
+        if not state.queries:
+            plan_retrieval(state)
+        timer.mark()
         retrieve_until_sufficient(state)
+        timer.mark()
         # V4: Graph Agent - 查询关系图谱补充关系链上下文
         run_graph_agent(state)
+    timer.mark()
 
     # V3: Tool Agent - 执行工具调用
     run_tool_agent(state)
+    timer.mark()
 
     if state.evidence_status == "not_required":
         answer = build_tool_only_answer(state)
@@ -162,6 +189,7 @@ def answer_agentic_question(
                 detail="直接工具操作没有使用知识库证据，因此不需要来源引用。",
             )
         )
+        timer.mark()
         return build_response(state, answer)
 
     if state.evidence_status != "passed":
@@ -180,6 +208,7 @@ def answer_agentic_question(
         )
         state.citation_status = "not_applicable"
         state.agents.append("Reviewer Agent")
+        timer.mark()
         return build_response(state, answer)
 
     # 将工具调用与图谱结果注入上下文（直接下钻到 build_answer，
@@ -190,6 +219,7 @@ def answer_agentic_question(
     state.token_usage = token_usage
     state.trace.extend(answer_trace)
     state.agents.append("Answer Agent")
+    timer.mark()
 
     reviewed_answer, citation_status, citation_detail = review_citations(
         answer, state.sources
@@ -203,6 +233,7 @@ def answer_agentic_question(
             detail=citation_detail,
         )
     )
+    timer.mark()
     return build_response(state, reviewed_answer)
 
 
@@ -286,32 +317,8 @@ def _tool_scope_kwargs(state: AgenticRagState) -> ToolScopeKwargs:
     }
 
 
-def _is_tool_only_question(question: str) -> bool:
-    """Direct ticket operations can bypass RAG; knowledge-backed creation cannot."""
-    query_or_update = any(
-        keyword in question
-        for keyword in [
-            "查工单",
-            "查询工单",
-            "工单列表",
-            "有哪些工单",
-            "更新工单",
-            "修改状态",
-            "关闭工单",
-            "解决工单",
-        ]
-    )
-    if query_or_update:
-        return True
-    create_requested = any(
-        keyword in question
-        for keyword in ["创建工单", "生成工单", "帮我创建", "建一个工单"]
-    )
-    needs_knowledge = any(
-        keyword in question
-        for keyword in ["为什么", "原因", "风险", "根据", "资料", "延期", "负责人"]
-    )
-    return create_requested and not needs_knowledge
+# 规则本身搬到了执行计划模块；保留旧名字给现有调用方与测试。
+_is_tool_only_question = is_tool_only_question
 
 
 def run_tool_agent(state: AgenticRagState) -> None:
@@ -565,62 +572,115 @@ def _build_tool_context(
     return "\n".join(parts)
 
 
-def route_question(state: AgenticRagState) -> None:
+def classify_intent(draft: PlanDraft) -> None:
     """B1: LLM 路由优先，规则版为降级通道（无 Key/失败时自动回退）。"""
-    decision = llm_route_question(state.question)
+    decision = llm_route_question(draft.question)
     if decision is not None:
-        state.intent = decision.intent
-        state.complexity = decision.complexity
-        state.router_prompt_tokens += decision.prompt_tokens
-        state.router_completion_tokens += decision.completion_tokens
+        draft.intent = decision.intent
+        draft.complexity = decision.complexity
+        draft.router_prompt_tokens += decision.prompt_tokens
+        draft.router_completion_tokens += decision.completion_tokens
         router_source = "LLM 路由"
     else:
-        intents = detect_intents(state.question)
-        state.intent = intents[0] if intents else "general"
-        state.complexity = (
-            "complex" if is_complex_question(state.question, intents) else "simple"
+        intents = detect_intents(draft.question)
+        draft.intent = intents[0] if intents else "general"
+        draft.complexity = (
+            "complex" if is_complex_question(draft.question, intents) else "simple"
         )
         router_source = "规则路由"
-    state.agents.append("Router Agent")
-    state.trace.append(
+    draft.agents.append("Router Agent")
+    draft.trace.append(
         TraceStep(
             name="question_classification",
             status="ok",
-            detail=f"Router Agent（{router_source}）判断问题类型为 {state.intent}，复杂度为 {state.complexity}。",
+            detail=f"Router Agent（{router_source}）判断问题类型为 {draft.intent}，复杂度为 {draft.complexity}。",
         )
     )
 
 
-def plan_retrieval(state: AgenticRagState) -> None:
+def plan_queries(draft: PlanDraft) -> None:
     """B1: LLM 检索规划优先（覆盖同义表述，如"质量门槛"->"验收标准"），规则版降级。"""
-    llm_result = llm_plan_queries(state.question, state.intent)
+    if draft.mode in ("clarify", "tool_only", "retrieval"):
+        return  # 这些模式不进入多轮检索，不为它们生成 query
+    llm_result = llm_plan_queries(draft.question, draft.intent)
     if llm_result is not None:
         llm_queries = [str(q) for q in llm_result.data]
-        state.router_prompt_tokens += llm_result.prompt_tokens
-        state.router_completion_tokens += llm_result.completion_tokens
-        queries = [state.question] + llm_queries
-        queries.extend(build_intent_queries(state.intent))
-        if state.complexity == "complex":
-            queries.extend(split_complex_question(state.question))
+        draft.router_prompt_tokens += llm_result.prompt_tokens
+        draft.router_completion_tokens += llm_result.completion_tokens
+        queries = [draft.question] + llm_queries
+        queries.extend(build_intent_queries(draft.intent))
+        if draft.complexity == "complex":
+            queries.extend(split_complex_question(draft.question))
         planner_source = "LLM 规划"
     else:
-        rewritten = rewrite_question(state.question)
-        queries = [state.question, rewritten]
-        queries.extend(expand_queries(state.question))
-        queries.extend(build_intent_queries(state.intent))
-        if state.complexity == "complex":
-            queries.extend(split_complex_question(state.question))
+        rewritten = rewrite_question(draft.question)
+        queries = [draft.question, rewritten]
+        queries.extend(expand_queries(draft.question))
+        queries.extend(build_intent_queries(draft.intent))
+        if draft.complexity == "complex":
+            queries.extend(split_complex_question(draft.question))
         planner_source = "规则规划"
 
-    state.queries = deduplicate_preserve_order(queries)[:8]
-    state.agents.append("Planner Agent")
-    state.trace.append(
+    draft.queries = deduplicate_preserve_order(queries)[:8]
+    draft.agents.append("Planner Agent")
+    draft.trace.append(
         TraceStep(
             name="query_planning",
             status="ok",
-            detail=f"Planner Agent（{planner_source}）生成 {len(state.queries)} 个 query：{' / '.join(state.queries)}",
+            detail=f"Planner Agent（{planner_source}）生成 {len(draft.queries)} 个 query：{' / '.join(draft.queries)}",
         )
     )
+
+
+# PreparationChain 步骤：编排层用它们生成 ExecutionPlan；下面的 state 版本复用同一实现。
+CLASSIFY_STEP = ChainStep(name="classify_intent", run=classify_intent)
+PLAN_QUERIES_STEP = ChainStep(name="plan_queries", run=plan_queries)
+
+
+def _draft_from_state(state: AgenticRagState) -> PlanDraft:
+    return PlanDraft(
+        question=state.question,
+        requested_mode="agentic",
+        intent=state.intent,
+        complexity=state.complexity,
+    )
+
+
+def _merge_draft(state: AgenticRagState, draft: PlanDraft) -> None:
+    state.intent = draft.intent
+    state.complexity = draft.complexity
+    if draft.queries:
+        state.queries = list(draft.queries)
+    state.router_prompt_tokens += draft.router_prompt_tokens
+    state.router_completion_tokens += draft.router_completion_tokens
+    state.agents.extend(draft.agents)
+    state.trace.extend(draft.trace)
+
+
+def apply_execution_plan(state: AgenticRagState, plan: ExecutionPlan) -> None:
+    """Seed the state from a plan built by the PreparationChain so nothing runs twice."""
+    state.execution_plan = plan
+    state.execution_mode = plan.mode
+    state.intent = plan.intent
+    state.complexity = plan.complexity
+    state.queries = list(plan.queries)
+    state.router_prompt_tokens += plan.router_prompt_tokens
+    state.router_completion_tokens += plan.router_completion_tokens
+    state.agents.extend(plan.agents)
+    state.trace.extend(plan.trace)
+    state.trace.append(plan.trace_step())
+
+
+def route_question(state: AgenticRagState) -> None:
+    draft = _draft_from_state(state)
+    classify_intent(draft)
+    _merge_draft(state, draft)
+
+
+def plan_retrieval(state: AgenticRagState) -> None:
+    draft = _draft_from_state(state)
+    plan_queries(draft)
+    _merge_draft(state, draft)
 
 
 def retrieve_until_sufficient(state: AgenticRagState) -> None:
@@ -750,6 +810,7 @@ def build_response(state: AgenticRagState, answer: str) -> ChatResponse:
         pending_approval=len(state.pending_actions) > 0,
         graph_entities=state.graph_entities,
         graph_paths=state.graph_paths,
+        execution_mode=state.execution_mode,
     )
     # B1/B2: LLM 路由/规划/工具选择的真实 token 并入成本核算
     token_usage = state.token_usage

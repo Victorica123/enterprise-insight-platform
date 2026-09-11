@@ -15,6 +15,14 @@
 
 事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，读取创建时的冻结证据，保留阶段 1–4，只重新执行收敛和 PRD 阶段。目标、证据排序、早期结论和恢复输入因此可以复现，不受等待期间新摄取材料影响。
 
+## 对话执行计划
+
+- 每次对话先由 `PreparationChain`（`app/architecture/planning.py`）生成一份冻结的 `ExecutionPlan`：`classify_intent`（LLM 路由，规则降级）→ `decide_mode` → `plan_queries`（LLM 规划，规则降级）。步骤可单独跳过：`workflow_mode=standard` 跳过分类与规划，只做模式决策，单轮检索路径不多调模型。
+- 模式决策顺序为 clarify > （显式 standard → retrieval）> tool_only > agentic。`workflow_mode` 保留为兼容输入，服务端以 `plan.mode` 为准；`AgentSummary.execution_mode` 与 trace 中的 `execution_plan` 步骤记录最终决定与生成它的步骤列表，可回放。
+- 澄清门目前是规则版：问题没有任何内容锚点（客户、项目、文档、工单、英文词或数字）时直接返回澄清问题，不检索、不调模型；三套黄金集共 42 个问题无一被拦。相对置信度公式（top1 / max(10, top1 + top2 + 5)，阈值 0.55）留待后续。
+- `ExecutorRegistry` 按模式注册唯一执行器：`ClarificationExecutor`、`ToolOnlyExecutor`、`RetrievalExecutor`（`rag.answer_question`）、`AgenticExecutor`（`agentic_rag`）。agentic 执行器复用计划里的分类结果与 query，不重复调用路由模型；未注册的模式直接报错而不是静默降级。
+- 每个 `TraceStep` 带 `duration_ms`：链内每步、检索、图谱、工具、生成、引用审核各自计时，随 `chat_logs.trace_json` 落库；旧日志该字段为 null。
+
 ## 证据策略
 
 - 关键结论必须绑定至少一个可访问证据，或明确标记为假设/建议。
