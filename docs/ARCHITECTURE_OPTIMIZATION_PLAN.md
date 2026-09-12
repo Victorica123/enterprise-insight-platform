@@ -1,7 +1,7 @@
-# 架构与工作逻辑优化方案（对标 Nexus Agent）
+# 架构与工作逻辑优化：方案、功能拆分与前后对比（对标 Nexus Agent）
 
-> 日期：2026-09-11  
-> 性质：架构评审与分阶段改造计划，不是已完成的变更记录  
+> 日期：2026-09-11 立项，2026-09-12 三批落地后补充第九、十节  
+> 性质：第一至七节是架构评审与分阶段计划；第八节是落地记录；第九节是项目功能拆分（优化动了哪一块）；第十节是优化前后的量化对比与如何取舍 Nexus 做法  
 > 参照物：Nexus Agent 公开文档（javaup.chat/super-agent，概览 7 页全文可读，25 页细节被付费墙截断，仅能读到设计意图与参数，读不到完整源码）  
 > 评审对象：当前仓库 `services/agent-service`、`services/media-service`、`apps/web`
 
@@ -193,3 +193,146 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 - 2026-09-12（同日第二批）：阶段 0 的 0.1、0.2、0.3 落地。新增 `app/architecture/planning.py`（`PlanDraft`、`ExecutionPlan`、`PreparationChain`、`StageTimer`、规则版澄清门与工单直达判定）；`agentic_rag.py` 把 `route_question` / `plan_retrieval` 改写为作用于 `PlanDraft` 的 `classify_intent` / `plan_queries` 两个链步骤，state 版本只是薄包装；`orchestration.py` 改为“链生成计划 → `ExecutorRegistry` 按 `plan.mode` 选执行器”，注册 `RetrievalExecutor`、`AgenticExecutor`、`ToolOnlyExecutor`、`ClarificationExecutor`。`workflow_mode` 保留为输入：standard 请求跳过分类与规划步骤，agentic 请求把计划传给处理器复用，不重复调用路由模型。`TraceStep.duration_ms` 由链和各执行器计时；`AgentSummary` 新增 `execution_mode`、`clarify_question`；`execution_plan` 作为 trace 步骤写入，`chat_logs.trace_json` 自然携带。澄清门当前只拦“无内容锚点”的问题（如“为什么？”），0.6 的相对置信度公式仍待做。验证：Agent 176/176、ruff 0 告警、四个门禁通过，黄金集 42 个问题无一被澄清门或工单门误拦。
 - 2026-09-12（同日第三批）：阶段 0 的 0.4、0.5、0.7、0.8 落地。新增 `app/call_limits.py`（`LimitCounter` 以 ContextVar 绑定到请求，模型 8 / 工具 6，`ConversationOrchestrator.run` 在一个预算内完成计划与执行并追加 `call_limits` trace；`llm_client.create_chat_completion` 只在真正出网时消耗预算，`llm_router` 超限退回规则，`rag.build_answer` 超限退回模板，`tools.execute_tool` 超限不执行并记 `limited` 审计）；新增 `app/evidence_budget.py`（单来源 2200 / 总量 5200 字符，先按分数选再按预算裁，句末优先、省略号标记、尾部不足 120 字符即丢弃；单轮与多轮路径都在证据检查前应用，trace 写 `evidence_budget`）；新增 `app/prompts/`（10 个 `.txt` 模板 + `string.Template` 渲染 + 进程内缓存 + `AGENT_PROMPT_DIR` 覆盖，`llm.py` / `llm_router.py` 不再含提示词字面量）；影子路由（`planning.shadow_decision` 规则版，`ExecutionPlan.shadow_mode / shadow_reason / mode_agreement`，`chat_metrics` 三个新列，`/metrics/summary` 五个新字段，监控面板新增“路由一致率”与不一致配对）。`_question_needs_tools` 及其触发词搬到 `planning.py`，旧名字保留。`.env.example` 新增五个变量。`orchestration.answer_chat` 保留，`run_chat` 额外返回计划供指标落库。验证：Agent 199/199（新增 `tests/test_request_budgets.py` 23 个用例）、ruff 0 告警、四个门禁通过（V6 hybrid 98/97/97、PRD 12/12、Knowledge Lifecycle、V5）、Web lint 0 error / 18 warning（与改动前相同）、`npm test` 7/7、生产构建通过。
 - 尚未做：1.3 二进制向量、1.5 后台补齐 `embedding_v2`、1.7 Parent-Child；0.6 的相对置信度公式；阶段 2 至 4 全部。
+- 2026-09-12（对比基准）：新增 `quality/agent-evals/bench_retrieval.py` 合成语料检索基准，对 `7195dad` 与 `9410ef3` 两棵源码树各跑 2,000 与 5,000 chunk，结果见第十节 10.3；同时用 `git grep` 统计两个提交的结构指标（10.2）。
+
+## 九、项目功能拆分（优化对象的全貌）
+
+本节回答"这个项目到底由哪些功能组成，优化动了哪一块"。功能按服务与入口拆分，最后一列标出三批优化触及的位置；没有标注的功能本轮未改动。
+
+### 9.1 Media Service（Java 17 / Spring Boot 3.3，92 个生产类，135 个测试）
+
+| 功能域 | 包 | 职责 | 关键机制 | 本轮优化 |
+| --- | --- | --- | --- | --- |
+| 身份与工作区 | `auth/` | 登录、JWT 签发与校验、OIDC 身份核验、登录限流、令牌黑名单、Workspace 创建 / 邀请 / 成员角色 | 本地与 Redis 两套限流和黑名单实现，`WorkspacePrincipal` 携带 tenant / owner / role | 未改 |
+| 媒体上传与存储 | `media/` | 单文件、分片、直传三种上传，文件校验，本地 / S3 存储，播放授权，分片清理 | 分片会话在 Redis，播放走签名 URL | 未改 |
+| 媒体任务工作流 | `workflow/` | 任务状态机、租约、分布式锁、活跃任务配额、超时回收 | lease + fencing，CAS 完成，线程池 core 2 / max 4 | 未改 |
+| 转写与摘要 | `transcript/`、`summary/` | 抽音频、Whisper 转写、LLM 摘要，均有 mock 实现 | OpenAI 兼容客户端，mock 用于本地验收 | 未改 |
+| 跨服务投递 | `integration/` | 转写完成事件写 outbox，调度器投递到 Agent Service | outbox claim lease，2 秒调度，3 秒连接 / 15 秒请求超时 | 未改 |
+| 配置与横切 | `config/`、`common/` | `AppProperties` 单点配置、异步线程池、安全链、指标、trace id、统一异常 | 6 个 `@Scheduled` 调度器 | 未改（阶段 4 拆 `AppProperties`） |
+
+### 9.2 Agent Service（Python / FastAPI，64 个应用文件，199 个测试）
+
+按 HTTP 入口拆分，每个入口后面是它调用的实现模块。
+
+| 入口（路由） | 功能 | 实现模块 | 本轮优化 |
+| --- | --- | --- | --- |
+| `POST /chat` | 证据问答：standard 单轮 / agentic 多轮，local / api 回答，keyword / embedding / hybrid 检索，可限定 `asset_ids` | `architecture/orchestration.py`、`architecture/planning.py`、`rag.py`、`agentic_rag.py`、`retrievers.py`、`chunk_index.py`、`text.py`、`graph_rag.py`、`tools.py`、`citation_review.py`、`llm.py`、`llm_router.py`、`call_limits.py`、`evidence_budget.py`、`prompts/` | **三批全部落在这里**：执行计划与注册表、倒排与并行检索、调用上限、证据预算、提示词外置、影子路由 |
+| `POST/GET/DELETE /documents` | 文档摄取（切块、哈希向量、可选 BGE 向量、图谱抽取）、列表、删除 | `rag.ingest_document`、`database.py`、`embeddings.py`、`graph_extraction.py`、`graph_store.py` | 写入后按租户提升 `content_revision:<tenant>`（1.6） |
+| `POST /internal/v1/media/...` | 接收 Media Service 投递的转写片段，作为视频来源入库 | `routes/internal_media.py`、`media_ingestion.py` | 同上（租户 revision） |
+| `/analysis/sessions/*` | 六阶段分析：冻结证据快照、并行 specialist、等待确认、CAS 恢复、PRD 发布申请与审批、审计 | `analysis_evidence.py`、`analysis_pipeline.py`、`analysis_store.py`、`publication_service.py`、`publication_artifacts.py` | 未改 |
+| `/analysis/sessions/{id}/knowledge-candidates/*`、`.../deliverables`、`.../action-items/*/ticket-draft` | 知识候选审批、批准知识物化、替代 / 撤回生命周期申请、交付物投影、行动项转工单草稿 | `knowledge_lifecycle_store.py`、`publication_artifacts.py` | 未改 |
+| `/graph/*` | 实体 / 关系 / 路径查询、重建 | `graph_store.py`、`graph_rag.py` | 未改（阶段 3.5 拆存储与算法） |
+| `/tickets/*`、`/pending-actions/*` | 工单 CRUD、状态变更草稿、待审批动作审批（四眼、职责分离） | `ticket_store.py`、`tools.py` | 工具执行增加每请求上限门（0.4） |
+| `/metrics/*`、`/chat-logs/*`、`/tool-calls` | 问答指标、工具指标、请求日志与 trace 回放、反馈 | `chat_observability_store.py`、`tool_observability_store.py` | `chat_metrics` 新增影子路由三列，汇总新增五个字段（0.8） |
+| `/embeddings/*` | 向量状态与重建 | `embedding_admin.py`、`embeddings.py` | 未改（1.5 后台补齐待做） |
+| 横切 | 统一鉴权、租户隔离、模型出网策略、数据保留、本地备份、MySQL 兼容 | `auth.py`、`model_egress.py`、`retention.py`、`db_compat.py` | 未改 |
+
+`/chat` 内部再拆一层，这是优化的主战场：
+
+| 子功能 | 优化前 | 优化后 |
+| --- | --- | --- |
+| 模式决定 | 前端传 `workflow_mode`，`orchestration.py` 二选一 | `PreparationChain` 产出 `ExecutionPlan`，`ExecutorRegistry` 按 `plan.mode` 分发（clarify / tool_only / retrieval / agentic） |
+| 意图与规划 | `agentic_rag.py` 内顺序调用 `route_question` → `plan_retrieval` | 两个可跳过的链步骤 `classify_intent` / `plan_queries`，standard 请求跳过 |
+| 澄清 | 无 | 无内容锚点即澄清，不检索不调模型 |
+| 关键词检索 | 每请求对每个 chunk 重新分词 | 索引时预计算词项与倒排，只碰命中 posting |
+| 混合检索 | keyword → embedding 串行，各自加载 chunk | 共用一次快照，两线程并行 |
+| 缓存失效 | 全局 revision，任一租户写入清空所有租户 | 按租户 revision |
+| 精排失败 | 静默沿用融合榜 | `rerank_status` + `rerank_skipped` trace |
+| 证据选择 | `MAX_SOURCES=4` 按条数 | 按条数选后再按 2200 / 5200 字符裁 |
+| 模型 / 工具调用 | 无上限 | 每请求 8 / 6，超限降级并写 trace |
+| 提示词 | 内联在 `llm.py`、`llm_router.py` | `app/prompts/*.txt`，可按部署覆盖 |
+| 观测 | trace 只有名称 / 状态 / 详情 | 每步 `duration_ms`，`execution_plan` 可回放，影子路由一致率 |
+
+### 9.3 React Web（28 个源文件）
+
+| 功能页 | 文件 | 调用的 API 模块 | 本轮优化 |
+| --- | --- | --- | --- |
+| 登录与会话 | `features/AuthGate.tsx`、`session.ts` | `apiClient.ts` | 未改 |
+| 工作区切换 | `features/WorkspaceSwitcher.tsx` | `api.ts` | 未改 |
+| 媒体工作台 | `features/MediaWorkspace.tsx`、`hooks/useMediaWorkspace.ts` | `mediaApi.ts` | 未改（阶段 4 换 react-query 轮询） |
+| 证据问答 | `features/QAView.tsx` | `api.ts` | 未改（阶段 2.5 接 SSE） |
+| 六阶段分析 | `features/AnalysisWorkspace.tsx` | `analysisApi.ts` | 未改 |
+| 图谱 | `features/GraphView.tsx` | `graphApi.ts` | 未改 |
+| 工单与审批 | `features/TicketsView.tsx` | `ticketApi.ts` | 未改 |
+| 监控 | `features/MonitorView.tsx` | `observabilityApi.ts` | 新增"路由一致率"与不一致配对（0.8） |
+
+## 十、优化前后对比（2026-09-12，基线 `7195dad` 对比 `9410ef3`）
+
+### 10.1 学习 Nexus 的方式：借什么、改什么、不借什么
+
+| Nexus 的做法 | 本项目的落地形态 | 为什么不照搬 |
+| --- | --- | --- |
+| 前置编排器五步链（路由、改写、歧义检测、子问题拆分、知识域收缩），Java Bean 链 | 三步链 `classify_intent` → `decide_mode` → `plan_queries`，复用已有 LLM 路由与规则降级，standard 请求可跳过前后两步 | 本项目没有多知识库路由，改写与子问题拆分已在 `plan_queries` 内；先把已有函数变成可跳过的步骤，比新增五个步骤更稳 |
+| `ExecutionMode` 枚举 + Spring 注册表 | dataclass 注册表，四种模式，重复注册或未知模式直接报错 | 无 DI 容器，注册表本身 40 行足够 |
+| 澄清五条件 + 相对置信度 `top1 / max(10, top1 + top2 + 5)` | 只做了"无内容锚点即澄清"；置信度公式留作 0.6 | 公式的输入是候选文档路由分，本项目当前没有这一层，硬套会造成假澄清 |
+| 证据预算 2200 / 5200 字符 | 数字相同；先按分数选，再裁，不重排 | 与本项目的覆盖率门控叠加而不是替换 |
+| 模型 8 次 / 工具 6 次，会话累计 40 / 30 | 每请求 8 / 6，ContextVar 绑定，超限降级不报错；会话累计未做 | 尚无会话概念（阶段 2）；降级优于报错，因为规则路径本来就是一等公民 |
+| AOP 阶段耗时落表 + 三个观测查询接口 | `TraceStep.duration_ms` 随已有 `trace_json` 落库 | 不加新表，`/chat-logs/{id}` 已能回放 |
+| `classpath:prompt/*.st` 模板 | `app/prompts/*.txt` + `string.Template`，`AGENT_PROMPT_DIR` 覆盖 | 保留提示词内的 JSON 示例，`${}` 占位不与 `{}` 冲突 |
+| 影子路由对比"用户选的文档 / 系统会选的文档" | 对比"用户传的 `workflow_mode` / 系统会选的模式" | 本项目的人工选择点是工作流模式而不是文档 |
+| 精排失败不伪造分数 | 相同：`rerank_status` 三态 + `rerank_skipped` trace | 直接采纳 |
+| Neo4j、PGVector、ES、Kafka、WebFlux | 不引入 | 见第六节；单机 SQLite + 进程内缓存尚未成为瓶颈，10.3 的数字是证据 |
+| "Python 出能力，Java 做决策" | 不改：Agent Service 拥有决策与治理 | 两服务边界已清晰且有 ADR，翻转边界收益为零 |
+
+### 10.2 代码结构对比
+
+以下数字用 `git grep` 对两个提交统计，可复现。
+
+| 指标 | 优化前 `7195dad` | 优化后 `9410ef3` | 说明 |
+| --- | --- | --- | --- |
+| Agent 应用代码行数 | 13,172 | 14,521 | 新增约 1,350 行，其中测试外的新模块 6 个 |
+| Agent 测试文件 / 用例 | 23 / 158 | 25 / 199 | 新增 `test_chunk_index.py`、`test_request_budgets.py` |
+| `orchestration.py` | 101 行，按 `workflow_mode` 二选一 | 266 行，链 + 注册表 + 预算 | 决策逻辑从 `agentic_rag.py` 搬到这一层 |
+| `planning.py` | 不存在 | 355 行 | 执行计划、链、计时器、澄清门、工具判定、影子路由 |
+| `retrievers.py` | 478 行（含 chunk 加载与缓存） | 383 行 | 加载与缓存拆到 `chunk_index.py`（198 行），分词拆到 `text.py`（115 行） |
+| `agentic_rag.py` | 781 行 | 834 行 | 路由 / 规划改为链步骤，工具触发词搬走，证据预算接入 |
+| 提示词字面量（`llm.py` + `llm_router.py`） | 4 段内联 | 0 | 10 个模板文件 |
+| `os.getenv` 调用点 / 文件 | 46 / 12 | 47 / 13 | 未收口，阶段 3.1；新增的是 `AGENT_PROMPT_DIR` |
+| `init_db()` 调用点 | 18 | 18 | 未收口，阶段 3.2 |
+| `create table` 出现的文件数 | 7 | 7 | 未收口，阶段 3.2 |
+| 路由直接导入实现模块（`grep` 近似，不含 auth / models） | 11 处 | 11 处 | 未收口，阶段 3.3 |
+| HTTP 契约 | — | 只增不删 | `AgentSummary` +2 字段、`TraceStep` +1、`ChatMetricsSummary` +5、`chat_metrics` +3 列 |
+
+结论：三批优化只重排了 `/chat` 这一条链路及其检索层，配置、DDL、façade 收口三项"体检指标"一个都没动，它们属于阶段 3。
+
+### 10.3 检索热路径对比（合成语料基准）
+
+`quality/agent-evals/bench_retrieval.py`：单租户合成语料，每个文档 1 个 chunk，20 条查询各跑 5 轮共 100 个样本，哈希 embedding、无 fastembed、`LLM_ROUTER_ENABLED=0`，与 CI 条件相同。"优化前"用 `git archive 7195dad` 导出的源码树在同一台机器同一进程条件下运行。日志：`runtime/opt-bench-retrieval.log`。
+
+| 语料规模 | 指标 | 优化前 | 优化后 | 变化 |
+| --- | --- | --- | --- | --- |
+| 2,000 chunk | keyword p50 / p95 | 64.2 / 90.3 ms | 5.9 / 9.4 ms | 约 1/10 |
+| 2,000 chunk | hybrid p50 / p95 | 83.8 / 94.2 ms | 26.4 / 49.7 ms | 约 1/3 |
+| 5,000 chunk | keyword p50 / p95 | 159.8 / 178.4 ms | 14.5 / 51.4 ms | 约 1/10 |
+| 5,000 chunk | hybrid p50 / p95 | 216.2 / 249.0 ms | 102.4 / 119.7 ms | 约 1/2 |
+| 2,000 chunk | 写入后首次检索（缓存重建）keyword / hybrid | 124.8 / 156.0 ms | 178.2 / 241.7 ms | **慢约 45%** |
+| 5,000 chunk | 写入后首次检索（缓存重建）keyword / hybrid | 321.6 / 388.6 ms | 450.1 / 602.5 ms | **慢约 45%** |
+| 5,000 chunk | 摄取总耗时 | 21.4 s | 21.3 s | 不变 |
+
+怎么读这张表：
+
+- 关键词路径从 O(N·L) 变成 O(命中数)，语料翻 2.5 倍时优化前耗时翻 2.5 倍，优化后 p50 只从 5.9 涨到 14.5 ms。这是 1.1 + 1.2 的直接结果。
+- hybrid 的收益小于 keyword，因为 embedding 通道仍是全量余弦扫描，并行只能把它和关键词通道重叠起来；embedding 通道本身要靠 1.3 二进制向量才会明显变快。
+- 缓存重建变慢是真实代价：重建时要对每个 chunk 预计算词项并构建倒排。1.6 的按租户失效缓解了它（一个租户写入不再重建其他租户），但同租户内每次写入后的首个请求仍付这笔钱。1.5 把 embedding 补齐移出请求路径后会再降一部分。这个代价没有写进 QUALITY 的门禁数字里，因为黄金集语料只有几十个 chunk，测不出来。
+- 黄金集的 p95（6 到 9 ms）在三批前后没有可辨识的变化，属于噪声；这也是要另做合成语料基准的原因。
+
+### 10.4 质量门禁对比
+
+| 门禁 | 优化前（2026-09-11 收尾） | 三批之后 | 说明 |
+| --- | --- | --- | --- |
+| Agent 全量 | 158/158 | 199/199 | 旧用例仅两处断言改为接受 `plan=ANY` |
+| V6 hybrid decision / recall@3 / fact | 98% / 97% / 97% | 98% / 97% / 97% | 关键词路径结果顺序被证明与旧实现逐 query 一致，指标不变是设计结果 |
+| V6 embedding-only（不设门禁） | 88% / 84% / 81% | 88% / 84% / 81% | 中间一次跑出 88/81/78，两次重跑恢复，原因未定位 |
+| PRD | 12/12，十项指标 100% | 同 | 未改动 |
+| Knowledge Lifecycle、V5 观测 | 通过 | 通过 | 未改动 |
+| Web lint / test / build | 0 error 18 warning / 7/7 / 通过 | 同 | 监控面板改动未引入新告警 |
+| 黄金集 42 问 | — | 无一被澄清门或工单直达门误拦 | 新增的门只拦"为什么？"这类无锚点问题 |
+
+一句话总结：**行为一致性有黄金集和暴力对照证明，效率收益有合成基准证明，结构收益有行数与模块划分证明；证据预算、调用上限、影子路由三项目前只有"机制存在且测试覆盖"的证据，还没有真实流量下的收益证据。**
+
+### 10.5 尚未兑现的承诺
+
+- 证据预算在 600 字符切块下永远不触发，要等长媒体转写片段或 1.7 Parent-Child。
+- 影子路由的"系统会选什么"是一套未经验证的规则，需要真实请求积累一致率后再决定是否开启自动模式。
+- 调用上限 8 / 6 是照抄的默认值，本项目单次请求最多 4 次模型调用，它现在是兜底不是成本控制。
+- 阶段 3 的配置、DDL、façade 收口三项体检指标完全没动，阶段 2 的会话记忆与流式输出是用户能直接看到的差异，建议作为下一批。

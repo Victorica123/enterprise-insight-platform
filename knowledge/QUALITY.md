@@ -179,6 +179,10 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **199/199**，ruff 0 告警；V6 keyword 与 hybrid decision **98%**、recall@3 **97%**、fact **97%**（hybrid p95 8.7ms），embedding-only 88%/84%/81%（与上一批的重跑值相同，不受门禁约束）；PRD **12/12** 且十项指标 100%（p95 6.97ms）；Knowledge Lifecycle 门禁通过（p95 179.97ms）；V5 观测门禁 8 项通过（p95 16.38ms）。证据预算在三套黄金集上未触发裁剪（文档切块 600 字符远小于 2200），因此三项指标与上一批完全一致是预期结果，不证明裁剪对质量无影响；长媒体转写片段是首个会触发它的场景。Web `npm run lint` 0 error / 18 warning（与改动前相同）、`npm test` **7/7**、TypeScript/Vite 生产构建通过。日志：`runtime/opt-stage0b-gates.log`、`runtime/opt-stage0b-web.log`。Media 与 localhost 验收本轮未改动、未重跑。
 - 面试文档中的 Agent 测试数量更新为 199。
 
+2026-09-12 架构优化前后基准（见 `docs/ARCHITECTURE_OPTIMIZATION_PLAN.md` 第十节）：
+
+- 新增 `quality/agent-evals/bench_retrieval.py`：单租户合成语料，每文档 1 个 chunk，20 条查询 × 5 轮，哈希 embedding、`LLM_ROUTER_ENABLED=0`；"优化前"用 `git archive 7195dad` 导出的源码树在同机同条件运行。2,000 chunk：keyword p50 **64.2 → 5.9 ms**，hybrid p50 **83.8 → 26.4 ms**；5,000 chunk：keyword p50 **159.8 → 14.5 ms**，hybrid p50 **216.2 → 102.4 ms**。代价：写入后首次检索（缓存重建）在两种规模下均**慢约 45%**（5,000 chunk hybrid 388.6 → 602.5 ms），因为重建时预计算词项与倒排；黄金集语料太小，门禁 p95 测不出这两个方向的任何变化。日志：`runtime/opt-bench-retrieval.log`。该基准不设阈值、不进 CI，只作为架构决策证据。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。
