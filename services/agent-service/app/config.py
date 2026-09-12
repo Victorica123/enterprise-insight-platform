@@ -93,6 +93,36 @@ def get_llm_settings() -> LLMSettings:
     )
 
 
+@dataclass(frozen=True)
+class CallLimits:
+    """每请求调用上限（对标 Nexus：模型 8 次、工具 6 次）；超限降级并写 trace，不报错。"""
+
+    max_model_calls: int = 8
+    max_tool_calls: int = 6
+
+
+def get_call_limits() -> CallLimits:
+    return CallLimits(
+        max_model_calls=_read_int("AGENT_MAX_MODEL_CALLS", 8, minimum=1, maximum=64),
+        max_tool_calls=_read_int("AGENT_MAX_TOOL_CALLS", 6, minimum=1, maximum=64),
+    )
+
+
+@dataclass(frozen=True)
+class EvidenceBudgetSettings:
+    """证据字符预算：单来源与总量上限（对标 Nexus 的 2200 / 5200 字符）。"""
+
+    per_source_chars: int = 2200
+    total_chars: int = 5200
+
+
+def get_evidence_budget_settings() -> EvidenceBudgetSettings:
+    return EvidenceBudgetSettings(
+        per_source_chars=_read_int("EVIDENCE_SOURCE_CHAR_BUDGET", 2200, minimum=200, maximum=50_000),
+        total_chars=_read_int("EVIDENCE_TOTAL_CHAR_BUDGET", 5200, minimum=400, maximum=200_000),
+    )
+
+
 def get_llm_pricing() -> LLMPricing:
     """按 provider 取默认单价（环境变量可覆盖），local 模式不计成本。
 

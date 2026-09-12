@@ -6,8 +6,10 @@ from uuid import uuid4
 
 from app import database
 from app.architecture.planning import StageTimer
+from app.call_limits import CallLimitExceeded
 from app.config import get_llm_pricing
 from app.database import connect, init_db, insert_document, list_document_rows
+from app.evidence_budget import apply_evidence_budget
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
@@ -300,6 +302,12 @@ def answer_question(
             detail=f"选择前 {len(sources)} 个来源作为回答证据，最高分为 {sources[0].score}。{selected_query_detail}",
         )
     )
+    timer.mark()
+
+    # 阶段 0.5：先按分数选，再按字符预算裁；模型、证据检查与引用审核看到的是同一份裁剪后证据。
+    budgeted = apply_evidence_budget(sources)
+    sources = budgeted.sources
+    trace.append(budgeted.trace_step())
     timer.mark()
 
     evidence_check = check_evidence(question, sources)
@@ -619,6 +627,25 @@ def build_answer(
                 source="api",
             )
             return llm_answer.content, trace, usage
+        except CallLimitExceeded as exc:
+            # 阶段 0.4：模型调用预算耗尽不是故障，直接退回模板并在 trace 里说明原因
+            logger.warning("llm_answer_call_limit limit=%s fallback=template", exc.limit)
+            trace.append(
+                TraceStep(
+                    name="answer",
+                    status="call_limited",
+                    detail=f"本次请求的模型调用已达上限（{exc.limit} 次），退回内部模板答案。",
+                )
+            )
+            answer = build_fallback_answer(
+                sources,
+                note="本次请求的模型调用次数已达上限，已退回到内部 RAG 模板答案。",
+            )
+            return (
+                append_extra_contexts(answer, extra_contexts),
+                trace,
+                build_local_usage(question, sources, answer, "local_template"),
+            )
         except Exception:
             # 供应商报错原文只进服务端日志，不进用户可见的答案/trace（信息泄漏）
             logger.exception("LLM answer generation failed; falling back to template answer")

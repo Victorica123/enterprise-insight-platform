@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.agentic_rag import answer_agentic_question  # compatibility patch target
 from app.architecture.context import RequestContext
 from app.architecture.observability import record_chat_log, record_chat_metric
-from app.architecture.orchestration import answer_chat
+from app.architecture.orchestration import run_chat
+from app.architecture.planning import ExecutionPlan
 from app.auth import ActorPrincipal, current_principal
 from app.model_egress import (
     bind_model_egress_tenant,
@@ -54,7 +55,7 @@ def chat(
     started_at = perf_counter()
     egress_token = bind_model_egress_tenant(principal.tenant_id)
     try:
-        response = answer_chat(
+        response, plan = run_chat(
             request.question,
             workflow_mode=request.workflow_mode,
             answer_mode=request.answer_mode,
@@ -78,6 +79,7 @@ def chat(
             latency_ms=(perf_counter() - started_at) * 1000,
             outcome="error",
             principal=principal,
+            plan=None,
         )
         raise
     finally:
@@ -95,6 +97,7 @@ def chat(
         latency_ms=(perf_counter() - started_at) * 1000,
         outcome=outcome,
         principal=principal,
+        plan=plan,
     )
     if isinstance(log_id, int):
         response.log_id = log_id
@@ -125,8 +128,9 @@ def safe_record_chat_metric(
     latency_ms: float,
     outcome: str,
     principal: ActorPrincipal | None = None,
+    plan: ExecutionPlan | None = None,
 ) -> int:
-    """记录指标 + 请求日志（含 token 成本），返回日志 ID 供反馈使用。"""
+    """记录指标 + 请求日志（含 token 成本、影子路由），返回日志 ID 供反馈使用。"""
     try:
         tenant_id = (
             principal.tenant_id
@@ -171,6 +175,10 @@ def safe_record_chat_metric(
             estimated_cost_usd=usage.estimated_cost_usd if usage else 0.0,
             tenant_id=tenant_id,
             owner_id=owner_id,
+            # 阶段 0.8 影子路由：用户选了什么（workflow_mode）/ 服务端执行了什么 / 系统自己会选什么
+            execution_mode=plan.mode if plan else "",
+            shadow_mode=plan.shadow_mode if plan else "",
+            mode_agreement=plan.mode_agreement if plan else None,
         )
         return record_chat_log(
             question=request.question,

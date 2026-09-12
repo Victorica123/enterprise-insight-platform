@@ -28,11 +28,11 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 ## 端到端请求路径
 
 1. React 通过统一 API 入口把请求送到 Media Service 或 Agent Service；服务端从共享 JWT 得到 tenant、owner、workspace 和 role。
-2. Chat 路由创建 `RetrievalScope`，由 `ConversationOrchestrator` 先跑 `PreparationChain` 生成 `ExecutionPlan`，再由 `ExecutorRegistry` 按 `plan.mode` 选择单一执行器（clarify / tool_only / retrieval / agentic；`workflow_mode` 只是输入）。scope 在检索前生效，不能由问题正文或客户端角色头覆盖。
-3. 检索层执行混合召回和证据门控。视频来源继续携带 `asset_id`、`segment_id`、`start_ms` 和 `end_ms`，无法验证的结论拒答或标记为缺口。
+2. Chat 路由创建 `RetrievalScope`，由 `ConversationOrchestrator` 先跑 `PreparationChain` 生成 `ExecutionPlan`，再由 `ExecutorRegistry` 按 `plan.mode` 选择单一执行器（clarify / tool_only / retrieval / agentic；`workflow_mode` 只是输入）。整个计划与执行在一个每请求调用预算内运行（模型调用 8 次、工具调用 6 次，超限降级为规则 / 模板并写 trace）。scope 在检索前生效，不能由问题正文或客户端角色头覆盖。
+3. 检索层执行混合召回和证据门控；按分数选出的来源再经字符预算裁剪（单来源 2200、总量 5200 字符），模型、证据检查与引用审核看到同一份证据。视频来源继续携带 `asset_id`、`segment_id`、`start_ms` 和 `end_ms`，无法验证的结论拒答或标记为缺口。
 4. 分析请求先固化授权证据快照，再按六阶段运行。缺少决策人、验收标准或冲突处理方式时进入 `WAITING_CONFIRMATION`；确认通过 CAS 恢复，不重写阶段 1–4。
 5. PRD、知识候选和行动项分别经过人工审批。批准知识会物化为带 provenance 的受治理文档，工具副作用只产生待审批 action，不在问答期间直接执行。
-6. 观测层记录请求、回答状态、引用状态、token、工具调用和审计事件，供 `/metrics/*`、`/chat-logs` 和管理面板使用。
+6. 观测层记录请求、回答状态、引用状态、token、工具调用、影子路由一致性和审计事件，供 `/metrics/*`、`/chat-logs` 和管理面板使用。
 
 ## 模块化迁移约定
 

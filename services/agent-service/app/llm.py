@@ -4,6 +4,7 @@ from app.config import get_llm_settings
 from app.evidence import source_location
 from app.llm_client import create_chat_completion
 from app.models import Source
+from app.prompts import load_prompt, render_prompt
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ def generate_answer(
             {"role": "user", "content": build_user_prompt(question, sources, extra_contexts)},
         ],
         temperature=0.2,
+        purpose="answer",
     )
 
     content = response.choices[0].message.content or "模型没有返回可用内容。"
@@ -58,13 +60,8 @@ def generate_answer(
 
 
 def build_system_prompt() -> str:
-    return (
-        "你是企业知识库助手。你必须只基于用户提供的来源资料回答。"
-        "如果来源资料不足以回答，就明确说资料不足。"
-        "回答要先给结论，再给依据，最后给必要的补充信息。"
-        "如果提供了系统补充上下文（关系图谱、工具调用结果），可以结合它进行推理，"
-        "但事实依据仍以来源资料为准，不要编造来源或补充上下文中不存在的事实。"
-    )
+    """阶段 0.7：提示词外置在 app/prompts/*.txt，这里只做加载（进程内缓存）。"""
+    return load_prompt("answer_system")
 
 
 def build_user_prompt(
@@ -72,26 +69,32 @@ def build_user_prompt(
     sources: list[Source],
     extra_contexts: list[str] | None = None,
 ) -> str:
+    """只做变量填充：来源条目、补充上下文与问题分别套用各自模板。"""
     evidence = "\n\n".join(
-        f"来源 {index + 1}\n"
-        f"来源类型：{source.source_type}\n"
-        f"位置：{source_location(source)}\n"
-        + (f"资产 ID：{source.asset_id}\n片段 ID：{source.segment_id}\n" if source.source_type == "video" else "")
-        + f"内容：{source.content}"
+        render_prompt(
+            "answer_source_item",
+            index=index + 1,
+            source_type=source.source_type,
+            location=source_location(source),
+            video_lines=(
+                f"资产 ID：{source.asset_id}\n片段 ID：{source.segment_id}\n"
+                if source.source_type == "video"
+                else ""
+            ),
+            content=source.content,
+        )
         for index, source in enumerate(sources)
     )
 
-    context_section = ""
     blocks = [block.strip() for block in (extra_contexts or []) if block and block.strip()]
-    if blocks:
-        context_section = (
-            "\n\n系统补充上下文（关系图谱与工具调用结果，若与问题相关请纳入推理）：\n"
-            + "\n\n".join(blocks)
-        )
-
-    return (
-        f"用户问题：{question}\n\n"
-        f"可用来源资料：\n{evidence}"
-        f"{context_section}\n\n"
-        "请基于这些来源资料和补充上下文回答，并在回答中说明依据来自哪些来源。"
+    context_section = (
+        "\n\n" + render_prompt("answer_context_section", blocks="\n\n".join(blocks))
+        if blocks
+        else ""
+    )
+    return render_prompt(
+        "answer_user",
+        question=question,
+        evidence=evidence,
+        context_section=context_section,
     )

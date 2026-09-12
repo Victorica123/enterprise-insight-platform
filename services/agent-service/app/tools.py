@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from app.auth import OPERATOR_ROLES, WRITE_ROLES
+from app.call_limits import current_call_limits
 from app.publication_artifacts import settle_action_ticket
 from app.ticket_store import (
     PendingAction,
@@ -214,6 +215,30 @@ def execute_tool(
             tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
         )
         return ToolCallResult(name, False, {"error": "当前角色没有调用该工具的权限。"}, "denied", duration)
+
+    # 阶段 0.4 每请求工具调用上限：超限的调用不执行、不进审批，记一条 limited 审计后返回失败结果；
+    # 未绑定请求（工单路由直调、分析行动项）没有计数器，不受限。
+    counter = current_call_limits()
+    if counter is not None and not counter.try_acquire("tool", label=name):
+        duration = _elapsed_ms(started_at)
+        record_tool_call(
+            tool_name=name,
+            operation=tool.operation,
+            requires_approval=tool.requires_approval,
+            status="limited",
+            actor_role=actor_role,
+            input_payload=_audit_payload(arguments),
+            error_message="call_limit_exceeded",
+            duration_ms=duration,
+            tenant_id=tenant_id, owner_id=owner_id, actor_user=actor_user,
+        )
+        return ToolCallResult(
+            name,
+            False,
+            {"error": f"本次请求的工具调用次数已达上限（{counter.limits.max_tool_calls} 次），该调用已跳过。"},
+            "limited",
+            duration,
+        )
 
     try:
         validated = validate_arguments(tool, arguments)

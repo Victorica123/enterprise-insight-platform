@@ -22,6 +22,9 @@
 - 澄清门目前是规则版：问题没有任何内容锚点（客户、项目、文档、工单、英文词或数字）时直接返回澄清问题，不检索、不调模型；三套黄金集共 42 个问题无一被拦。相对置信度公式（top1 / max(10, top1 + top2 + 5)，阈值 0.55）留待后续。
 - `ExecutorRegistry` 按模式注册唯一执行器：`ClarificationExecutor`、`ToolOnlyExecutor`、`RetrievalExecutor`（`rag.answer_question`）、`AgenticExecutor`（`agentic_rag`）。agentic 执行器复用计划里的分类结果与 query，不重复调用路由模型；未注册的模式直接报错而不是静默降级。
 - 每个 `TraceStep` 带 `duration_ms`：链内每步、检索、图谱、工具、生成、引用审核各自计时，随 `chat_logs.trace_json` 落库；旧日志该字段为 null。
+- 每请求调用预算（`app/call_limits.py`）：`ConversationOrchestrator.run` 用 ContextVar 绑定一个 `LimitCounter`，模型调用上限 8 次、工具调用上限 6 次（`AGENT_MAX_MODEL_CALLS` / `AGENT_MAX_TOOL_CALLS`）。只有真正出网的 `create_chat_completion` 消耗模型预算；超限抛 `CallLimitExceeded`，路由 / 规划 / 工具选择退回规则，答案生成退回模板并写 `answer=call_limited`。工具超限不执行、不进审批，记一条 `limited` 审计后返回失败结果。请求结束时若有任何预算申请，追加一条 `call_limits` trace（超限为 degraded）。未绑定请求的调用（后台任务、工单路由直调、单元测试）不受限。
+- 证据字符预算（`app/evidence_budget.py`）：来源先按分数选出（`MAX_SOURCES=4`），再按单来源 2200、总量 5200 字符裁剪（`EVIDENCE_SOURCE_CHAR_BUDGET` / `EVIDENCE_TOTAL_CHAR_BUDGET`），裁剪优先落在句末并以省略号标记，剩余预算不足 120 字符时丢弃后续低分来源。单轮与多轮路径都在证据检查之前应用，多轮每轮从完整 chunk 重新裁剪；trace 写 `evidence_budget`（多轮为 `evidence_budget_<round>`，status ok / trimmed）。当前 600 字符的文档切块不会触发裁剪，长媒体转写片段和后续 Parent-Child 合并会。
+- 影子路由：`decide_mode` 在写入实际模式的同时用规则版 `shadow_decision` 记录"不带 `workflow_mode` 时系统自己会选什么"（clarify > tool_only > 复杂 / 需要工具 / 风险因果意图 → agentic > retrieval；链上已有分类结果时复用，不多调模型）。`ExecutionPlan` 新增 `shadow_mode` / `shadow_reason` / `mode_agreement`；`chat_metrics` 新增 `execution_mode`、`shadow_mode`、`mode_agreement`（-1 为未评估）；`/metrics/summary` 新增 `execution_mode_usage`、`shadow_mode_usage`、`mode_agreement_samples`、`mode_agreement_rate`、`mode_disagreements`，监控面板显示"路由一致率"与不一致配对。它只记录不改变决策，用于在切换自动模式前用真实流量评估规则。
 
 ## 证据策略
 
@@ -35,7 +38,8 @@
 
 ## LLM 通道与结构化输出
 
-- `app/llm_client.py` 统一复用 OpenAI-compatible client，并允许调用方传入 `response_format`；超时、重试和最大输出 token 仍由统一配置控制。
+- `app/llm_client.py` 统一复用 OpenAI-compatible client，并允许调用方传入 `response_format`；超时、重试和最大输出 token 仍由统一配置控制。每次调用带 `purpose` 标签进入每请求模型调用预算。
+- 提示词外置在 `app/prompts/*.txt`（`answer_system` / `answer_user` / `answer_source_item` / `answer_context_section` / `router_*` / `planner_*` / `tool_selector_*`），用 `string.Template` 的 `${name}` 占位以保留提示词内的 JSON 示例；`llm.py` 与 `llm_router.py` 只做变量填充，进程内缓存，`AGENT_PROMPT_DIR` 可按部署覆盖同名模板而不重建镜像。缺占位符在渲染时报错，不会发送半填充的提示词；`PROMPT_CATALOG` 声明每个模板必须有的占位符，由测试校验。
 - `app/llm_router.py` 的 Router、Planner 和工具选择通道使用固定版本的 JSON envelope。`LLM_RESPONSE_FORMAT=auto` 时，OpenAI 使用 `json_schema + strict=true`；DeepSeek 兼容通道使用 `json_object`，随后仍执行类型、枚举、白名单和参数对象校验。
 - 为满足严格 JSON Schema 对根节点和闭合 object 的约束，Planner 返回 `{ "queries": [...] }`，工具选择返回 `{ "calls": [...] }`；工具参数以 JSON object string 传输，再由服务端解析并交给既有工具 schema/权限校验。未注册工具、非法参数、解析失败或 provider 不支持 response format 都只能进入规则降级，不能直接执行副作用。
 - 每次 LLM 路由调用读取 provider 返回的 prompt/completion token；现有聊天观测将其与答案调用合并并按配置价格估算成本。token 统计不代表模型质量，必须与独立 holdout、引用正确率、拒答质量、人工接受率、延迟和成本评测一起解释。

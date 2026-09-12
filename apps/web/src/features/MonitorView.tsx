@@ -82,6 +82,14 @@ export function MonitorView({ metricsSummary, embeddingStatus, onRefresh, actorR
           label="满意度"
           value={summary && summary.feedback_count > 0 ? formatPercent(summary.satisfaction_rate) : "—"}
         />
+        <MetricItem
+          label="路由一致率"
+          value={
+            summary && (summary.mode_agreement_samples ?? 0) > 0
+              ? formatPercent(summary.mode_agreement_rate)
+              : "—"
+          }
+        />
       </section>
 
       <div className="monitor-grid">
@@ -131,6 +139,12 @@ export function MonitorView({ metricsSummary, embeddingStatus, onRefresh, actorR
                   <div className="cost-row" key={workflow}>
                     <span>{workflow} 工作流</span>
                     <span>{formatMilliseconds(latency)}</span>
+                  </div>
+                ))}
+                {Object.entries(summary.mode_disagreements ?? {}).map(([pair, count]) => (
+                  <div className="cost-row" key={pair}>
+                    <span>影子路由不一致：用户选 {pair.replace("->", "，系统会选 ")}</span>
+                    <span>{count} 次</span>
                   </div>
                 ))}
               </div>

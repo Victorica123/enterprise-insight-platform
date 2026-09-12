@@ -40,8 +40,8 @@ Nexus 公开页面里可以直接拿来用的几个具体机制：
 - **按通道分别门控，再按名次融合**：向量通道用最小相似度、关键词通道用相对分数下限过滤弱命中，然后才做 RRF（K=60），原始分和元数据只做微调。本项目现在是先融合再用加权分门控，顺序相反。
 - **阶段化 trace**：`startStage / completeStage(metadata) / failStage` 三个句柄落表，观测面板按阶段展示耗时与决策结果；另有检索观测、通道执行记录、阶段基准三个查询接口。
 - **SSE 事件信封**：`{type, content, timestamp, conversationId, exchangeId}`，类型 `thinking / text / reference / recommend / status / error`，顺序 thinking → text* → reference → recommend → 结束。
-- **Prompt 外置**：所有提示词放 `classpath:prompt/*.st` 模板并缓存，代码里不含提示词字面量。本项目提示词在 `llm.py`、`llm_router.py` 内联。
-- **影子路由**：用户手选文档时后台静默跑一遍自动路由并落库对比，零打扰地得到路由命中率。本项目可对 `workflow_mode` 做同样的事：用户指定模式时静默跑一遍 `decide_mode`，记录两者是否一致。
+- **Prompt 外置**：所有提示词放 `classpath:prompt/*.st` 模板并缓存，代码里不含提示词字面量。本项目提示词在 `llm.py`、`llm_router.py` 内联（2026-09-12 已外置到 `app/prompts/*.txt`）。
+- **影子路由**：用户手选文档时后台静默跑一遍自动路由并落库对比，零打扰地得到路由命中率。本项目可对 `workflow_mode` 做同样的事：用户指定模式时静默跑一遍 `decide_mode`，记录两者是否一致（2026-09-12 已落地为 `shadow_decision` 与 `chat_metrics.mode_agreement`）。
 - **精排失败不伪造分数**：rerank 不可用时回退融合榜并在观测数据中标明，而不是静默降级。`retrievers.py:_rerank_head` 返回 `None` 时目前没有写 trace。
 
 本项目**优于** Nexus 公开版的部分，改造时必须保住：检索前的 tenant/owner 授权范围（`RetrievalScope`）、PRD / 知识 / 工具的人工审批与审计、outbox claim lease 与 fencing、契约文件与 ADR、闭集评测门禁。
@@ -132,11 +132,11 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 | 0.1（已落地 2026-09-12） | 新增 `ExecutionPlan` 与 `PreparationChain`，把 `route_question`、`plan_retrieval`、`_is_tool_only_question` 改写成链上的步骤 | 新增 `app/architecture/planning.py`；改 `orchestration.py` | `test_architecture_boundaries.py` 增加"计划可序列化、步骤可单独跳过"用例 |
 | 0.2（已落地 2026-09-12） | 新增 `ExecutorRegistry` 与 `ClarificationExecutor`；`workflow_mode` 保留为向后兼容输入，服务端最终以 `plan.mode` 为准 | `orchestration.py`、`models.py`（`AgentSummary` 增加 `execution_mode`、`clarify_question`） | 现有 158 个用例不变；新增澄清用例 |
 | 0.3（已落地 2026-09-12） | `TraceStep` 增加 `duration_ms`，每个阶段用 `perf_counter` 计时；`chat_logs.trace_json` 自然携带 | `models.py`、各执行器 | V5 观测评测保持 8/8 |
-| 0.4 | 每请求调用上限：`RequestContext` 增加 `LimitCounter`（模型调用 ≤ 8、工具调用 ≤ 6），超限写 trace 并降级 | `context.py`、`llm_client.py`、`tools.py` | 新增超限用例 |
-| 0.5 | 证据字符预算：单来源 ≤ 2200、总量 ≤ 5200，先按分数取，再按预算裁 | `rag.py` 抽出 `evidence_budget.py` | V6 三种模式 decision / recall@3 / fact 不下降 |
+| 0.4（已落地 2026-09-12） | 每请求调用上限：`RequestContext` 增加 `LimitCounter`（模型调用 ≤ 8、工具调用 ≤ 6），超限写 trace 并降级 | `context.py`、`llm_client.py`、`tools.py` | 新增超限用例 |
+| 0.5（已落地 2026-09-12） | 证据字符预算：单来源 ≤ 2200、总量 ≤ 5200，先按分数取，再按预算裁 | `rag.py` 抽出 `evidence_budget.py` | V6 三种模式 decision / recall@3 / fact 不下降 |
 | 0.6 | 澄清判定：借用 Nexus 的五条件与相对置信度公式，输入为路由意图分数与主题锚点命中数；rerank 不可用时写 `rerank_skipped` trace（trace 部分已落地 2026-09-12） | `planning.py`、`retrievers.py` | 新增澄清 / 降级可见用例 |
-| 0.7 | Prompt 外置到 `app/prompts/*.txt`（或 Jinja 模板）并缓存，`llm.py`、`llm_router.py` 只做变量填充 | `llm.py`、`llm_router.py`、新增 `app/prompts/` | 现有 LLM 路由用例不变 |
-| 0.8 | 影子路由：用户显式传 `workflow_mode` 时，后台仍跑 `decide_mode` 并把"系统会选什么 / 用户选了什么 / 是否一致"写入 `chat_metrics` | `orchestration.py`、`chat_observability_store.py` | 监控面板新增一致率 |
+| 0.7（已落地 2026-09-12） | Prompt 外置到 `app/prompts/*.txt`（或 Jinja 模板）并缓存，`llm.py`、`llm_router.py` 只做变量填充 | `llm.py`、`llm_router.py`、新增 `app/prompts/` | 现有 LLM 路由用例不变 |
+| 0.8（已落地 2026-09-12） | 影子路由：用户显式传 `workflow_mode` 时，后台仍跑 `decide_mode` 并把"系统会选什么 / 用户选了什么 / 是否一致"写入 `chat_metrics` | `orchestration.py`、`chat_observability_store.py` | 监控面板新增一致率 |
 
 ### 阶段 1：检索效率（约 1 周）
 
@@ -191,4 +191,5 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 
 - 2026-09-12：阶段 1 的 1.1、1.2、1.4、1.6 与 0.6 中“精排降级可见”部分落地。新增 `app/text.py`（唯一分词器与 CJK 窗口 / 锚点函数）和 `app/chunk_index.py`（授权 chunk 快照、预计算词项、词项倒排、按租户 revision 缓存）；`retrievers.py` 只保留检索通道与融合逻辑，并向后兼容地重导出 `Chunk`、`RetrievalScope`、`load_chunks` 等符号，测试与评测脚本无需改动。`embeddings.py`、`rag.py`、`agentic_rag.py` 的重复文本函数收敛到 `app/text.py`。关键词路径的结果顺序与旧的逐块打分实现完全一致，由 `tests/test_chunk_index.py` 用暴力算法逐 query 对照。验证：Agent 170/170、ruff 0 告警、V6 / PRD / Knowledge Lifecycle / V5 四个门禁通过，数字见 `knowledge/QUALITY.md` 的 2026-09-12 条目。实际顺序与第七节建议不同：先做了阶段 1 的低风险效率项，阶段 0 的执行计划 / 执行器注册表 / 阶段耗时（0.1–0.3）是下一步。
 - 2026-09-12（同日第二批）：阶段 0 的 0.1、0.2、0.3 落地。新增 `app/architecture/planning.py`（`PlanDraft`、`ExecutionPlan`、`PreparationChain`、`StageTimer`、规则版澄清门与工单直达判定）；`agentic_rag.py` 把 `route_question` / `plan_retrieval` 改写为作用于 `PlanDraft` 的 `classify_intent` / `plan_queries` 两个链步骤，state 版本只是薄包装；`orchestration.py` 改为“链生成计划 → `ExecutorRegistry` 按 `plan.mode` 选执行器”，注册 `RetrievalExecutor`、`AgenticExecutor`、`ToolOnlyExecutor`、`ClarificationExecutor`。`workflow_mode` 保留为输入：standard 请求跳过分类与规划步骤，agentic 请求把计划传给处理器复用，不重复调用路由模型。`TraceStep.duration_ms` 由链和各执行器计时；`AgentSummary` 新增 `execution_mode`、`clarify_question`；`execution_plan` 作为 trace 步骤写入，`chat_logs.trace_json` 自然携带。澄清门当前只拦“无内容锚点”的问题（如“为什么？”），0.6 的相对置信度公式仍待做。验证：Agent 176/176、ruff 0 告警、四个门禁通过，黄金集 42 个问题无一被澄清门或工单门误拦。
-- 尚未做：1.3 二进制向量、1.5 后台补齐 `embedding_v2`、1.7 Parent-Child；阶段 0 的 0.4、0.5、0.7、0.8 与 0.6 的置信度公式；阶段 2 至 4 全部。
+- 2026-09-12（同日第三批）：阶段 0 的 0.4、0.5、0.7、0.8 落地。新增 `app/call_limits.py`（`LimitCounter` 以 ContextVar 绑定到请求，模型 8 / 工具 6，`ConversationOrchestrator.run` 在一个预算内完成计划与执行并追加 `call_limits` trace；`llm_client.create_chat_completion` 只在真正出网时消耗预算，`llm_router` 超限退回规则，`rag.build_answer` 超限退回模板，`tools.execute_tool` 超限不执行并记 `limited` 审计）；新增 `app/evidence_budget.py`（单来源 2200 / 总量 5200 字符，先按分数选再按预算裁，句末优先、省略号标记、尾部不足 120 字符即丢弃；单轮与多轮路径都在证据检查前应用，trace 写 `evidence_budget`）；新增 `app/prompts/`（10 个 `.txt` 模板 + `string.Template` 渲染 + 进程内缓存 + `AGENT_PROMPT_DIR` 覆盖，`llm.py` / `llm_router.py` 不再含提示词字面量）；影子路由（`planning.shadow_decision` 规则版，`ExecutionPlan.shadow_mode / shadow_reason / mode_agreement`，`chat_metrics` 三个新列，`/metrics/summary` 五个新字段，监控面板新增“路由一致率”与不一致配对）。`_question_needs_tools` 及其触发词搬到 `planning.py`，旧名字保留。`.env.example` 新增五个变量。`orchestration.answer_chat` 保留，`run_chat` 额外返回计划供指标落库。验证：Agent 199/199（新增 `tests/test_request_budgets.py` 23 个用例）、ruff 0 告警、四个门禁通过（V6 hybrid 98/97/97、PRD 12/12、Knowledge Lifecycle、V5）、Web lint 0 error / 18 warning（与改动前相同）、`npm test` 7/7、生产构建通过。
+- 尚未做：1.3 二进制向量、1.5 后台补齐 `embedding_v2`、1.7 Parent-Child；0.6 的相对置信度公式；阶段 2 至 4 全部。

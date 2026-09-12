@@ -173,6 +173,12 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **176/176**，ruff 0 告警；V6 hybrid decision **98%**、recall@3 **97%**、fact **97%**（三次运行一致）；embedding-only 模式一次运行为 88%/81%/78%，随后两次重跑均为 88%/84%/81%，该模式不受门禁约束，波动原因未定位，如实记录；PRD **12/12**；Knowledge Lifecycle 门禁通过（p95 215.38ms）；V5 观测门禁通过（p95 20.40ms）。三套黄金集共 42 个问题经澄清门与工单直达判定扫描，无一误拦。日志：`runtime/opt-stage0-gates.log`。Media、Web 与 localhost 验收本轮未改动、未重跑。
 - 面试文档中的 Agent 测试数量更新为 176。
 
+2026-09-12 架构优化阶段 0 第二批落地（调用上限、证据字符预算、提示词外置、影子路由，见 `docs/ARCHITECTURE_OPTIMIZATION_PLAN.md` 第八节）：
+
+- 新增 `app/call_limits.py`、`app/evidence_budget.py`、`app/prompts/`（10 个模板）；`llm_client`、`llm_router`、`llm`、`rag`、`agentic_rag`、`tools`、`planning`、`orchestration`、`routes/chat`、`chat_observability_store`、`database`、`models`、`manifest` 与 Web 监控面板同步改动。`chat_metrics` 新增 `execution_mode`、`shadow_mode`、`mode_agreement` 三列（`ensure_column` 兼容旧库），`ChatMetricsSummary` 新增五个字段，均为增量，不删除任何契约字段。新增 `tests/test_request_budgets.py` 23 个用例：计数器与降级路径（模型预算耗尽时路由退规则、答案退模板、工具记 `limited` 审计、未绑定请求不受限）、预算裁剪的顺序 / 句末 / 丢弃规则与单轮 / 多轮 trace、模板目录与占位符校验、影子路由规则与 `/metrics/summary` 一致率端到端。
+- 本机回归（哈希 embedding，未安装 fastembed，`LLM_ROUTER_ENABLED=0`）：Agent 全量 **199/199**，ruff 0 告警；V6 keyword 与 hybrid decision **98%**、recall@3 **97%**、fact **97%**（hybrid p95 8.7ms），embedding-only 88%/84%/81%（与上一批的重跑值相同，不受门禁约束）；PRD **12/12** 且十项指标 100%（p95 6.97ms）；Knowledge Lifecycle 门禁通过（p95 179.97ms）；V5 观测门禁 8 项通过（p95 16.38ms）。证据预算在三套黄金集上未触发裁剪（文档切块 600 字符远小于 2200），因此三项指标与上一批完全一致是预期结果，不证明裁剪对质量无影响；长媒体转写片段是首个会触发它的场景。Web `npm run lint` 0 error / 18 warning（与改动前相同）、`npm test` **7/7**、TypeScript/Vite 生产构建通过。日志：`runtime/opt-stage0b-gates.log`、`runtime/opt-stage0b-web.log`。Media 与 localhost 验收本轮未改动、未重跑。
+- 面试文档中的 Agent 测试数量更新为 199。
+
 ## 合并门禁
 
 - 相关服务全量测试通过。

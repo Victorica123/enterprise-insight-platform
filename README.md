@@ -38,7 +38,7 @@ flowchart LR
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 176 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
+| Agent Service | 199 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
 | Media Service | 受支持的 Temurin JDK 17/18 下 135 个自动化用例（CI 使用 JDK 17） |
 | Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景三套独立门禁 |
 | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |

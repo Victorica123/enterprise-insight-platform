@@ -22,6 +22,8 @@ from app.architecture.planning import (
     ExecutionPlan,
     PreparationChain,
 )
+from app.call_limits import request_call_limits
+from app.config import CallLimits
 from app.models import AgentSummary, ChatResponse, TraceStep
 from app.rag import answer_question, deduplicate_preserve_order
 from app.retrievers import RetrievalScope
@@ -83,7 +85,10 @@ class RetrievalExecutor:
         kwargs = dict(answer_mode=request.answer_mode, retriever_mode=request.retriever_mode)
         if request.retrieval_scope is not None:
             kwargs["scope"] = request.retrieval_scope
-        return self.handler(request.question, **kwargs)
+        response = self.handler(request.question, **kwargs)
+        # 单轮路径不接触计划对象：把计划步骤与计划本身放到 trace 开头，回放时与 agentic 一样可见。
+        response.trace[:0] = [*plan.trace, plan.trace_step()]
+        return response
 
 
 @dataclass(frozen=True)
@@ -175,6 +180,7 @@ class ConversationOrchestrator:
         standard_handler: Callable[..., ChatResponse] = answer_question,
         chain: PreparationChain | None = None,
         registry: ExecutorRegistry | None = None,
+        call_limits: CallLimits | None = None,
     ) -> None:
         # Injection keeps this boundary observable by compatibility tests and
         # alternate runtimes without exposing persistence implementation.
@@ -182,14 +188,54 @@ class ConversationOrchestrator:
         self._registry = registry or build_default_registry(
             agentic_handler=agentic_handler, standard_handler=standard_handler
         )
+        self._call_limits = call_limits  # None = AGENT_MAX_MODEL_CALLS / AGENT_MAX_TOOL_CALLS
 
     def plan(self, request: ConversationInput) -> ExecutionPlan:
         skip = STANDARD_SKIPPED_STEPS if request.workflow_mode != "agentic" else ()
         return self._chain.run(request.question, request.workflow_mode, skip=skip)
 
+    def run(self, request: ConversationInput) -> tuple[ChatResponse, ExecutionPlan]:
+        """Plan and execute under one per-request call budget; return the plan for metrics."""
+        with request_call_limits(limits=self._call_limits) as counter:
+            plan = self.plan(request)
+            response = self._registry.get(plan.mode).execute(request, plan)
+        if counter.attempted:
+            response.trace.append(counter.trace_step())
+        return response, plan
+
     def answer(self, request: ConversationInput) -> ChatResponse:
-        plan = self.plan(request)
-        return self._registry.get(plan.mode).execute(request, plan)
+        return self.run(request)[0]
+
+
+def run_chat(
+    question: str,
+    *,
+    workflow_mode: str,
+    answer_mode: str,
+    retriever_mode: str,
+    actor_role: str,
+    actor_user: str,
+    workspace_type: str,
+    retrieval_scope: RetrievalScope | None = None,
+    agentic_handler: Callable[..., ChatResponse] = answer_agentic_question,
+    standard_handler: Callable[..., ChatResponse] = answer_question,
+) -> tuple[ChatResponse, ExecutionPlan]:
+    """Route entry: the response plus the plan the metrics row is built from."""
+    return ConversationOrchestrator(
+        agentic_handler=agentic_handler,
+        standard_handler=standard_handler,
+    ).run(
+        ConversationInput(
+            question=question,
+            workflow_mode=workflow_mode,
+            answer_mode=answer_mode,
+            retriever_mode=retriever_mode,
+            actor_role=actor_role,
+            actor_user=actor_user,
+            workspace_type=workspace_type,
+            retrieval_scope=retrieval_scope,
+        )
+    )
 
 
 def answer_chat(
@@ -205,19 +251,16 @@ def answer_chat(
     agentic_handler: Callable[..., ChatResponse] = answer_agentic_question,
     standard_handler: Callable[..., ChatResponse] = answer_question,
 ) -> ChatResponse:
-    """Compatibility-friendly function used by the chat route."""
-    return ConversationOrchestrator(
+    """Compatibility-friendly function: the response only."""
+    return run_chat(
+        question,
+        workflow_mode=workflow_mode,
+        answer_mode=answer_mode,
+        retriever_mode=retriever_mode,
+        actor_role=actor_role,
+        actor_user=actor_user,
+        workspace_type=workspace_type,
+        retrieval_scope=retrieval_scope,
         agentic_handler=agentic_handler,
         standard_handler=standard_handler,
-    ).answer(
-        ConversationInput(
-            question=question,
-            workflow_mode=workflow_mode,
-            answer_mode=answer_mode,
-            retriever_mode=retriever_mode,
-            actor_role=actor_role,
-            actor_user=actor_user,
-            workspace_type=workspace_type,
-            retrieval_scope=retrieval_scope,
-        )
-    )
+    )[0]

@@ -213,6 +213,10 @@ def init_db() -> None:
         ensure_column(conn, table="chat_metrics", column="estimated_cost_usd", definition="real not null default 0")
         ensure_column(conn, table="chat_metrics", column="tenant_id", definition="text not null default 'legacy'")
         ensure_column(conn, table="chat_metrics", column="owner_id", definition="text not null default 'legacy'")
+        # 阶段 0.8 影子路由：最终执行模式、系统自选模式、是否一致（-1 = 未评估的旧记录 / 错误请求）
+        ensure_column(conn, table="chat_metrics", column="execution_mode", definition="text not null default ''")
+        ensure_column(conn, table="chat_metrics", column="shadow_mode", definition="text not null default ''")
+        ensure_column(conn, table="chat_metrics", column="mode_agreement", definition="integer not null default -1")
         conn.execute(
             "create index if not exists idx_chat_metrics_scope on chat_metrics(tenant_id, owner_id, created_at)"
         )

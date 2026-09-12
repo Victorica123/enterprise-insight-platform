@@ -152,6 +152,12 @@ class ChatMetricsSummary(BaseModel):
     positive_feedback: int = 0
     negative_feedback: int = 0
     satisfaction_rate: float = 1.0
+    # 阶段 0.8 影子路由：最终执行模式分布、系统自选模式分布、一致率与不一致配对
+    execution_mode_usage: dict[str, int] = Field(default_factory=dict)
+    shadow_mode_usage: dict[str, int] = Field(default_factory=dict)
+    mode_agreement_samples: int = 0
+    mode_agreement_rate: float = 1.0
+    mode_disagreements: dict[str, int] = Field(default_factory=dict)
 
 
 class ChatRequest(BaseModel):

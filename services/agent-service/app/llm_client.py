@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from app.call_limits import acquire_call
 from app.config import LLMSettings, get_llm_settings
 from app.model_egress import require_model_egress_allowed
 
@@ -36,11 +37,16 @@ def create_chat_completion(
     messages: list[dict[str, str]],
     temperature: float,
     response_format: dict[str, Any] | None = None,
+    purpose: str = "",
 ) -> Any:
+    """One bounded chat completion; ``purpose`` labels the call in the request budget."""
     require_model_egress_allowed()
     settings = get_llm_settings()
     if not settings.api_key:
         raise RuntimeError(f"未配置 {settings.provider} API Key。")
+    # 阶段 0.4 每请求模型调用上限：只有真正要出网的调用才消耗预算；
+    # 未绑定请求（后台任务、单元测试）不受限。超限抛 CallLimitExceeded，由调用方降级。
+    acquire_call("model", label=purpose)
 
     client = _build_client(settings)
     request: dict[str, Any] = {

@@ -16,10 +16,10 @@ class ArchitectureLayer:
 
 PANORAMA_LAYERS: tuple[ArchitectureLayer, ...] = (
     ArchitectureLayer(
-        "orchestration", "对话编排中心", "路由、问题规划、澄清与阶段检查点", ("architecture.orchestration", "agent_planning", "analysis_store"),
+        "orchestration", "对话编排中心", "路由、问题规划、澄清与阶段检查点", ("architecture.orchestration", "architecture.planning", "agent_planning", "call_limits", "analysis_store"),
     ),
     ArchitectureLayer(
-        "retrieval", "检索与证据", "授权范围内的关键词/向量/混合检索、图谱和引用校验", ("architecture.retrieval", "retrievers", "graph_rag", "citation_review"),
+        "retrieval", "检索与证据", "授权范围内的关键词/向量/混合检索、图谱和引用校验", ("architecture.retrieval", "retrievers", "evidence_budget", "graph_rag", "citation_review"),
     ),
     ArchitectureLayer(
         "execution", "三层执行器", "确定性领域分析、Agentic RAG 与受控工具执行", ("architecture.execution", "analysis_pipeline", "agentic_rag", "tools"),

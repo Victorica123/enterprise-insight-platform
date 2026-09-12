@@ -49,7 +49,11 @@ def record_chat_metric(
     estimated_cost_usd: float = 0.0,
     tenant_id: str = "legacy",
     owner_id: str = "legacy",
+    execution_mode: str = "",
+    shadow_mode: str = "",
+    mode_agreement: bool | None = None,
 ) -> None:
+    """一行一请求；mode_agreement 为 None 时落 -1（未评估：错误请求或旧调用方）。"""
     database.init_db()
     with database.connect() as conn:
         conn.execute(
@@ -58,9 +62,10 @@ def record_chat_metric(
                 tenant_id, owner_id, workflow_mode, answer_mode, retriever_mode, intent, complexity,
                 retrieval_rounds, query_count, evidence_status, citation_status,
                 source_count, outcome, answer_status, latency_ms, answer_chars,
-                prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd
+                prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd,
+                execution_mode, shadow_mode, mode_agreement
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tenant_id,
@@ -83,6 +88,9 @@ def record_chat_metric(
                 completion_tokens,
                 total_tokens,
                 round(estimated_cost_usd, 6),
+                execution_mode,
+                shadow_mode,
+                -1 if mode_agreement is None else int(bool(mode_agreement)),
             ),
         )
 
@@ -112,7 +120,9 @@ def get_chat_metrics_summary(
                 sum(prompt_tokens) as prompt_tokens,
                 sum(completion_tokens) as completion_tokens,
                 sum(total_tokens) as total_tokens,
-                sum(estimated_cost_usd) as total_cost
+                sum(estimated_cost_usd) as total_cost,
+                sum(case when mode_agreement >= 0 then 1 else 0 end) as agreement_samples,
+                sum(case when mode_agreement = 1 then 1 else 0 end) as agreement_hits
             from chat_metrics {where}
             """,
             scope_params,
@@ -168,6 +178,14 @@ def get_chat_metrics_summary(
         intent_usage = grouped_count("intent")
         avg_latency_by_workflow = grouped_average("workflow_mode", "latency_ms")
         avg_latency_by_answer_mode = grouped_average("answer_mode", "latency_ms")
+        # 阶段 0.8 影子路由：空串是未评估的旧记录 / 错误请求，不进分布
+        execution_mode_usage = {k: v for k, v in grouped_count("execution_mode").items() if k}
+        shadow_mode_usage = {k: v for k, v in grouped_count("shadow_mode").items() if k}
+        disagreement_rows = conn.execute(
+            f"select workflow_mode, shadow_mode, count(*) as value from chat_metrics {where}"
+            f"{' and' if where else ' where'} mode_agreement = 0 group by workflow_mode, shadow_mode",
+            scope_params,
+        ).fetchall()
 
     answered = int(totals["answered"] or 0)
     refused = int(totals["refused"] or 0)
@@ -182,6 +200,8 @@ def get_chat_metrics_summary(
     positive_feedback = int(feedback["positive"] or 0)
     negative_feedback = int(feedback["negative"] or 0)
     feedback_count = positive_feedback + negative_feedback
+    agreement_samples = int(totals["agreement_samples"] or 0)
+    agreement_hits = int(totals["agreement_hits"] or 0)
 
     return {
         "total_requests": total,
@@ -218,6 +238,14 @@ def get_chat_metrics_summary(
         "positive_feedback": positive_feedback,
         "negative_feedback": negative_feedback,
         "satisfaction_rate": positive_feedback / feedback_count if feedback_count else 1.0,
+        "execution_mode_usage": execution_mode_usage,
+        "shadow_mode_usage": shadow_mode_usage,
+        "mode_agreement_samples": agreement_samples,
+        "mode_agreement_rate": agreement_hits / agreement_samples if agreement_samples else 1.0,
+        "mode_disagreements": {
+            f"{row['workflow_mode']}->{row['shadow_mode']}": int(row['value'])
+            for row in disagreement_rows
+        },
     }
 
 
@@ -255,6 +283,11 @@ def empty_chat_metrics_summary() -> dict[str, object]:
         "positive_feedback": 0,
         "negative_feedback": 0,
         "satisfaction_rate": 1.0,
+        "execution_mode_usage": {},
+        "shadow_mode_usage": {},
+        "mode_agreement_samples": 0,
+        "mode_agreement_rate": 1.0,
+        "mode_disagreements": {},
     }
 
 

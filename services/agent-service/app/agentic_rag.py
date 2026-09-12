@@ -16,9 +16,11 @@ from app.architecture.planning import (
     PlanDraft,
     StageTimer,
     is_tool_only_question,
+    question_needs_tools,
 )
 from app.citation_review import review_citations
 from app.config import get_llm_pricing
+from app.evidence_budget import apply_evidence_budget
 from app.graph_rag import lookup_graph
 from app.llm_router import (
     llm_plan_queries,
@@ -281,30 +283,8 @@ def run_graph_agent(state: AgenticRagState) -> None:
 # V3: Tool Agent
 # ---------------------------------------------------------------------------
 
-_TOOL_KEYWORDS = [
-    "工单",
-    "创建工单",
-    "查工单",
-    "查询工单",
-    "更新工单",
-    "跟进",
-    "指派",
-    "分配",
-    "处理状态",
-    "工单状态",
-    "ticket",
-    "create ticket",
-    "query ticket",
-    "要不要创建",
-    "帮我创建",
-    "生成工单",
-    "建一个工单",
-]
-
-
-def _question_needs_tools(question: str) -> bool:
-    lowered = question.lower()
-    return any(kw.lower() in lowered for kw in _TOOL_KEYWORDS)
+# 工具触发词与判定搬到了执行计划模块（影子路由也要用）；保留旧名字给现有调用方与测试。
+_question_needs_tools = question_needs_tools
 
 
 def _tool_scope_kwargs(state: AgenticRagState) -> ToolScopeKwargs:
@@ -588,6 +568,7 @@ def classify_intent(draft: PlanDraft) -> None:
             "complex" if is_complex_question(draft.question, intents) else "simple"
         )
         router_source = "规则路由"
+    draft.classified = True
     draft.agents.append("Router Agent")
     draft.trace.append(
         TraceStep(
@@ -697,6 +678,9 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
         )
         merge_hits(state.hits, result.hits)
         state.sources = hits_to_sources(state.hits, state.question)
+        # 阶段 0.5：证据字符预算作用于按分数选出的来源；每轮从完整 chunk 重新裁剪，不会叠加
+        budgeted = apply_evidence_budget(state.sources)
+        state.sources = budgeted.sources
         useful_count = sum(1 for hit in result.hits if hit.score > 0)
         top_score = state.sources[0].score if state.sources else 0
         state.trace.append(
@@ -710,6 +694,8 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
             )
         )
         state.trace.extend(rerank_trace_steps(result))
+        if state.sources:
+            state.trace.append(budgeted.trace_step(f"evidence_budget_{round_index}"))
 
         check = check_evidence(state.question, state.sources)
         state.trace.append(

@@ -15,9 +15,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.call_limits import CallLimitExceeded
 from app.config import get_llm_settings
 from app.llm import is_llm_configured
 from app.llm_client import create_chat_completion
+from app.prompts import load_prompt, render_prompt
 from app.tools import get_tools_for_llm
 
 logger = logging.getLogger(__name__)
@@ -153,7 +155,13 @@ def _chat_json(
             ],
             temperature=0.1,
             response_format=_response_format(schema_name, schema),
+            purpose=schema_name,
         )
+    except CallLimitExceeded as exc:  # 阶段 0.4：预算耗尽走规则，不是故障
+        logger.warning(
+            "llm_router_call_limit purpose=%s limit=%s fallback=rules", schema_name, exc.limit
+        )
+        return None
     except Exception as exc:  # provider failures must preserve rules fallback
         logger.warning("llm_router_request_failed error=%s fallback=rules", exc)
         return None
@@ -198,17 +206,9 @@ def _extract_json(text: str) -> str:
 
 def llm_route_question(question: str) -> RouterDecision | None:
     """LLM 路由：意图 + 复杂度；失败返回 None。"""
-    system = (
-        "你是企业知识库工作流的路由器。分析用户问题，只输出 JSON："
-        '{"intent": "risk|causal|fact|summary|general", "complexity": "simple|complex"}。'
-        "intent 判定：涉及风险/违约/赔偿 -> risk；询问原因/延期/导致 -> causal；"
-        "询问具体事实（负责人/日期/数量/编号/时限）-> fact；要求总结概括 -> summary；其他 -> general。"
-        "complexity：多主题、多问句、超过 40 字或含“以及/同时/并且/是否/要不要” -> complex，否则 simple。"
-        "不要输出 JSON 以外的内容。"
-    )
     result = _chat_json(
-        system,
-        f"用户问题：{question}",
+        load_prompt("router_system"),
+        render_prompt("router_user", question=question),
         schema_name="router_decision_v1",
         schema=_ROUTER_SCHEMA,
     )
@@ -232,15 +232,9 @@ def llm_route_question(question: str) -> RouterDecision | None:
 
 def llm_plan_queries(question: str, intent: str) -> LLMJsonResult[list[str]] | None:
     """LLM 检索规划：改写/扩展查询（含同义表述与关键实体）；失败返回 None。"""
-    system = (
-        "你是检索规划器。把用户问题改写成适合企业知识库检索的查询列表，只输出 JSON 对象："
-        '{"queries": ["原问题", "扩展查询"]}。'
-        "要求：保留原问题作为第一个元素；补写 2-4 个查询，覆盖同义表述、关键实体与专业术语；"
-        "每个查询 4-25 字。不要输出 JSON 以外的内容。"
-    )
     result = _chat_json(
-        system,
-        f"用户问题：{question}\n路由意图：{intent}",
+        load_prompt("planner_system"),
+        render_prompt("planner_user", question=question, intent=intent),
         schema_name="query_plan_v1",
         schema=_QUERY_PLAN_SCHEMA,
     )
@@ -266,17 +260,9 @@ def llm_select_tool_calls(
 ) -> LLMJsonResult[list[tuple[str, dict[str, Any]]]] | None:
     """LLM 工具选择（B2）：返回 (工具名, 参数) 列表；失败返回 None 走关键词规则。"""
     tools = get_tools_for_llm()
-    system = (
-        "你是工具调用决策器。根据用户问题决定调用哪些工具（可能 0 个），只输出 JSON 对象："
-        '{"calls": [{"tool": "工具名", "arguments_json": "{\\"参数名\\": \\"参数值\\"}"}]}。'
-        "查询类工具直接调用；创建/更新工单类写操作也返回（系统会进入人工审批流程）。"
-        "与工单完全无关的问题返回 calls 为空的 JSON 对象。arguments_json 必须是合法 JSON 对象字符串，"
-        "严格使用工具声明里的参数名。"
-        f"可用工具：{json.dumps(tools, ensure_ascii=False)}。不要输出 JSON 以外的内容。"
-    )
     result = _chat_json(
-        system,
-        f"用户问题：{question}",
+        render_prompt("tool_selector_system", tools_json=json.dumps(tools, ensure_ascii=False)),
+        render_prompt("tool_selector_user", question=question),
         schema_name="tool_calls_v1",
         schema=_TOOL_CALL_SCHEMA,
     )

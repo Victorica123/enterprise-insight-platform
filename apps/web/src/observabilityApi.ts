@@ -36,6 +36,12 @@ export type ChatMetricsSummary = {
   positive_feedback: number;
   negative_feedback: number;
   satisfaction_rate: number;
+  // 阶段 0.8 影子路由：服务端最终模式 / 系统自选模式分布、一致率与不一致配对
+  execution_mode_usage?: Record<string, number>;
+  shadow_mode_usage?: Record<string, number>;
+  mode_agreement_samples?: number;
+  mode_agreement_rate?: number;
+  mode_disagreements?: Record<string, number>;
 };
 
 export type ToolMetricsSummary = {

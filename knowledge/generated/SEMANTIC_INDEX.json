@@ -296,13 +296,13 @@
     },
     {
       "end_line": 48,
-      "fingerprint": "85fa456d17154c27ba007bb45745f782a661a74adbae8ba01fe8309049817013",
+      "fingerprint": "81201ef806673b2bd8b8555e38fa28b4136351c00d649b58572d72fdb0b75a7d",
       "heading": "二、Nexus Agent 的做法与本项目现状对照",
-      "id": "42f30257da4daded6268",
+      "id": "97869f84dc1f579dce16",
       "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
       "preview": "| 扩展点 | `retrievalchannel` 接口、切块策略接口、记忆策略接口、tool 注册、mcp、skill.md | `retriever` protocol 已存在（`retrievers.py:84`）；`register_tool` 已存在（`tools.py:78`）；无切块策略与记忆策略接口 | 部分 | | 职责边界 | \"python 出能力，java 做决策\"，python 返回候选与打分，java 校验后才用 | 本项目正相反：agent service（python）拥有决策与治理，media（java）拥有媒体生命周期。边界清晰，且模型输出一律经校验（adr-0012） | 不需要改 | nex",
       "start_line": 33,
-      "vector_b64": "BvkG7f8ACBAFAw4H/v4PA/cE+fQLBfsA/vUTBPj7+QMP9wEM/QMQBgD8CfwDDPkNDgQC9P3+Eff6/PoABPTyCPb7BQIAAvwC/QIEAv4E/wEIDAb7BQH88wUI+/r2/g7xEBf+BAH7BAEDCOYD/vnr/gMBDfwYBfwCB/0I/BD+8wIK+wUD/wkIC/73AOYQCPv3APfpAPsD/+z7C/IIFvoE/gLz9P4ICgAB+/v8/gf+BgIMCvME6AgFAfH/Bu/5+xP/"
+      "vector_b64": "BvkG7f8ACBAFAw4H/v4MA/cE+fQLBfsA/vUTBPj7+QMP8wEM/QMQBgD4CfwDDPkNDgQC9P0AEff6/PoABPT1CPbyBQIAAvwC/QIEAgME/wEIDAb7BQH88wgI+/r2/g7xEBf6BAH7BAEDCOoD/vnrAwIBDfwYBfwCB/0I/BD+8wIK+wUD/wkIC/73AOYQCPv3BPfpAPsD/+z7C/IIFvoEAgLz9P4JCgAB9/v8/gf+BgIICvME6AgFAfH/Bu/5+xP/"
     },
     {
       "end_line": 76,
@@ -346,13 +346,13 @@
     },
     {
       "end_line": 140,
-      "fingerprint": "e27bd76c36eb5119aa5731c9891f7a7e52b29922e941fc6fad76b9b6cc475183",
+      "fingerprint": "f0c015ed39484f4dc3257ac2083577db4d95ca4775f6efe5d1c78d8d4e58c378",
       "heading": "阶段 0：工作逻辑显式化（优先级最高，约 1–2 周）",
-      "id": "94b02a7d74409fbdc9cb",
+      "id": "d91c7caf8d9ff50b78a3",
       "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
       "preview": "### 阶段 0：工作逻辑显式化（优先级最高，约 1–2 周） | # | 改动 | 涉及文件 | 验证 | | --- | --- | --- | --- | | 0.1（已落地 2026-09-12） | 新增 `executionplan` 与 `preparationchain`，把 `route_question`、`plan_retrieval`、`_is_tool_only_question` 改写成链上的步骤 | 新增 `app/architecture/planning.py`；改 `orchestration.py` | `test_architecture_boundaries.py` 增加\"计划可序列化、步骤",
       "start_line": 128,
-      "vector_b64": "+AMK5foFAPYD+PgBBA0O+Af+8fkEByIG/Pj+8QYKAPYL8AUMAfz+FATmC/sMBAMA/fH77fwABPcDAAL38QEDBQDxBQMG+/wDCg30AAkUAAQFERcABQL+DgH+BAD+/Pv/AwEGBAAGBP32BgADAAgBEAAEAAAIAPwABQQDAPX69v0LAw0H+fsHAfb5AQACBRL/DvwJ/PgK8/H2A/cJD/sIEf8F9P0M/+sL+AcE/w4KBfQI+v729hP1DPz/7+gI/gQG"
+      "vector_b64": "+QIJ6PsEAPcD+fkBBAsM+Qb/8/oEBh4F/Pn+8wUJAPgK8gQLAfz+EgTXCvwLBAIA/fP87/wABPgDAAL48wEDBADfBAMF/PwDCQv2AAgSAAQEDxUABAH+DAH+BAD+/Pz/AwEFBAAFBP33BQADAAcBEQAEAAAHAPwABAQDAPb7+P0KAgsG+vwGAff6AQACBBD/G/wI/PkJ9fP4A/gIDfwHHf8E9f4O/+4K+QYE/wwJBPIH+/739xD2C/z/8esH/gQF"
     },
     {
       "end_line": 152,
@@ -415,14 +415,24 @@
       "vector_b64": "D/fs7AMCEQIHDQDsBwkABwMCAAD+AAoK9wAA9wcHAAkHBwkDAgD7AwcO/QDmAAcAAxEA+fcC+QAACQARCQX/CQoA+QAA9gkqAAcJAPkJ/gAAFAD3AgP+5Q7+APH+AAkAAPkR9+oJ9gATAAD0CQMCAP77+Qz57wn9AAn3FgIDAgD9+QD9/fEPAAD+AP4A8hQD9/H5AA8JDgAJAAD2AAAA+fkC9O0H+QAA9Pb9AP0AB/sOAAcD9gIACQLtAAAJAgD3"
     },
     {
-      "end_line": 194,
-      "fingerprint": "09e82afce10046de496597f01724c26a49713ffddbb2e222fc1f1079ddb88413",
+      "end_line": 193,
+      "fingerprint": "c9514dd3ba54fa802a60ebd8084ba639fd6cb6c7eeefb7e435693d594c6f7b07",
       "heading": "八、落地记录",
-      "id": "6d3396ce6ac59188f66c",
+      "id": "6af5e7d58778e072744e",
       "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
       "preview": "## 八、落地记录 - 2026-09-12：阶段 1 的 1.1、1.2、1.4、1.6 与 0.6 中“精排降级可见”部分落地。新增 `app/text.py`（唯一分词器与 cjk 窗口 / 锚点函数）和 `app/chunk_index.py`（授权 chunk 快照、预计算词项、词项倒排、按租户 revision 缓存）；`retrievers.py` 只保留检索通道与融合逻辑，并向后兼容地重导出 `chunk`、`retrievalscope`、`load_chunks` 等符号，测试与评测脚本无需改动。`embeddings.py`、`rag.py`、`agentic_rag.py` 的重复文本函数收敛到 `app/t",
       "start_line": 190,
-      "vector_b64": "B/AQ6f4FAgr/CAoFDQQH7gEA/v8K8AYICfYHBhMRCf4N/gz+BQfmBgPv+wMGAgf5CvoD6gf++e/0C//+/vwKA/7uDAIA+/4F8AgB/vce+AL9HgABBAACBPcF+AIAAQoEBfkABwPw+QD+BOP8AQoB/PMEB/4I+QT/GAT+AwX7AgT49/f48QwC8f8EBAf9AP4DEwQCBAICAQP//Pj7AgL8BPkC6/0SA/YN/AIDAAb/BvYIBwQA/hD9DP/sB/sDDvwJ"
+      "vector_b64": "B+8S7v0FAwv/BQoFDgQI7QEAAv8H7wYFCvUIBxQSCv0O/Qz+BgfpBgPu/AQGAgT5C/oE6P8C+PLzDP/+/fwLBP7tDAMA+v4G9AgB/fgb9wL8IAMABP8DBPcG9wIAAQsEBvwACATx+AABBOb8AQUB/PcECAEG+QT6FQT5BAX6AgD39vf49gwC8P//CQf8AP0DFAQDBAMCAQQE/Pr7A/78BPQC6fwUA/UJ/AIAAAf/BvUEDAQA/hH9Df/uCPsEDfwK"
+    },
+    {
+      "end_line": 195,
+      "fingerprint": "708747dfb51d634e5db505b6ea27df26782ef16fb2d10963c444c5996c1a5464",
+      "heading": "八、落地记录",
+      "id": "4ed28b7662f068bb6072",
+      "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
+      "preview": "- 2026-09-12（同日第三批）：阶段 0 的 0.4、0.5、0.7、0.8 落地。新增 `app/call_limits.py`（`limitcounter` 以 contextvar 绑定到请求，模型 8 / 工具 6，`conversationorchestrator.run` 在一个预算内完成计划与执行并追加 `call_limits` trace；`llm_client.create_chat_completion` 只在真正出网时消耗预算，`llm_router` 超限退回规则，`rag.build_answer` 超限退回模板，`tools.execute_tool` 超限不执行并记 `limited` 审计）",
+      "start_line": 194,
+      "vector_b64": "CQAMAQMHBgT0Bgb8AP/7/An49vsK9hoEDPwOCwsJ+wYL9gcN/wD09Ajp9P8B+QEFAgQGAA759ur9+/n18gMDFP39CQr7AAT6+hP5Af8UAAr2GPsGBQH/Ev8ABP0A/QAKFQUFBPr6/AEEA+wAAgL5C/kABPsHAPoXAgQL+gUK9wQBAwD38RYOBwX+9vcEBhEABAUG/f4I9Qj1APsFBfEM/wf39vb9C+oMCvz0Ag//9fcR+QP88wP6BAv/AP3r/wX9"
     },
     {
       "end_line": 4,
@@ -446,13 +456,13 @@
     },
     {
       "end_line": 36,
-      "fingerprint": "f869c6584779664c025f180a877dfb076e2d860781a095748ccc8af6a07e69ca",
+      "fingerprint": "9a32fdc40713416721f4cc5c6818a686e39e60b31ffeedf3b8f98a5c7bc99a60",
       "heading": "端到端请求路径",
-      "id": "7f8d8c785427253737d0",
+      "id": "996e827e790ab359b36b",
       "path": "docs/ARCHITECTURE_PANORAMA.md",
       "preview": "## 端到端请求路径 1. react 通过统一 api 入口把请求送到 media service 或 agent service；服务端从共享 jwt 得到 tenant、owner、workspace 和 role。 2. chat 路由创建 `retrievalscope`，由 `conversationorchestrator` 先跑 `preparationchain` 生成 `executionplan`，再由 `executorregistry` 按 `plan.mode` 选择单一执行器（clarify / tool_only / retrieval / agentic；`workflow_mode` 只是输入）。",
       "start_line": 28,
-      "vector_b64": "ANgI4v0M9/YI+wn9BPQGC/z0+AcEA/oE9+oA9QQMAQH+5wAEBvoKCgT6BP8BBPsC/wEG5//oAf////8A/wYD9wYJ9v8GAPEU+vb/C/kS/fkGAQYABAD+GPoE+u/8Cwv6DfkJBgP2/AD+FPQBB/r+APr2A/wK+fwLEAP8Cwb6Av8MAvb//BD/9Qv6Cf4T/AP3Bvb8Cvr++AYG/fP+BA36APTz/Pr6AAH6/wr9Agn1AAD8+v38Avzz/Q3r+vYGBPn7"
+      "vector_b64": "ANsI5gIM+PcG/AQBAPYBDvvs+QYJAwIE/e378QYLAfgL7wAHBfcMDQL0/wQBBPgHBwEF5wTs/f/////8/gUC+BAA9wQF/O8S+/cBAfsUCv4BA/sA9v3+HAAG+fDzCgn7DPkIBQb9/vsCEPX8Avz+Bfv3/fwJ+fwOCQP4Cvj7/vwKAff//BIH9wX1A/8RAQvzB/IBCPb+/Af7+PH+CAcDCfr5/P77Bf3+/wTzAhH2BgAA9fn8C/Lx/RDw9vIF+fX8"
     },
     {
       "end_line": 50,
@@ -746,13 +756,13 @@
     },
     {
       "end_line": 94,
-      "fingerprint": "f98a9e08e9826e2d59dd957072daf6ae9bae0b82da27d6f93805ca9488dbb8d5",
+      "fingerprint": "97bc2896616d6a5504b63432a2d2660df87426da690ad0c6c0de3086cdb954dd",
       "heading": "如何证明不是 happy path Demo",
-      "id": "b5993bc30cffe6466a22",
+      "id": "680ec47e7ff618e30d7c",
       "path": "docs/INTERVIEW_GUIDE.md",
-      "preview": "### 如何证明不是 happy path demo - agent service 176 个测试；media service 135 个测试。 - keyword / embedding / hybrid 三路黄金集门禁。 - 33 项双用户 localhost 纵向验收。 - prd v1 12 个手工场景十项质量门禁，以及 knowledge lifecycle v1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。 - tenant/owner 负向用例、四眼审批、事务回滚、重复事件与冲突用例。 - web 类型与生产构建、知识漂移检查和 ci 分故障域 job。",
+      "preview": "### 如何证明不是 happy path demo - agent service 199 个测试；media service 135 个测试。 - keyword / embedding / hybrid 三路黄金集门禁。 - 33 项双用户 localhost 纵向验收。 - prd v1 12 个手工场景十项质量门禁，以及 knowledge lifecycle v1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。 - tenant/owner 负向用例、四眼审批、事务回滚、重复事件与冲突用例。 - web 类型与生产构建、知识漂移检查和 ci 分故障域 job。",
       "start_line": 86,
-      "vector_b64": "CPkL/gsAAgD+CADz+QD7BwD5CAL5Efj5AAAHB/n4CgcA6fnxAP0R+fAA+f4Q+PUCBwANDQAHAADz9wDs+PQH6Qj+EAcAAPf++QcAAvsI8AAAFAAADwUD+gIDAPjh/vkAHO4VCAAACAIAFOkD8QD4+Pn3Cgj9AvcJAAPzAPkIAgIIAAj77AD+7wX3APkAABUCBwAABwAN+AkAB+8A9hb+CAAA+P7+A/AI+AANB/YACAgD9vMC+QIKAgD2APsAB/4C"
+      "vector_b64": "CPkL/gsAAgD+CADz+QD7BwD5CAL5Efj5AAAHB/n4CgcA6fnxAP0R+fAA+f4Q+PUCBwANDQAHAADz9wDs+PQH6Qj+EAcAAPf++QcAAvsI8AAAFAAADwUD+gIDAPjh9fkAHO4VCAAACAIAFOkD8QD4+Pn3Cgj9AvcJAAPzAPkIAgIIAAj77AD+7wUAAPkAABUCBwAABwAN+AkAB+8A9hb+CAAA+P7+A/AI+AANB/YACAgD9vMC+QIKAgD2APsAB/4C"
     },
     {
       "end_line": 98,
@@ -776,13 +786,13 @@
     },
     {
       "end_line": 121,
-      "fingerprint": "cf7353831a31636dc91b8d94afbd67a6789e983aa3d40258bdf14bee7e51e94c",
+      "fingerprint": "3b65734978b4eb51f7f024a8a34ed2ef4f3a4a4b049b127208ec4f3534e38312",
       "heading": "面试缺漏自查",
-      "id": "b6b8fc69c2ca7e21439f",
+      "id": "af7281335aabaf634050",
       "path": "docs/INTERVIEW_GUIDE.md",
       "preview": "## 面试缺漏自查 | 面试官想确认什么 | 当前证据 | 回答边界 | | --- | --- | --- | | 你解决了什么业务问题 | 视频/文档到证据、prd、知识、工单的一条用户旅程 | 尚无真实客户节省工时数据，只能讲目标价值，不能编造 roi | | 你个人做了什么 | 契约、两后端整合、统一前端、授权 rag、agent 状态机、验收和知识维护 | 区分原媒体能力、迁移整合与本轮新增能力，不把团队或模型产出全部说成手写 | | 最难的工程问题 | 检索前授权、outbox 双幂等、等待恢复、四眼审批、知识原子物化 | 选择一到两个展开，不罗列所有技术名词 | | 为什么这样选型 | 两类状态机保留两个服务；当前规模",
       "start_line": 103,
-      "vector_b64": "DPf7/O8S7wUCBRj9+vAH//wA/vv1Bw738PkABRDyDAUE9RAL+/8C+AYBC/8DCfwB+QcH8AICB/QH9gD++vT9Cf8NAwQE/fwF8Pv9/wH5BAIAAg75//cHAPr+7/f+8AIKBwf0APbxEAsK9un8+goQAAkBA/4F/Pz4CvwA+RMFAQMP/gcK8gUU8fkCC/IDAAwM+P4D/Pr5/gv3EfUI8PwFA+31AwkSBwsA/fr8Eg3++wkL+/X58QIC8wMFC/YBBADx"
+      "vector_b64": "DPf7/O8S7wUCBRj9+vEH//wA/vv1Bw738fkABRDyDAUE9RAL+/8C+AYBC/8DCfwB+QcG8AICB/QG9gD++vT9Cf8NAwQE/fwF8Pv9/wH5BAIAAg75//cHAPr+7/f+7AIKBgb0APbxEAsK9un8+goPAAkBA/4F/Pz4CvwA+RMFAQMP/gcK8wUT8fkGC/IDAAwM+P4D/Pr5/gv3EfUI8PwFA+31AwkSBwsA/fr8Eg3++wkL+/X68QIC8wMFC/YBBADx"
     },
     {
       "end_line": 136,
@@ -856,13 +866,13 @@
     },
     {
       "end_line": 39,
-      "fingerprint": "c5052d6549c0dd8616e9a1452ece1de45fafd327517d6a08533b3d3cb21b6297",
+      "fingerprint": "12e3ded56539ba42457b14247e7d270a5a7b88eefbc9c1e3af424ee92a4ef927",
       "heading": "必须记住的四个锚点",
-      "id": "40eff7adc3bad0d40007",
+      "id": "5b327adba5004624d7f1",
       "path": "docs/INTERVIEW_REHEARSAL.md",
-      "preview": "### 必须记住的四个锚点 | 锚点 | 一句话 | | --- | --- | | 业务 | 把非结构化会议材料变成可追溯、可评审、可执行的交付链路 | | 架构 | 两个职责清晰的后端、一个统一前端，不共享数据库 | | agent | 授权证据、六阶段等待恢复、确定性审批与副作用 | | 证据 | agent 176、media 135、localhost 纵向验收 33/33；另有 v6 rag、prd v1 与 knowledge lifecycle v1 三套黄金门禁 |",
+      "preview": "### 必须记住的四个锚点 | 锚点 | 一句话 | | --- | --- | | 业务 | 把非结构化会议材料变成可追溯、可评审、可执行的交付链路 | | 架构 | 两个职责清晰的后端、一个统一前端，不共享数据库 | | agent | 授权证据、六阶段等待恢复、确定性审批与副作用 | | 证据 | agent 199、media 135、localhost 纵向验收 33/33；另有 v6 rag、prd v1 与 knowledge lifecycle v1 三套黄金门禁 |",
       "start_line": 31,
-      "vector_b64": "APHz+QcVAAL9AggA+AAAAP4C/gAAEwf2AOz98QIICAAU6v35APcCAA8HEQD7AP4DDfsA+QcM+AgAAA0AAP4ABwoIAAAAAAj+AvkIAPkA/QACCPsI9wADCAMA7AgAAAAZFAIADQAAAwAAFOwPAAf7AAcA+QgC8QAQB/H5/vkABP4HCP4A4wAF7gzyCAAHABQCEf75AAcHDwADAu0K5wUI8wgADxcCCfkAEfkIAAIACgAHCO8C/gDzAAgIAP0RAgUA"
+      "vector_b64": "APHz+QcVAAL9AggA+AAAAP4C/gAAEwf2AOz98QIICAAU6v35APcCAA8HEQD7AP4DDfsA+QcM+AgAAA0AAP4ABwoIAAAAAAj+AvkIAPkA/QACCPsI9wADCAMA7AgA9wAZFAIADQAAAwAAFOwPAAf7AAcA+QgC8QAQB/H5/vkABP4HCP4A4gAF7gz7CAAHABQCEf75AAcHDwADAu0K5wUI8wgADxgCCfkAEfkIAAIACgAHCO8C/gDzAAgIAP0RAgUA"
     },
     {
       "end_line": 63,
@@ -1036,13 +1046,13 @@
     },
     {
       "end_line": 79,
-      "fingerprint": "e17387a92648843ab4053b3af1585cccda0dad53522b2f8962512cd2cdd4225b",
+      "fingerprint": "cbcdd1480b6def12ed01695b744ff63b8c23f544661b7c808344b54c636713fe",
       "heading": "5. 测试数量不能替代生产事实",
-      "id": "f1a34bfcacccc3b929b9",
+      "id": "654f9da2c0b44c7de7f1",
       "path": "docs/INTERVIEWER_STRESS_REVIEW.md",
-      "preview": "### 5. 测试数量不能替代生产事实 176、135 和 33/33 是可信的工程证据，但面试官会继续问： - 数据量和并发量是多少？ - mysql、redis、rocketmq、对象存储和真实模型是否在统一链路跑过？ - p95、错误预算、容量、数据保留、撤权和灾备是否经过业务批准？ - 是否有真实用户、采用率、节省工时或 prd 人工修改率？ 当前答案分别是“只有局部/历史子系统证据”“统一 localhost 主线使用 light/mock”“生产决策未批准”“没有真实 roi 数据”。主动说明会显得成熟，回避或编数字会反噬整个项目。",
+      "preview": "### 5. 测试数量不能替代生产事实 199、135 和 33/33 是可信的工程证据，但面试官会继续问： - 数据量和并发量是多少？ - mysql、redis、rocketmq、对象存储和真实模型是否在统一链路跑过？ - p95、错误预算、容量、数据保留、撤权和灾备是否经过业务批准？ - 是否有真实用户、采用率、节省工时或 prd 人工修改率？ 当前答案分别是“只有局部/历史子系统证据”“统一 localhost 主线使用 light/mock”“生产决策未批准”“没有真实 roi 数据”。主动说明会显得成熟，回避或编数字会反噬整个项目。",
       "start_line": 69,
-      "vector_b64": "AfTqAfoB/ADz/PkE+QD8AAT8AAH5BgAH//kN/woKAf8M6AcAAQD6DAD68wb0AAD/AAEOAAQTAAb6BgfvAwYDAAz6+gAAB/MH9wD/APL0/wEAAAAP+A4HHvr6Dg35DQb6Aw0A/xT6Bgf3BgEDDQkRAPn5AwAXAPwYAPkA9PcB/wAD8AAE7+wJ9Ar4+vcABvkO//oADgYB/OIMCvIEAAEU9AP0DQARCAf/7QERBgEA/AABAAwB9voDCQkB8voB/f/y"
+      "vector_b64": "AfTqAfoB/ADz/PkE+QD8AAT8AAH5BgAH//kN/woKAf8M5wcAAQD6DAD68wb0AAD/AAEOAAQTAAb6BgfvAwYDAAz6+gAAB/MH9gD/APL0/wEAAAAP+A4HHvr6Dg35BQb6Aw0A/xT6Bgf3BgEDDQkRAPn5AwAXAPwYAPkA9PcB/wAD8AAE7+wJ9AoA+vcABvkO//oADgYB/OIMCvIEAAEU9AP0DQARCAf/7QERBgEA/AABAAwB9voDCQkB8voB/f/y"
     },
     {
       "end_line": 100,
@@ -1775,83 +1785,93 @@
       "vector_b64": "AQf7+AX/AgD+Bf0CDQIPCf4AFBXnA/sA+fcLAwr6CPoD/gr8AAkE+Pz09goGBf8S+gAF6fn3+//88vz7BgAECgUECfkH/BLz9vr7Af8A8vgJCgr8CQP0FgwF9QQMAAkEDP8FDQTwDgID7gkI+AX4B/kC+AIJGfQWEAkF/woDEfsF+QX5+ukJ+vXzBwkC/wv6FPv5CwEJ8wj/AQEH9gQA/gb49fsK/PwE9P0OAO4EAfP/BAIE+Ar67QkA/PgAAQTx"
     },
     {
-      "end_line": 25,
-      "fingerprint": "28bda76cd3cd959d29c55bfe1937c4bb9eb4d835d4099fc57aa2bb2a69e7b32f",
+      "end_line": 26,
+      "fingerprint": "c4ddc6a0a49274d276efec7593c40b62164625bce208e4f86c1ded46accc790f",
       "heading": "对话执行计划",
-      "id": "f1d67c1c27566713fcbc",
+      "id": "b0ee5be3b76621665643",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 对话执行计划 - 每次对话先由 `preparationchain`（`app/architecture/planning.py`）生成一份冻结的 `executionplan`：`classify_intent`（llm 路由，规则降级）→ `decide_mode` → `plan_queries`（llm 规划，规则降级）。步骤可单独跳过：`workflow_mode=standard` 跳过分类与规划，只做模式决策，单轮检索路径不多调模型。 - 模式决策顺序为 clarify > （显式 standard → retrieval）> tool_only > agentic。`workflow_mode` 保留为兼容输入",
       "start_line": 18,
-      "vector_b64": "BAYKCPn7C/8RAhX0F/b6BvQK+u8IBgv6Avv/AAsLAfMf6/8GAgX/+gUABgX/BQYCCPUF+gYFAPL8BfoF//PxBQoCC/rx9vUGBhH6//wS9gAGEQQAAfP/AAACAP/y9vr6DfgFBfgEAAAGCfL18gX7+gUKAgIC+gAGEgAFAf8F+ffz6QX//wT4C/4A/Ab0BQ8CC//2/AEJ/Pn+7/v7CPsL9vn6/PMSFQEF5wUMAf/6BP7/D/4G7QH2/gft9vwLBPnt"
+      "vector_b64": "AAUKAvf6BAYDAhPzDPn4APEDAPgN/g/8/gD/+REN//gV7/sAAwT+AAf7/Ab8BfEG8voG/gIEAPf2+Pb+/gD6AgMKE/z6+uoHAwz29vQS8v0IDvcAAvr3DPkA/QH0/fwCEQwHA/cCA/0NDff27wj5+AYCAvr+/wEFF/wO/PkH8Prv7wj39wsBBwIA+QX0/xH9Df4B/gUG+fn85vb2Bv4KAf/7+vcMD/787gMI+gAPDf4ADQAE8vnuARf48f8K/v7x"
     },
     {
-      "end_line": 35,
+      "end_line": 28,
+      "fingerprint": "a356e613bf45dbbc64db64c8beda46903fe014dfede237e238996d34357283e8",
+      "heading": "对话执行计划",
+      "id": "50fd31ac7d0b736406d4",
+      "path": "knowledge/AGENT_ENGINEERING.md",
+      "preview": "- 影子路由：`decide_mode` 在写入实际模式的同时用规则版 `shadow_decision` 记录\"不带 `workflow_mode` 时系统自己会选什么\"（clarify > tool_only > 复杂 / 需要工具 / 风险因果意图 → agentic > retrieval；链上已有分类结果时复用，不多调模型）。`executionplan` 新增 `shadow_mode` / `shadow_reason` / `mode_agreement`；`chat_metrics` 新增 `execution_mode`、`shadow_mode`、`mode_agreement`（-1 为未评估）；`/metr",
+      "start_line": 27,
+      "vector_b64": "+Aj++f79+/4N+AL9Bw4IAAACAv4A+CD5APkAAP4H+eoH5AUN+AAA+QDyEgAA+AD5AAMN9/71B+z4CAAA/QD+AAL4AAn4CP4C/ggA8QgH/QIIAAP4/fn3BwID+AUAAgD+Hv34APgCDwD4AAgKAPH5CPgH+Pn4APkH/g0HB+/5+Pf9APgA8xYMAAAICQj5CAgCCgICCPv5+BEADQAA++n0AAIP8+4ID+D5C+4AAAfu+wABBwAA8wD4ABb++fj+AAD4"
+    },
+    {
+      "end_line": 38,
       "fingerprint": "9da21db2478d4087b16d091887e91012e571675b41b26a50193f52f6d78de03f",
       "heading": "证据策略",
-      "id": "c923c5e2d3ceda9f24b2",
+      "id": "79282aba8aab0af68898",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 证据策略 - 关键结论必须绑定至少一个可访问证据，或明确标记为假设/建议。 - 视频证据引用稳定资产与片段身份、开始/结束时间、说话人和摘录。 - 发布后的 prd 以规范 json 的 sha-256 固化为不可变版本；派生知识候选和行动项保留原 requirement 与证据引用，不能脱离来源重新生成事实。 - 批准知识采用规范 markdown 物化，保存 candidate id、prd version、analysis session、内容 sha-256 与原始证据；后续检索来源明确标记为 `approved_knowledge`。 - 已批准知识通过独立生命周期申请演进：替代创建新的不可变知识版本并双向链接前驱/",
-      "start_line": 26,
+      "start_line": 29,
       "vector_b64": "BuUHAO4SBAD8AwEEAf/7AAUFAP8H/AD+9vsKBQv0Be4O+QPvBAD0+f8FAwD0BP8ECwEK+/73Ae78BAYB/QT8C+4RAAD7AP/3+gAE/PcA+/v9/Br0DgD6CgcZDwP8BPz9+xLwAP7+BAsNCvQACwUF/fz7EALzAAb8APwQ+xQE9QEFDPwKD/r5Dv/7/wIKBR39//kB7f8M8/b2AAr9BxT++P8AAA7z8wXyAQT2AP4A//f6Be8H/gbnABEGBP778v4D"
     },
     {
-      "end_line": 43,
-      "fingerprint": "5b7530076fafa17516e2f088729c52910d53839ba0343367836a602eda27fcd4",
+      "end_line": 47,
+      "fingerprint": "a255a757cab284293c49098773a3bd9d539350fc13a7b4648ff7a2e28798f4dd",
       "heading": "LLM 通道与结构化输出",
-      "id": "f091c70e850c1e595af2",
+      "id": "675f3b9711afdcf7f8c4",
       "path": "knowledge/AGENT_ENGINEERING.md",
-      "preview": "## llm 通道与结构化输出 - `app/llm_client.py` 统一复用 openai-compatible client，并允许调用方传入 `response_format`；超时、重试和最大输出 token 仍由统一配置控制。 - `app/llm_router.py` 的 router、planner 和工具选择通道使用固定版本的 json envelope。`llm_response_format=auto` 时，openai 使用 `json_schema + strict=true`；deepseek 兼容通道使用 `json_object`，随后仍执行类型、枚举、白名单和参数对象校验。 - 为满足严格 js",
-      "start_line": 36,
-      "vector_b64": "9AYCBv4AAf8MCwX7B/QUAAUFAPsEBAcA/QAH/+37EhcR+QPxAwTzBQb/+/sIA+sC7/8DAAERAPoN+vwE/A75Cf3+BQEfD/UP9/3/AOkHDgAGAAH9+wf7+wgS/RoG//gGBQAAAeYDAfcD+/IMAPQA+PIQ9foT/wEIBQAA/vIAAPkT9P4FAA8G+AwGCfoFC/8EBAEH/f0CA/kF//oU/wICDQAF+/sH+/oW+fkABfgF+fwICfL/A/z4BRD7+OwA/v33"
+      "preview": "## llm 通道与结构化输出 - `app/llm_client.py` 统一复用 openai-compatible client，并允许调用方传入 `response_format`；超时、重试和最大输出 token 仍由统一配置控制。每次调用带 `purpose` 标签进入每请求模型调用预算。 - 提示词外置在 `app/prompts/*.txt`（`answer_system` / `answer_user` / `answer_source_item` / `answer_context_section` / `router_*` / `planner_*` / `tool_selector_*`），用 `string",
+      "start_line": 39,
+      "vector_b64": "8wUCCfoB/vkNDAT2BfcT+Qv/CPwDAwb/9v0F//H8DhQM+wL0Cgv4BQn8/AALBOkA8wb/BQQNAPsT+/0D+Qv6CP79DgQcCPQMAvr/AOYGDvsF/P7+AwL8/QUP/RgB//YFCgIAAewHAPkC8vkKAf3r/vQQ9/QO/wUKDgD6/u78APoT9QsE7AwF/ggFCQQFCAYCBvwH/v4HA/QE/vsM/wYADP0P/PkB/PgR/vsABfEE+gAOB/kG/v31BA309ur6/v77"
     },
     {
-      "end_line": 53,
+      "end_line": 57,
       "fingerprint": "e4e56009bd4995e8559357a8f9258fae38644b8f606019aa618d2b8f1f943d59",
       "heading": "检索与缓存实现",
-      "id": "6cc031cb1daa79ee5dae",
+      "id": "c3f5403750bae07e6849",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 检索与缓存实现 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 bge 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。 - hybrid 先独立执行 keyword 与 embedding，再以 rrf 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。rrf 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。 - 可选 cross-encoder 只精排 top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。`retrievalre",
-      "start_line": 44,
+      "start_line": 48,
       "vector_b64": "DfkK8/X8/AMDDv38Dg0DBQ31Bwr89/4G8QD9Aw7s8gQI6wn9CQMACgbs/RIDAQUDARMC8wcI9+EA4vD9+wn3/v78+AMPDP/9+/oL9Pn/CPT0Egn9CQgA/v4DA/398vwUCQADAvgDBgH4+PUGBAIABfcIBAH8+//oDPcB/ATvEQP+9Qjy8vwOEQEBCwn48wkIDAIMBP8E/vsE+wP+CwT8Cfz/BPf8AAUJ9Qr//gH1/QEKCPsJ8/0CBvwKAOwH+/74"
     },
     {
-      "end_line": 61,
+      "end_line": 65,
       "fingerprint": "a4bbb6d375253c02f5c2a47cf4583e436ed4ac1ce94e47bfc9c99a1bd48c4a79",
       "heading": "等待与恢复",
-      "id": "022a367f6632f82cdeb2",
+      "id": "3a0ba8e9e81a3549ac4b",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 等待与恢复 分析会话持久化 session、阶段结果、结构化问题、答案、恢复令牌、prd，以及证据 revision/hash 和检查点版本。遇到真实信息缺口时进入 `waiting_confirmation`；用户补充后恢复同一业务会话。当前这是阶段级业务检查点，不是 python 执行栈或框架节点 continuation：进程崩溃时不能从某次模型调用中间继续，当前也没有 appserver/websocket 传输层或企业 im 专家渠道。 `resume_token` 先在 api 做常量时间比较，最终以 `session_id + tenant_id + owner_id + waiting_confirmation",
-      "start_line": 54,
+      "start_line": 58,
       "vector_b64": "AfEE8AgD9AP+/wzxCPsA9vr5AwX7Ef/38wAKAgUJEwEP9AH4/QD+Ef7+/vr9BQ4EAfsH6fsA/O/4AAD8CQj/Df727P/39fID9PcEBQYLAwkE/P379vsBAvkF+/z4BQIADQfzA/QCB/T+/PL9DgQNBvUECwT1CgIED/sABAn4B/sA8woL+/8O/wP6+/n4Ch76/vQICQAN4vwFBPX5/B33AAgC8wUD8/f7/Az4BPkAAP0A/vwF9An3BAfr8fgEDAcK"
     },
     {
-      "end_line": 68,
+      "end_line": 72,
       "fingerprint": "fbdc501e3311284706b4fe0b1ecdb7c150df0959ef3081a4fd1a067507173223",
       "heading": "受控工具",
-      "id": "283db1e15160c5bdb4b2",
+      "id": "b5e29a1a406d0eb080d3",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 受控工具 - 工具参数使用 schema 验证，调用前重复鉴权。 - 读工具和写工具分级；有业务副作用的写工具进入审批。 - 重试只用于幂等调用；每次调用保留 trace、输入摘要、批准者和结果。 - prd 行动项转工单复用 `create_ticket` 受控工具；生成 pending action 不等于工单已创建，只有审批执行后才产生工单。终态会回写为 `ticket_created/rejected/failed`，成功时记录真实 `ticket_id`，重复进入请求保持幂等。",
-      "start_line": 62,
+      "start_line": 66,
       "vector_b64": "CAIDAPsCAOn37Aj7AAD+APcA+AAACAcA9wgICwL+AAD4+v7mCQD+BfcACA4A8g4AAwID/QYDAOYFFg4M7A/uDgP0AAAABu4M+vj4AP4lCP4ABvcJCP3+D/IAAAAAAAAABQYAAOgJ/vgAAOz4AADbCfcAAvj+DPoIAPIC+ucA+O4GCQDvAAACAAj6APoAAAYAAP4OAALyAP4AEvgA+wAJAAAC+gIGAAYA9/gAAPsGAAAIBgUC8gAAAAkO+u8IA/0C"
     },
     {
-      "end_line": 76,
+      "end_line": 80,
       "fingerprint": "d41f9802bb82e8a0114919069be78f0a29d3c38acae7c6100818d86816021aa9",
       "heading": "自进化闭环",
-      "id": "aebfea67e4690baecec4",
+      "id": "cdb0822c1d246b99c8ce",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## 自进化闭环 - 坏案例：失败答案进入回归数据，记录期望、实际、证据和失败分类。 - 根因：区分摄取、检索、权限、提示、模型、验证和工具错误。 - 改进：优先修复确定性系统问题，再调整提示或模型路由。 - 知识：发布 prd 生成保留证据的候选；候选经过独立人工决定后才以托管文档进入未来 rag。候选状态、文档/chunk 与图索引同事务提交。批准后的替代/撤回再次经过人工门禁，并把版本、软失效、缓存 revision 和图谱替换放在同一事务；不把 prd 审批等同于知识审批，也不让 agent 自动改写规则。 - 门禁：任何影响 agent 行为的变更必须有对应评测案例，不能仅凭演示判断提升。",
-      "start_line": 69,
+      "start_line": 73,
       "vector_b64": "9vwEAP8MBgoECvr/DfcAB/8A+vIA/AcA6QANARABA/cR7//y/wH/B/L1BwcDEvkG/wABAAAA+vPm+enz7/IDBPoEEQf3APf//QD/APwSBPoAAxXyDf8DBfMRCvUABvr1CgkGAP8D/PwHBvz8Cvn1+QYGARD29gv5/wD68gMACfrzBAb88/IECwD1EvcAAAMACRgLAAf3/BQG+fbs8voR+v8OAAoNBwAQ/f0ABP368PkHAAQAAwD6/QYAEf0N//nz"
     },
     {
-      "end_line": 81,
+      "end_line": 85,
       "fingerprint": "f06eab2c7aa15f5cd43450c28b57f94fe99dd791a0c2013145c793fcf5e0f64e",
       "heading": "PRD 专项评测",
-      "id": "1b41c4e1e77ba3c238d0",
+      "id": "8d5039d92bd47f45811f",
       "path": "knowledge/AGENT_ENGINEERING.md",
       "preview": "## prd 专项评测 `quality/agent-evals/evaluate_prd.py` 使用 12 个冻结手工场景，不调用外部 llm，评价 decision、问题召回与精确率、objective top-1、冲突升级、证据完整性、受支持结论、验收可测试性、检查点稳定性和 specialist 顺序。当前本地基线各质量项为 100%，p95 约 22 ms。它是代码回归门禁，不代表真实访谈分布、开放域语义质量或生产延迟；后续需要匿名真实坏案例、holdout 与独立人工评审。 `quality/agent-evals/evaluate_knowledge_lifecycle.py` 使用 personal 替代、pers",
-      "start_line": 77,
+      "start_line": 81,
       "vector_b64": "BAv87fkAAQD49QHyBvv3//P8Dv8FAAAA8QD/BwT/DgAQ6Qv0AAAEA/T5BAASC+kIFAgF+AsEAPcBCPv5AwQHAPv8+fQQBQcG6gD/AAQFBwAHEwcIABH8EQwB+wEF9fT5FggBAPgAB/kFBfkEAwcFBQH4AAkLCPz4E/kF8PcE+fkH/fkOB/n5AAADBf0HBe3/FPDtAPsE9QAFCwAP/wUDAPjwBQj7+Pf0DvUSDAgADwAABAsHCBTw+/n5B/wBFv/8"
     },
     {
@@ -2706,13 +2726,13 @@
     },
     {
       "end_line": 12,
-      "fingerprint": "f423f11247ff7fda7a726fd1b56b7257c53354d380cfeb0a25842f1f44ace550",
+      "fingerprint": "f31fb473d1521a5b28a8861a78f97d8bea975aee7079b77286af554a66e61205",
       "heading": "Workspace inventory",
-      "id": "5f0bd0e39b8eed927956",
+      "id": "931b5eb2cb3cfb6eca67",
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "preview": "## workspace inventory - media service: 92 production java files; 36 test files; 135 `@test` methods. - agent service: 61 application python files; 25 test files; 176 pytest test functions. - react web: 28 typescript/tsx/css source files. - machine-readable contracts: 12 files. - local localhost-only acceptance runner:",
+      "preview": "## workspace inventory - media service: 92 production java files; 36 test files; 135 `@test` methods. - agent service: 64 application python files; 26 test files; 199 pytest test functions. - react web: 28 typescript/tsx/css source files. - machine-readable contracts: 12 files. - local localhost-only acceptance runner:",
       "start_line": 5,
-      "vector_b64": "APQAAAAA9AAZAAAA5wznAAAAAAAAAPQAAAAAAAAAAPQb5QDlAPQADAAAAAAMAAAAAAAA9AAAAAAAAPQAACUAAAAAAAAAAAAbAAAAAAAAAAAAAAAAAAAAAAAA9AAAAAAADgAAAAAAAAAAGwwAAPQMDAD0AAAAAAAMAAD0AAAAAAAAMgAA5QAADAD0APQAABsAAAAAAAwA9AAAAPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADBkAAOcAAAAAAAAAAAAA"
+      "vector_b64": "APQAAAAA9AAZAAAA5wznAAAAAAAAAPQAAAAAAAAAAPQb5QDlAPQADAAAAAAMAAAADAAAAAAAAAAAAPQAACUAAAAAAAAAAAAbAAAAAAAAAAAAAAAAAAAAAAAA9AAA9AAADgAAAAAAAAAAGwwADPQMDAD0AAAAAAAMAAAAAAAAAAAAMgAA5QAADAAAAPQAABsAAAAAAAwA9AAAAPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADBkAAOcAAAAAAAAAAAAA"
     },
     {
       "end_line": 18,
@@ -3015,43 +3035,53 @@
       "vector_b64": "DQIA/P0ACAMI/vr9AQP9A/8EAgIA+wIICfgTDAME+/YM+hX7/en2EwH5ARD1C+wF/RQE7AcK/Ob5/f0N/fv3CAYEBAP8CPz0/AAG+/sO/AP8CwQK+wr9CgT+//H9BPkM/wsQDP/97wMGFvr4/QnzEP4AAv0BBPcCAwj6+ggEBAP7B+7v8gAE9wcMDgP8+wr6Cwv9/P0D8wT8Den5BfwI/AjlAxL8DQUC//0DCQz2/QQKFP8MB/j29P71A+wM/v0C"
     },
     {
-      "end_line": 175,
-      "fingerprint": "96e66dc286ce55308eec0bb472b44dfcc3c096453c19fa5096e06ca0d3636618",
+      "end_line": 178,
+      "fingerprint": "e6a395acb458f7cd8a5d72a8785a39d9d3802d3e06141e858d469f03ab89d8a1",
       "heading": "当前已知基线",
-      "id": "8a0c2b6e14cc06206bf3",
+      "id": "1429125393ebdadf271f",
       "path": "knowledge/QUALITY.md",
       "preview": "- 面试文档中的 agent 测试数量已更新为 170；带日期的历史条目保留当时数字。 2026-09-12 架构优化阶段 0 首批落地（执行计划、执行器注册表、阶段耗时，见 `docs/architecture_optimization_plan.md` 第八节）： - 新增 `app/architecture/planning.py`；`orchestration.py` 改为执行计划链 + 执行器注册表；`agentic_rag.py` 的路由 / 规划改写为链步骤并复用计划结果。`tracestep.duration_ms`、`agentsummary.execution_mode` / `clarify_question`",
       "start_line": 168,
-      "vector_b64": "AQAIAPsCB/oICQkE+gH7+gH/APv5BAX/BAAOCQMPCQQE9w399+3zAwvrBxgAB/H++vUG7wIQ/PTsAAv//P76+wH0+AryBgcMBAv0/fsAAAABDwoL9f0ACPwF/P74FQ4CCf8FCPL99PUHCOUCBAoLAvsABAcL/AgABgDy9xP2+/4ABwIA7vsE9xH2AQcA+wsDEgkFAAP/7PsJ9ur+/QH+Eu7r//4HFvn4/wEACQgD+f8AEQIF/gz8+wbx/PYEAQH1"
+      "vector_b64": "Af4K/PgDA/sFCAsD/Af/9fwA/Pz7AxL//PkDCwoLBfQJ+goB+erxAgzqCBj5C+QA+PgB+wAMAfPxAAj/+f74//3zAQz2AAcICAjy/vgC/f/5DAsK8f4BDv0E+/r4FA4FDPz/Cff79fcIAun7/wwECPsE/QUJAAcICgfx+RL0/v7+Bf0A+gUE9hD4AQIABAgFFQcB/AkH7fsG+e/+/e//EPbzAvsCG+r9AgEFCAsB+/78DQgF+gr5+w70+vcABAH+"
     },
     {
-      "end_line": 185,
+      "end_line": 181,
+      "fingerprint": "9d25f48e7507476a304e916e906cbcd92f28f0cb54c1d36abf125cdfd333e557",
+      "heading": "当前已知基线",
+      "id": "33441b97d8c5d3cd7b63",
+      "path": "knowledge/QUALITY.md",
+      "preview": "- 本机回归（哈希 embedding，未安装 fastembed，`llm_router_enabled=0`）：agent 全量 **199/199**，ruff 0 告警；v6 keyword 与 hybrid decision **98%**、recall@3 **97%**、fact **97%**（hybrid p95 8.7ms），embedding-only 88%/84%/81%（与上一批的重跑值相同，不受门禁约束）；prd **12/12** 且十项指标 100%（p95 6.97ms）；knowledge lifecycle 门禁通过（p95 179.97ms）；v5 观测门禁 8 项通过（p95 16.38m",
+      "start_line": 179,
+      "vector_b64": "CAAG+fb5BgYACgAE+AHwAP//DQcB4Ab9AAAIAQAGBAAW7hf9APHxEgf1ABAHAPoB9gQDCAoGAPr4AP/z/fgI+QINAPUHCAgAAe36Ewb6CwgAEfAfAAQABRAE+PH8BgEBGPgAB//67vgG+gISAwcBE/8A+Pz9APEAAf8LBAsH+gAEEPr86AYEAwr/APwA+Rb8Af8E+gYB/gAA9en88wj9AADxBwTyAQD6CAYGAAgIDQD8APMD+AT88AD6+v8AA/bx"
+    },
+    {
+      "end_line": 191,
       "fingerprint": "572153ef6f43e035e6451e443e1f6eac89c34738b75cf4d02004f5bcd80de424",
       "heading": "合并门禁",
-      "id": "9b75dbb7e3afbbdc6376",
+      "id": "28a64bccd7e14d34295c",
       "path": "knowledge/QUALITY.md",
       "preview": "## 合并门禁 - 相关服务全量测试通过。 - `ruff check --config ruff.toml services/agent-service scripts quality` 与 `apps/web` 的 `npm run lint` 均为 0 error。 - web 类型检查和构建通过。 - 契约校验、owner/tenant 负向测试通过。 - agent 行为变化对应评测未退化。 - `python scripts/update_knowledge.py --check` 通过。 - 无法运行的验证必须说明环境原因、影响边界和替代证据。",
-      "start_line": 176,
+      "start_line": 182,
       "vector_b64": "CfcAB/UPCQIAAAf9AAAADwDuAP4AAgD+AAAAGATvAgAP8QnmAAD2BwPsBwkAAPwEAADv+QcAAPfxAAkK9wDt9wQH5AAAAN0WBwABAAQABwoAAPcAAgv+CQELAAnx9wD+Fvz+EQkL9/Hc+foHAgAAAPcC+QIEAPb1AAD3/gD3AAAHAPkKAAAABwD1APTtABYAAvYAAAkKAAAA/vYTAAD5+vfs/vn3AAAJ/PkAAAwAAgD+/vwJDwL5AgD+9wAACgAA"
     },
     {
-      "end_line": 195,
+      "end_line": 201,
       "fingerprint": "5047e9e61d496b3786ef6cad6c598ac4ce0d0d9e806d7fa966d87651b33641ce",
       "heading": "Agent 评测适用边界",
-      "id": "87bb2995ad4181ee9031",
+      "id": "899240dafe0a27dcc278",
       "path": "knowledge/QUALITY.md",
       "preview": "## agent 评测适用边界 - v6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。 - `evaluate_v6.py` 显式关闭 llm router，使用确定性回答路径；judge 检查是否答/拒、top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。 - prd v1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective to",
-      "start_line": 186,
+      "start_line": 192,
       "vector_b64": "//r88vcLCfT2+w0A/vj8Cv3++gYREfcK9gQDCgL4Bf399Ar+7/kCBP7//AgD/f79EAEF+goGBO32+vwGBPb+AQwDC+kKCAgE/QAI+u8ACAT9EQIIAAADAQz8BAUJ+/wJEfYRBwMCCwgOGQwL/AD+Af7rBAYY/vwCDgYD+fL//wTyCgL54/wG+P8DFfX7+A33Evv8BPkJ+hMKA+8F+AD+AgT47/8OBP8JCvYAFAj9BvwMA/gBAQwCAOz+/vUD/vb+"
     },
     {
-      "end_line": 201,
+      "end_line": 207,
       "fingerprint": "782ebc1f856cc28a58ccf79fea53213f520bb5cedf89a498ce703788ed3f7059",
       "heading": "不允许的质量声明",
-      "id": "db3794af7c3ae0e74422",
+      "id": "75203c4b1b594e206778",
       "path": "knowledge/QUALITY.md",
       "preview": "## 不允许的质量声明 - mock 中间件通过不等于真实 redis、mq、对象存储或模型通过。 - 有 citation 字段不等于引用真实正确。 - ui 隐藏资源不等于完成授权。 - happy path 演示不等于任务具备重试、幂等和恢复能力。",
-      "start_line": 196,
+      "start_line": 202,
       "vector_b64": "AAIA9+f3AAAAHBDyAAD5B/cA9wAJ/gD8/gAAGgf5APkjAAAAAvkHAvf3FwAAAPLuAAkFAAAAAOcAAAkHAAD+AAD+AAASHO8V9gD3Cfz5/vkAAAD5AAX+AAAEBPn2GQAAFQsABwf59+QC+fcA7gD+9wAAAPQADPkAAAD3AAcAAPkA/vcA6wkH/gAAAAAHABwAAAAAAAkAAAD+GgcAAPv3APf5AAD5CgIA/vEHAAwA+RIA+QIC+ADyAAAACQcAAAcH"
     },
     {
@@ -3236,13 +3266,13 @@
     },
     {
       "end_line": 50,
-      "fingerprint": "e594cab1189bfcb222df36e09a24be67804cbc07310ee90ad07e284e29fcd5e3",
+      "fingerprint": "68fb6001ff7652a80645ace20969c2ab77093f7cf3e7df35bf7743780448319c",
       "heading": "工程证据",
-      "id": "f7ebda5d13e1162d80bf",
+      "id": "afd9c3f95c6b963f49bb",
       "path": "README.md",
-      "preview": "## 工程证据 | 能力 | 当前可验证证据 | | --- | --- | | agent service | 176 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 cas、检索、审批、隔离、工具与知识版本治理 | | media service | 受支持的 temurin jdk 17/18 下 135 个自动化用例（ci 使用 jdk 17） | | agent 质量 | v6 rag 42 例 + prd v1 12 例 + knowledge lifecycle v1 3 类场景三套独立门禁 | | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部",
+      "preview": "## 工程证据 | 能力 | 当前可验证证据 | | --- | --- | | agent service | 199 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 cas、检索、审批、隔离、工具与知识版本治理 | | media service | 受支持的 temurin jdk 17/18 下 135 个自动化用例（ci 使用 jdk 17） | | agent 质量 | v6 rag 42 例 + prd v1 12 例 + knowledge lifecycle v1 3 类场景三套独立门禁 | | 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部",
       "start_line": 37,
-      "vector_b64": "AfgG7gUO/wAF9AYB8/8EAAX8/foAFP8F+PoNDAEAAf8O/AbyBf72+/v0+gAGBPH9BA0IEQL/APH7CgD6AP3/BfwMAPoADAAAAQAGAPYF/QwMHRUFBv3/AQYAAPj7DQUGDgP7BgcBBwD7D+/7/wD/CPz0BQEKF/QGABYG+woACAb6//v66wAF7//vBvYE+hXyDwQCBvP5+g7z/wAK/fAFAADiAA4P+/8ABgkG/A4AAAD8Ae4CAAztAPr0BvPzCP/x"
+      "vector_b64": "AfcG7gUO/wAF9AYB8/8EAAX8/foAFP8F+PoNDAEAAf8O/AbyBf72+/v0+gAGBPD9BA0IEQL/APD7CgD6AP3/BfwMAPoADAAAAQAGAPYF/QwMHRUFBv3/AQYAAPj7BgUGDgP7BgcBBwD7EO/7/wD/Cfz0BQEKGPQGABYG+woACAb6//v66gAF7v/2BvYE+hXyEAQCBvP5+g7z/wAK/fAFAADiAA4Q+/8ABgkG/A8AAAD8Ae4CAAztAPr0BvPzCP/w"
     },
     {
       "end_line": 59,
@@ -3545,7 +3575,7 @@
       "vector_b64": "AAAAAAAAAAAAAAAAAAAAAADtAAAAAAAA7QAAAAAAAAAAAAAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAADtANoAACYA7e0AAAAAAAAAAAAAAAAAABMAAAAAAAAAAAATAAAAAAAAAAAAAAAA2u0AAADtEwAAAAAAABMAAAAA7QAAAAAAAAAAAAAAAAAAAADtACgA7QAAAADtAAAAAADtAAAAJgAAANrtAADtABMAAAAAAAAAAAAAAAAAAADtAAAAAAAA"
     }
   ],
-  "corpus_revision": "a3ec308557beb7c395c212e0c67ad4087b74dcd01224839f8577a7e6e86fdf7a",
+  "corpus_revision": "421e9538dd0f9c5793ab5fc47d65423515c4d1e1829d96f3b082f9a325c7738f",
   "embedding": {
     "algorithm": "hash-ngram-topic-embedding-v1",
     "dimension": 192,
@@ -3608,11 +3638,11 @@
     },
     {
       "path": "docs/ARCHITECTURE_OPTIMIZATION_PLAN.md",
-      "sha256": "532360eb797ea1ce1a73c6dbcb1383b96d76ad7b36c2afd19e62a5691cef58d8"
+      "sha256": "db528733155e2c5f7c60a6d407fcf4a3729c8e99ceb91c33278fe5443d5c4dd2"
     },
     {
       "path": "docs/ARCHITECTURE_PANORAMA.md",
-      "sha256": "a9460dc18aeaa4303dc84cda2f5821e8f6ec9f77aec1598ff454a6e04b3b416d"
+      "sha256": "ccb980a0a99489fd25be577206c1ee1bfbbc2e670925ccf3109437c7e3c3827d"
     },
     {
       "path": "docs/DEMO_SCRIPT.md",
@@ -3620,15 +3650,15 @@
     },
     {
       "path": "docs/INTERVIEW_GUIDE.md",
-      "sha256": "03e29689a85eff03cc048843a41c9768e59d9129fefef6c6598aafbd26384d83"
+      "sha256": "f8c837ab459d58b2479efec2e3ebf12111c60d97f50669163b9e70ba0871424a"
     },
     {
       "path": "docs/INTERVIEW_REHEARSAL.md",
-      "sha256": "de054b3647146af0d418f4eccfaaea26091d23785bed562cfe6074ef589ce98c"
+      "sha256": "61827e48e4277bf557ba24eb210ca111347d6373652d56c75ed351d5f8613ae1"
     },
     {
       "path": "docs/INTERVIEWER_STRESS_REVIEW.md",
-      "sha256": "4f511ed831b47236f540f179f4201bc9d0e6bcb915f35ecb0acc711ff45ff419"
+      "sha256": "0d986b83c5226794bae6f99087d90bfd7975dec23172818f72840284ab192dc2"
     },
     {
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
@@ -3656,7 +3686,7 @@
     },
     {
       "path": "knowledge/AGENT_ENGINEERING.md",
-      "sha256": "a0f50cd2d74b5cff49d1a734736731dd55324fcc0841143a8684639a752f8212"
+      "sha256": "7c9bad999c7534fdd7d754c73d1c1be8a117c0f2c16bfacb3c750e1a39c0701c"
     },
     {
       "path": "knowledge/ARCHITECTURE.md",
@@ -3732,7 +3762,7 @@
     },
     {
       "path": "knowledge/generated/CURRENT_STATE.md",
-      "sha256": "a0f468278142d6646f83772e93ab97c66547a00c973725c3d8d74c05c4b4d283"
+      "sha256": "dbfce91e99bf30b1bcbef74bcf76139baab6b58ea8affcdbc59c652bc2dca55e"
     },
     {
       "path": "knowledge/INDEX.md",
@@ -3748,7 +3778,7 @@
     },
     {
       "path": "knowledge/QUALITY.md",
-      "sha256": "16074de8a1afd1f24db8665bfc909d19291819482f38dc6040503edbec966f15"
+      "sha256": "1aa1caecbd09b8d8eeb9b826105dcb895bbafeb63bdb622ff750034a0be7adc6"
     },
     {
       "path": "knowledge/TECHNICAL_IMPLEMENTATION.md",
@@ -3756,7 +3786,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "2f7f982d8d6773c155443015b4355a32fa51ddd5d6e14bd51df8ac646d1642b5"
+      "sha256": "7324160f3ea883032ec584df3281a0db89aa7bcceee0b1731996fab33747a6c1"
     },
     {
       "path": "skills/enterprise-insight-maintainer/references/maintenance-workflow.md",
