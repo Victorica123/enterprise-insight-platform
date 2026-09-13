@@ -193,8 +193,11 @@ export async function createPlayback(taskId: string, signal?: AbortSignal): Prom
   const result = await mediaRequest<{ token: string; streamUrl: string; expiresInSeconds: number }>(
     `/api/media/video/${taskId}/playback-token`, { signal },
   );
+  // Service-relative paths must retain the deployment prefix (for example /media).
+  const base = new URL(`${MEDIA_API_BASE_URL.replace(/\/+$/, "")}/`, window.location.href);
+  const streamUrl = result.streamUrl.replace(/^\/(?!\/)/, "");
   return {
-    url: new URL(result.streamUrl, MEDIA_API_BASE_URL).toString(),
+    url: new URL(streamUrl, base).toString(),
     expiresInSeconds: result.expiresInSeconds,
   };
 }
