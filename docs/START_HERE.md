@@ -18,6 +18,8 @@
 
 如果只是修一个明确问题，读完本文后直接进入对应模块，不需要通读全部知识文档。
 
+2026-09-13 追加了 [Nexus 参考站复核](NEXUS_REFERENCE_AUDIT.md)：当前公开目录 88 页，本轮补齐检索排名、通道过滤/隔离、观测和证据追问。检索策略与边界见 [ADR-0019](../knowledge/decisions/0019-retrieval-ranking-and-channel-isolation.md)，当前部署看 `knowledge/OPERATIONS.md`。
+
 ## 只记住三个边界
 
 | 边界 | 谁负责 | 不能做什么 |
@@ -53,7 +55,7 @@
 | 主题记忆与会话预算 | `conversation_memory.py`、`conversation_store.py`、`conversation_lease.py` | 窗口/摘要提示、租约续期、预留退还与失效 fencing |
 | 问答指标、日志、反馈、历史引用 | `chat_observability_store.py` | 观测数据与回放 |
 | 标准/Agentic RAG | `rag.py`、`agentic_rag.py` | 工作流编排与回答 |
-| 授权检索和缓存 | `retrievers.py`、`chunk_index.py`、`text.py`、`embeddings.py` | 模型看到证据前的 scope 过滤 |
+| 授权检索和缓存 | `retrievers.py`、`retrieval_execution.py`、`chunk_index.py`、`text.py`、`embeddings.py` | scope 前置、最终排名、通道阈值/截止/容量与缓存 |
 | 主题路由与相邻块 | `topic_routing.py`、`evidence_sources.py` | 授权候选澄清、主题过滤、预算内章节扩展 |
 | 向量存储与维护 | `vector_codec.py`、`embedding_maintenance.py` | 二进制/JSON 兼容、有界后台补齐 |
 | 六阶段分析 | `analysis_evidence.py`、`analysis_pipeline.py`、`analysis_store.py` | 冻结证据、阶段执行与恢复 |

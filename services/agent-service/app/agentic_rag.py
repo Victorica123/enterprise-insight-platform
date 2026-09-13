@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, TypedDict, cast
 
 from app.agent_planning import (
@@ -21,7 +21,7 @@ from app.architecture.planning import (
 from app.citation_review import review_citations
 from app.config import get_llm_pricing
 from app.evidence_budget import apply_evidence_budget
-from app.evidence_sources import expand_parent_sources, filter_topic_hits
+from app.evidence_sources import expand_parent_sources, rank_evidence_hits
 from app.graph_rag import lookup_graph
 from app.llm_router import (
     llm_plan_queries,
@@ -46,8 +46,7 @@ from app.rag import (
     deduplicate_preserve_order,
     describe_rerank,
     expand_queries,
-    rerank_trace_steps,
-    title_term_boost,
+    retrieval_trace_steps,
 )
 from app.retrievers import RetrievalHit, RetrievalScope, get_retriever
 from app.slot_extraction import (
@@ -679,22 +678,22 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
         )
         merge_hits(state.hits, result.hits)
         state.sources = hits_to_sources(state.hits, state.question)
-        # 阶段 0.5：证据字符预算作用于按分数选出的来源；每轮从完整 chunk 重新裁剪，不会叠加
+        # 每轮按最终排名取证据，再从完整 chunk 应用预算，不叠加裁剪。
         budgeted = apply_evidence_budget(expand_parent_sources(state.sources, state.retrieval_scope, question=state.question))
         state.sources = budgeted.sources
         useful_count = sum(1 for hit in result.hits if hit.score > 0)
-        top_score = state.sources[0].score if state.sources else 0
+        top_score = max((source.score for source in state.sources), default=0)
         state.trace.append(
             TraceStep(
                 name=f"retrieve_round_{round_index}",
                 status="ok" if useful_count else "no_match",
                 detail=(
-                    f"第 {round_index} 轮检索：扫描 {result.scanned_count} 个 chunk，"
+                    f"第 {round_index} 轮检索：授权快照含 {result.scanned_count} 个 chunk，"
                     f"命中 {useful_count} 个，最高分 {top_score}。{describe_rerank(result)}"
                 ),
             )
         )
-        state.trace.extend(rerank_trace_steps(result))
+        state.trace.extend(retrieval_trace_steps(result, state.sources, round_index=round_index))
         if state.sources:
             state.trace.append(budgeted.trace_step(f"evidence_budget_{round_index}"))
 
@@ -733,11 +732,16 @@ def merge_hits(
             continue
         key = (hit.chunk.document_id, hit.chunk.chunk_index)
         existing = target.get(key)
-        if existing is None or hit.score > existing.score:
+        if existing is None:
             target[key] = hit
-        elif existing:
-            existing.matched_queries = deduplicate_preserve_order(
-                existing.matched_queries + hit.matched_queries
+        else:
+            # Requeries retain their best final rank and strongest relevance
+            # independently; neither a score increase nor a retry erases provenance.
+            target[key] = replace(
+                hit if hit.score > existing.score else existing,
+                selection_rank=min((rank for rank in (existing.selection_rank, hit.selection_rank)
+                                    if rank is not None), default=None),
+                matched_queries=deduplicate_preserve_order(existing.matched_queries + hit.matched_queries),
             )
 
 
@@ -745,11 +749,7 @@ def hits_to_sources(
     hits: dict[tuple[str, int], RetrievalHit],
     question: str = "",
 ) -> list[Source]:
-    ranked = sorted(
-        filter_topic_hits(question, hits.values()),
-        key=lambda item: item.score + title_term_boost(question, item.chunk.title),
-        reverse=True,
-    )[:MAX_SOURCES]
+    ranked = rank_evidence_hits(question, hits.values())[:MAX_SOURCES]
     return [
         Source(
             source_type="video" if hit.chunk.source_type == "video" else "document",

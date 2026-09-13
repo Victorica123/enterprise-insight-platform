@@ -9,6 +9,7 @@ from app.chunk_index import Chunk, RetrievalScope, load_chunk_index
 from app.config import get_evidence_budget_settings
 from app.models import Source
 from app.retrievers import RetrievalHit
+from app.text import title_term_boost
 
 _TOPIC = re.compile(r"(?:客户|项目)\s*[A-Za-z0-9][A-Za-z0-9_-]*", re.IGNORECASE)
 
@@ -38,6 +39,19 @@ def filter_topic_hits(question: str, hits: Iterable[RetrievalHit]) -> list[Retri
     if not wanted:
         return list(hits)
     return [hit for hit in hits if _matches_topics(wanted, hit.chunk)]
+
+
+def rank_evidence_hits(question: str, hits: Iterable[RetrievalHit]) -> list[RetrievalHit]:
+    """Keep hybrid's final rank through Top-K; score still controls evidence gates.
+
+    Keyword/embedding-only callers have no final fusion rank and retain their
+    existing title prior. Stable ties also preserve first-seen order on retries.
+    """
+    return sorted(
+        filter_topic_hits(question, (hit for hit in hits if hit.score > 0)),
+        key=lambda hit: (0, hit.selection_rank) if hit.selection_rank is not None
+        else (1, -(hit.score + title_term_boost(question, hit.chunk.title))),
+    )
 
 
 def expand_parent_sources(

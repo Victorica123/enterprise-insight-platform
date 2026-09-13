@@ -40,3 +40,6 @@
 {"id": "refuse-03", "intent": "general", "question": "如何配置思科路由器的BGP协议？", "should_answer": false, "expected_facts": [], "expected_docs": []}
 {"id": "refuse-04", "intent": "general", "question": "客户C的项目交付情况如何？", "should_answer": false, "expected_facts": [], "expected_docs": []}
 {"id": "refuse-05", "intent": "general", "question": "明年公司的年会什么时候举办？", "should_answer": false, "expected_facts": [], "expected_docs": []}
+{"id": "ranking-01", "intent": "fact", "question": "项目记录里，调整后的交付日期是什么时候？", "should_answer": true, "expected_facts": ["2026年7月8日"], "expected_docs": ["customer-a-project.md"]}
+{"id": "ranking-02", "intent": "fact", "question": "客户A签订的是哪个合同编号？", "should_answer": true, "expected_facts": ["HT-2026-0118"], "expected_docs": ["customer-a-project.md"]}
+{"id": "ranking-03", "intent": "summary", "question": "工单标题与描述分别要填写哪些信息？", "should_answer": true, "expected_facts": ["客户名称", "系统名称", "影响范围", "复现步骤"], "expected_docs": ["support-handbook.md"]}

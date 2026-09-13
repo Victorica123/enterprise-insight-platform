@@ -166,12 +166,10 @@ def rerank_pairs(pairs: list[tuple[str, str]]) -> list[float] | None:
     if model is None or not pairs:
         return None
     try:
-        return [float(score) for score in model.rerank_pairs(list(pairs))]
-    except AttributeError:  # 兼容旧版 fastembed（predict API）
-        try:
-            return [float(score) for score in model.predict([list(pair) for pair in pairs])]
-        except Exception:  # pragma: no cover
-            return None
+        method = getattr(model, "rerank_pairs", None)
+        raw = method(list(pairs)) if callable(method) else model.predict([list(pair) for pair in pairs])
+        scores = [float(score) for score in raw]
+        return scores if len(scores) == len(pairs) and all(math.isfinite(score) for score in scores) else None
     except Exception:  # pragma: no cover
         return None
 

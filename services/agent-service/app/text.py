@@ -40,6 +40,20 @@ def deduplicate_preserve_order(values: list[str]) -> list[str]:
     return result
 
 
+def title_term_boost(question: str, title: str) -> int:
+    """Existing title prior; applied before fusion, never after a final rerank."""
+    if not title:
+        return 0
+    compact = re.sub(r"\s+", "", question.lower())
+    bigrams = {
+        compact[i : i + 2]
+        for i in range(len(compact) - 1)
+        if "\u4e00" <= compact[i] <= "\u9fff" or "\u4e00" <= compact[i + 1] <= "\u9fff"
+    } - QUESTION_STOP_BIGRAMS
+    title_lower = title.lower()
+    return 25 if any(bigram in title_lower for bigram in bigrams) else 0
+
+
 def normalize_text(text: str) -> str:
     normalized = text.lower()
     for separator in _SEPARATORS:

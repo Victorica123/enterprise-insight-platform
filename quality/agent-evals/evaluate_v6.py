@@ -83,7 +83,7 @@ def judge_case(case: dict[str, object], response) -> dict[str, object]:
     retrieval_ok: bool | None = None
     fact_ok: bool | None = None
     if should_answer:
-        retrieval_ok = bool(set(expected_docs) & set(source_filenames))
+        retrieval_ok = bool(set(expected_docs) & set(source_filenames[:3]))
         expected_facts = [str(item).lower() for item in case["expected_facts"]]
         answer_lower = response.answer.lower()
         fact_ok = answered and any(fact in answer_lower for fact in expected_facts)
@@ -167,6 +167,17 @@ def print_mode_summary(summary: dict[str, object], baseline: dict[str, object] |
         )
 
 
+def passes_quality_gates(summaries: dict[str, dict[str, object]]) -> bool:
+    hybrid = summaries["hybrid"]
+    return (
+        summaries["keyword"]["decision_accuracy"] >= QUALITY_GATES["decision_accuracy"]
+        and hybrid["decision_accuracy"] >= QUALITY_GATES["decision_accuracy"]
+        and hybrid["recall3"] >= QUALITY_GATES["hybrid_recall3"]
+        and hybrid["fact_coverage"] >= QUALITY_GATES["hybrid_fact_coverage"]
+        and hybrid["p95_latency_ms"] <= QUALITY_GATES["p95_latency_ms"]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="V6 golden-set evaluation gate")
     parser.add_argument("--save-baseline", action="store_true", help="save current numbers as baseline")
@@ -186,22 +197,18 @@ def main() -> int:
                 summaries[mode] = run_mode(cases, mode)
 
     print("V6 golden-set evaluation")
+    print(f"cases={len(cases)}; recall3 checks only the first 3 returned sources")
+    print("Historical baseline recall3 included up to 4 sources; that column is not directly comparable.")
     print("-" * 88)
     for mode in MODES:
         print_mode_summary(summaries[mode], baseline.get(mode) if baseline else None)
 
-    hybrid = summaries["hybrid"]
     print("-" * 88)
-    gates_passed = (
-        summaries["keyword"]["decision_accuracy"] >= QUALITY_GATES["decision_accuracy"]
-        and hybrid["recall3"] >= QUALITY_GATES["hybrid_recall3"]
-        and hybrid["fact_coverage"] >= QUALITY_GATES["hybrid_fact_coverage"]
-        and hybrid["p95_latency_ms"] <= QUALITY_GATES["p95_latency_ms"]
-    )
+    gates_passed = passes_quality_gates(summaries)
     print(f"quality_gate={'passed' if gates_passed else 'failed'}")
     print(
         "thresholds="
-        f"decision>={QUALITY_GATES['decision_accuracy']:.0%}, "
+        f"keyword/hybrid decision>={QUALITY_GATES['decision_accuracy']:.0%}, "
         f"hybrid_recall3>={QUALITY_GATES['hybrid_recall3']:.0%}, "
         f"hybrid_fact>={QUALITY_GATES['hybrid_fact_coverage']:.0%}, "
         f"p95<={QUALITY_GATES['p95_latency_ms']:.0f}ms"

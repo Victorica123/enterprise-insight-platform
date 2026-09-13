@@ -214,8 +214,8 @@ class RetrieverFallbackTests(unittest.TestCase):
         self.assertTrue(result.hits)
 
 
-class HybridTieBreakTests(unittest.TestCase):
-    """RRF 平局时 hybrid 必须优先精确词项覆盖。
+class HybridHashFallbackTests(unittest.TestCase):
+    """Hash fallback must retain direct keyword evidence despite vector collisions.
 
     PRD 门禁 prd-09 在没有本地 BGE 模型（哈希 embedding）的环境里曾因此排错：
     keyword 与 hash embedding 的排名互为镜像，RRF 必然平局，旧实现用 0.5/0.5 融合门控分决胜，
@@ -235,21 +235,22 @@ class HybridTieBreakTests(unittest.TestCase):
         clear_chunk_cache()
         self.temp_dir.cleanup()
 
-    def test_hybrid_tie_prefers_keyword_coverage(self) -> None:
+    def test_hash_collisions_preserve_keyword_coverage(self) -> None:
         query = ["生成退款时效 PRD"]
         with patch("app.retrievers.is_real_embedding_available", return_value=False):
             keyword = get_retriever("keyword").search(query)
             embedding = get_retriever("embedding").search(query)
             hybrid = get_retriever("hybrid").search(query)
 
-        # 前提：两路排名互为镜像，RRF 平局；若哈希 embedding 算法改变导致前提失效，先更新这里。
+        # 两路排名互为镜像；hash 不能被当作独立语义通道压过精确词项。
         self.assertEqual(keyword.hits[0].chunk.filename, "refund-sla.md")
         self.assertEqual(embedding.hits[0].chunk.filename, "hiring.md")
         self.assertEqual(
             [hit.chunk.filename for hit in hybrid.hits[:2]],
             ["refund-sla.md", "hiring.md"],
         )
-        # 门控分不受平局规则影响：仍是两路归一化分的加权融合。
+        self.assertEqual(hybrid.fusion_strategy, "keyword_then_hash")
+        # 门控仍使用实际接受的归一化分，排名不是置信度。
         self.assertGreater(hybrid.hits[0].score, 0)
 
 

@@ -50,6 +50,16 @@ class EvidenceBudgetSettings:
 
 
 @dataclass(frozen=True)
+class HybridRetrievalSettings:
+    keyword_min_ratio: float = 0.35
+    semantic_min_score: int = 45
+    hash_min_score: int = 10
+    channel_timeout_seconds: float = 2.0
+    rerank_timeout_seconds: float = 3.0
+    channel_workers: int = 4
+
+
+@dataclass(frozen=True)
 class Settings:
     environment: str
     auth_mode: str
@@ -70,6 +80,7 @@ class Settings:
     llm_response_format: str
     call_limits: CallLimits
     evidence_budget: EvidenceBudgetSettings
+    hybrid_retrieval: HybridRetrievalSettings
     embedding_model: str
     reranker_model: str
     embedding_rebuild_batch_size: int
@@ -116,6 +127,8 @@ LLM_PROVIDER OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL DEEPSEEK_API_KEY DEEPSE
 LLM_TIMEOUT_SECONDS LLM_MAX_RETRIES LLM_MAX_COMPLETION_TOKENS LLM_ROUTER_ENABLED LLM_RESPONSE_FORMAT
 LLM_PROMPT_PRICE_PER_1M_USD LLM_COMPLETION_PRICE_PER_1M_USD AGENT_MAX_MODEL_CALLS AGENT_MAX_TOOL_CALLS
 EVIDENCE_SOURCE_CHAR_BUDGET EVIDENCE_TOTAL_CHAR_BUDGET EMBEDDING_MODEL RERANKER_MODEL
+HYBRID_KEYWORD_MIN_RATIO HYBRID_SEMANTIC_MIN_SCORE HYBRID_HASH_MIN_SCORE
+HYBRID_CHANNEL_TIMEOUT_SECONDS HYBRID_RERANK_TIMEOUT_SECONDS HYBRID_CHANNEL_WORKERS
 EMBEDDING_REBUILD_BATCH_SIZE EMBEDDING_BACKFILL_INTERVAL_SECONDS APPROVAL_SOD_ENFORCED
 MAX_UPLOAD_BYTES MEDIA_INGEST_SERVICE_TOKEN AGENT_PROMPT_DIR LOG_FORMAT_TEXT LOG_LEVEL
 MODEL_EGRESS_POLICY MODEL_EGRESS_ALLOWED_TENANTS RETENTION_ENABLED RETENTION_TRANSCRIPT_DAYS
@@ -200,6 +213,14 @@ def _settings_from_environment(snapshot: tuple[str | None, ...]) -> Settings:
         llm_response_format=env.choice("LLM_RESPONSE_FORMAT", "auto", {"auto", "off", "none", "disabled", "json_object", "json_schema"}),
         call_limits=CallLimits(env.integer("AGENT_MAX_MODEL_CALLS", 8, 1, 64), env.integer("AGENT_MAX_TOOL_CALLS", 6, 1, 64)),
         evidence_budget=EvidenceBudgetSettings(env.integer("EVIDENCE_SOURCE_CHAR_BUDGET", 2200, 200, 50_000), env.integer("EVIDENCE_TOTAL_CHAR_BUDGET", 5200, 400, 200_000)),
+        hybrid_retrieval=HybridRetrievalSettings(
+            keyword_min_ratio=env.number("HYBRID_KEYWORD_MIN_RATIO", 0.35, 0, 1),
+            semantic_min_score=env.integer("HYBRID_SEMANTIC_MIN_SCORE", 45, 0, 100),
+            hash_min_score=env.integer("HYBRID_HASH_MIN_SCORE", 10, 0, 100),
+            channel_timeout_seconds=env.number("HYBRID_CHANNEL_TIMEOUT_SECONDS", 2.0, 0.01, 60),
+            rerank_timeout_seconds=env.number("HYBRID_RERANK_TIMEOUT_SECONDS", 3.0, 0.01, 60),
+            channel_workers=env.integer("HYBRID_CHANNEL_WORKERS", 4, 1, 32),
+        ),
         embedding_model=env.text("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"),
         reranker_model=env.text("RERANKER_MODEL"),
         embedding_rebuild_batch_size=env.integer("EMBEDDING_REBUILD_BATCH_SIZE", 64),

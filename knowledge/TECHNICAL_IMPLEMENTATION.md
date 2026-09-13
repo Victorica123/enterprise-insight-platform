@@ -58,7 +58,7 @@ Engineering knowledge plane (not customer runtime data)
 
 1. Agent Service 从 JWT 得到 `tenant_id`、`owner_id` 和 `workspace_type`。personal 查询绑定 tenant + owner，team 查询绑定 tenant；过滤发生在检索前。用户选定 `asset_ids` 时只收窄视频来源，当前 Workspace 内已授权的上传文档和 `ACTIVE` 受治理知识仍参与检索，避免视频筛选意外切断知识沉淀闭环。
 2. Router 判断问题意图与复杂度，Planner 生成原问题、改写和补充 query。两者与 B2 工具选择均通过 `response_format` 请求结构化 JSON：OpenAI 使用严格 JSON Schema，DeepSeek 使用 JSON Object；服务端再做枚举、类型、工具白名单和参数校验，失败统一降级到规则路径。
-3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 使用 RRF 合并排名（平局时先看 keyword 覆盖分，再看融合门控分），再用关键词/向量归一化分执行证据门控；可选 cross-encoder 只重排 Top-12 候选。
+3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 的独立有界通道先过滤弱候选；真实语义路径用 RRF（K=60），hash 降级保留关键词优先并标记 `keyword_then_hash`。可选 cross-encoder 只重排 Top-12；最终名次独立于相关性分，回答层不再覆盖融合/精排名次，证据门控仍使用实际分数。通道异常、超时、饱和与最终保留数均进 trace，见 ADR-0019。
 4. Evidence Agent 判断证据是否足够；复杂问题最多进行受限轮次补查，不无限循环。
 5. 本地模板或 LLM 生成答案后，引用校验器检查 source、租户归属及视频时间范围。无法支持的结论必须标记假设或拒答。
 6. 前端点击视频引用时向 Media Service 请求短时播放 token；Agent Service 不保存对象存储凭证。
@@ -66,6 +66,8 @@ Engineering knowledge plane (not customer runtime data)
 `LLM_RESPONSE_FORMAT=auto` 是兼容策略，不是模型质量保证：`json_schema` 请求被 provider 拒绝、网络失败、拒答或 JSON 解析失败时，Router/Planner/Tool Agent 记录降级并继续使用确定性规则。工具选择的严格 envelope 使用 `{ "calls": [...] }`，每项将不同工具的参数编码为 `arguments_json` 字符串，解析后仍必须经过工具定义和执行前鉴权。当前 `analysis_pipeline.py` 的四个 specialist 仍是规则基线；结构化 LLM 通道不等同于完整多 LLM Agent Runtime。
 
 问答的 JSON/SSE 传输共同进入 `chat_service.py`：领取会话租约与预算 → 有界主题提示 → ExecutionPlan → 授权检索 → 相邻块扩展与证据预算 → 生成 → 引用审核 → 持久化最终轮次与指标。SSE 使用 64 项队列、15 秒心跳和 AsyncOpenAI 答案流；本地回答完成后分片。Web 只有收到 `done` 才保存最终回答，停止/切换通过 AbortController 与 generation 防止迟到回写。
+
+追问提示只根据本轮授权证据生成，最多三条、排除已问主题，拒答不生成；未增加模型调用。来源排序、通道状态和追问同时覆盖 JSON、SSE 和会话回放。模型级语义引用修复、任意改写和 Pro 五通道检索未纳入当前实现，完整对照见 `docs/NEXUS_REFERENCE_AUDIT.md`。
 
 记忆保留最近四轮问题（2200 字符）和可选摘要（1400 字符，每次最多推进六轮），只补全受限客户/项目标识；旧回答不进入新证据。会话累计模型 40 / 工具 30，数据库预留与退还，默认 120 秒租约每 40 秒续租，旧执行者 CAS 失败不能覆盖新轮次。个人与团队会话沿用 JWT scope，详见 ADR-0016。
 

@@ -13,6 +13,7 @@
 | Settings、编号迁移、向量兼容与内部边界 | [ADR-0017](decisions/0017-settings-schema-and-domain-boundaries.md)、[OPERATIONS.md](OPERATIONS.md) |
 | Media Flyway/阶段日志/熔断、Web Router/Query 与角色切换隔离 | [ADR-0018](decisions/0018-media-migrations-stages-and-web-queries.md)、[OPERATIONS.md](OPERATIONS.md)、[最新验收](QUALITY.md) |
 | 对标 Nexus Agent 的架构优化：分阶段计划、落地记录、项目功能拆分、优化前后量化对比与取舍理由 | [优化方案与前后对比](../docs/ARCHITECTURE_OPTIMIZATION_PLAN.md) |
+| Nexus 参考站最新目录、公开范围、遗漏复核、检索排名/降级与补齐证据 | [参考站复核](../docs/NEXUS_REFERENCE_AUDIT.md)、[ADR-0019](decisions/0019-retrieval-ranking-and-channel-isolation.md) |
 | HTTP、事件、共享数据结构 | [CONTRACTS.md](CONTRACTS.md) 与 `../contracts/` |
 | 身份、租户、权限、隐私、审批 | [DATA_AND_SECURITY.md](DATA_AND_SECURITY.md) |
 | Agent 阶段、证据、评测、自进化 | [AGENT_ENGINEERING.md](AGENT_ENGINEERING.md) |

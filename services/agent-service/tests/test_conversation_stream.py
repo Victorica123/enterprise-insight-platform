@@ -73,6 +73,22 @@ class ConversationApiTests(unittest.TestCase):
         self.assertEqual(history["revision"], 2)
         self.assertEqual(history["turns"][-1]["question"], "它的负责人是谁？")
 
+    def test_followup_suggestions_use_current_evidence_and_skip_the_answered_topic(self):
+        first = self.ask().json()
+        self.assertTrue(any("负责人" in question for question in first["follow_up"]))
+        self.assertFalse(any("风险" in question for question in first["follow_up"]))
+        self.assertTrue(all("客户A" in question for question in first["follow_up"]))
+        second = self.ask("它的负责人是谁？", conversation_id=first["conversation_id"]).json()
+        self.assertFalse(any("负责人" in question for question in second["follow_up"]))
+        self.assertTrue(any("延期" in question for question in second["follow_up"]))
+        self.assertLessEqual(len(second["follow_up"]), 3)
+
+    def test_refused_answer_with_sources_has_no_followup_suggestions(self):
+        response = self.ask("客户A有哪些违约风险？").json()
+        self.assertTrue(response["sources"])
+        self.assertNotEqual(next(step["status"] for step in response["trace"] if step["name"] == "evidence_check"), "passed")
+        self.assertEqual(response["follow_up"], [])
+
     def test_conversation_id_is_never_authorization(self):
         identifier = self.ask().json()["conversation_id"]
         for headers in (self.headers("bob"), self.headers(tenant="tenant-b")):
@@ -153,6 +169,8 @@ class ConversationApiTests(unittest.TestCase):
         self.assertLess(kinds.index("sources"), kinds.index("done"))
         self.assertEqual(events[-1]["content"]["answer"], ordinary["answer"])
         self.assertEqual(events[-1]["content"]["sources"], ordinary["sources"])
+        self.assertEqual(events[-1]["content"]["follow_up"], ordinary["follow_up"])
+        self.assertEqual(next(event["content"] for event in events if event["type"] == "follow_up"), ordinary["follow_up"])
         self.assertEqual(len({event["exchange_id"] for event in events}), 1)
 
     def test_stream_checks_jwt_and_egress_before_sending_headers(self):

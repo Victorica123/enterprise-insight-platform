@@ -7,3 +7,5 @@
 {"id":"fresh_evidence","mode":"window","questions":["客户A的负责人是谁？","它的负责人是谁？"],"before_last":"replace_a","contains":"赵六","excludes":"李四","decision":"answered"}
 {"id":"owner_filtered_topic","mode":"window","questions":["客户A的负责人是谁？","客户B的负责人是谁？"],"private_b":true,"excludes":"王五","decision":"refused"}
 {"id":"parent_topic_change","mode":"window","questions":["客户A的负责人是谁？","客户B的负责人是谁？"],"shared_parent":true,"contains":"王五","excludes":"李四","decision":"answered"}
+{"id":"contextual_followup","mode":"window","questions":["客户A的项目为什么延期？","它的负责人是谁？"],"contains":"李四","decision":"answered","follow_up_contains":"客户A的延期原因","follow_up_excludes":"负责人"}
+{"id":"refusal_no_followup","mode":"none","questions":["客户A有哪些违约风险？"],"decision":"refused","no_follow_up":true}

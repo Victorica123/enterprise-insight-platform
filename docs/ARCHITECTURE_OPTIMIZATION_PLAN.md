@@ -2,14 +2,14 @@
 
 > 日期：2026-09-11 立项，2026-09-12 三批落地，2026-09-13 完成接手范围与验证
 > 性质：第一至七节是架构评审与分阶段计划；第八节是落地记录；第九节是项目功能拆分（优化动了哪一块）；第十节是优化前后的量化对比与如何取舍 Nexus 做法  
-> 参照物：Nexus Agent 公开文档（javaup.chat/super-agent，概览 7 页全文可读，25 页细节被付费墙截断，仅能读到设计意图与参数，读不到完整源码）  
+> 参照物：[Nexus Agent 公开文档](https://javaup.chat/super-agent/overview/project-intro/)；2026-09-13 复核当前目录 88 页，17 页无付费提示、71 页仅公开预览（包括目录页，不等同于完整技术正文）。原“7 + 25 页”统计已过时，详见 [复核记录](NEXUS_REFERENCE_AUDIT.md)。
 > 评审对象：当前仓库 `services/agent-service`、`services/media-service`、`apps/web`
 
 ## 当前状态（2026-09-13）
 
-阶段 0–4 已按批准的项目边界完成、提交为 `af2dc6e` 并部署到本机 **http://127.0.0.1:8080**。阶段 4 补齐 Media 职责与配置拆分、Flyway、真实阶段日志、Agent 投递熔断，以及 Web 路由、查询缓存、请求取消和 feature 状态下沉。Agent **244/244**、Media **150/150**；Web 经发布修复后 **26/26**；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 纵向验收均为 **42/42**。发布追加同源端口与播放前缀修复 `daa29bf` / `03f810b`，实际 nginx 入口带 Origin 的 42 项、同源检查 5 项与浏览器验收通过。Conversation V1 **9/9**，其他证据、备份与生产边界见第十一节及 `knowledge/QUALITY.md`。
+阶段 0–4 及其本机部署已经完成，历史提交为 `af2dc6e`、`daa29bf`、`03f810b`。用户随后要求再次核对参考网站；本轮确认并修复了检索排名被回答层覆盖、通道未先过滤、失败/超时未隔离、精排输出校验与观测不足，以及固定追问和评测口径问题。当前 Agent **269/269**、Media **150/150**、Web **26/26**，V6 45 题 hybrid **44/45 决策、39/40 真实 Recall@3 与事实覆盖**，Conversation **11/11**；本轮本机 Agent 更新待完成。新复核看第十二节、[逐项对照](NEXUS_REFERENCE_AUDIT.md) 与 `knowledge/QUALITY.md`，阶段 0–4 原验证仍在第十一节。
 
-第一至四节保留 **2026-09-11 原始评审快照**，“现状/缺少”指立项时；第十节保留 **2026-09-12 历史提交对比**，不代表本轮新增改造的性能收益。当前完成项看第五、八、九、十一节。
+第一至四节保留 **2026-09-11 原始评审快照**，“现状/缺少”指立项时；第十节保留 **2026-09-12 历史提交对比**，第十一节保留本次参考复核前的交付状态。当前以第十二节及最新质量证据为准，不把历史指标当作本轮新增收益。
 
 ## 一、结论（立项时）
 
@@ -139,7 +139,7 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 | 0.2（已落地 2026-09-12） | 新增 `ExecutorRegistry` 与 `ClarificationExecutor`；`workflow_mode` 保留为向后兼容输入，服务端最终以 `plan.mode` 为准 | `orchestration.py`、`models.py`（`AgentSummary` 增加 `execution_mode`、`clarify_question`） | 现有 158 个用例不变；新增澄清用例 |
 | 0.3（已落地 2026-09-12） | `TraceStep` 增加 `duration_ms`，每个阶段用 `perf_counter` 计时；`chat_logs.trace_json` 自然携带 | `models.py`、各执行器 | V5 观测评测保持 8/8 |
 | 0.4（已落地） | `call_limits.py` 以 ContextVar 绑定每请求模型 8 / 工具 6 上限；会话模式另有累计预留与退还 | `call_limits.py`、`chat_service.py`、`llm_client.py`、`tools.py` | 请求与会话预算回归 |
-| 0.5（已落地 2026-09-12） | 证据字符预算：单来源 ≤ 2200、总量 ≤ 5200，先按分数取，再按预算裁 | `rag.py` 抽出 `evidence_budget.py` | V6 三种模式 decision / recall@3 / fact 不下降 |
+| 0.5（已落地，复核修正排名） | 证据字符预算：单来源 ≤ 2200、总量 ≤ 5200，按最终名次取，再按预算裁；相关性分单独门控 | `rag.py`、`evidence_budget.py`、`evidence_sources.py` | 最终排序、预算与真实 Top-3 回归 |
 | 0.6（已落地 2026-09-13） | 已授权客户/项目候选相对置信度与澄清；明确主题/比较不误拦，无候选走原拒答；精排降级可见 | `topic_routing.py`、`planning.py`、`retrievers.py` | 授权候选、指代歧义及降级回归 |
 | 0.7（已落地 2026-09-12） | Prompt 外置到 `app/prompts/*.txt`（或 Jinja 模板）并缓存，`llm.py`、`llm_router.py` 只做变量填充 | `llm.py`、`llm_router.py`、新增 `app/prompts/` | 现有 LLM 路由用例不变 |
 | 0.8（已落地 2026-09-12） | 影子路由：用户显式传 `workflow_mode` 时，后台仍跑 `decide_mode` 并把"系统会选什么 / 用户选了什么 / 是否一致"写入 `chat_metrics` | `orchestration.py`、`chat_observability_store.py` | 监控面板新增一致率 |
@@ -151,7 +151,7 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 | 1.1（已落地 2026-09-12） | 索引时预计算 chunk 词项集并随缓存对象存放（`Chunk.terms: frozenset`），关键词检索不再每请求重新分词 | 关键词路径从 O(N·L) 降到 O(N·|q|) |
 | 1.2（已落地 2026-09-12） | 在缓存项内附带按词项的倒排 `dict[str, list[int]]`，查询只碰命中 posting | 大语料下接近 O(命中数) |
 | 1.3（已落地 2026-09-13） | 带版本头的 float32 blob，旧 JSON 双写/读取回退 | 已验证兼容与损坏回退；新性能收益未测 |
-| 1.4（已落地 2026-09-12） | Hybrid 两路共用授权快照并行检索 | 历史基准见 10.3，不外推固定倍数 |
+| 1.4（已落地，复核补齐隔离） | Hybrid 两路共用授权快照，有界并行、独立阈值/截止/异常隔离；精排有界 | 新机制见 ADR-0019；历史基准见 10.3，不外推固定倍数 |
 | 1.5（已落地 2026-09-13） | 默认 64 条后台补齐，推理不持写事务；请求缺向量时整批 hash 降级 | 首请求不补算文档向量 |
 | 1.6（已落地 2026-09-12） | 缓存失效粒度改为按 tenant 的 revision（`system_meta` 增加 `content_revision:<tenant>`），一个租户写入不再清空所有租户缓存 | 多租户下缓存命中率 |
 | 1.7（已落地 2026-09-13） | 同文档同标题链的授权相邻块在预算内合并；主题过滤贯穿扩展，视频不合并 | 保留 parent_key / chunk_indices 与时间证据 |
@@ -197,6 +197,7 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 
 ## 八、落地记录
 
+- 2026-09-13（参考站复核）：对照当前 88 页公开目录，修复实际调用链与原方案之间的遗漏，新增 ADR-0019 和逐项对照记录。Agent 269/269，V6 新增 3 题且修正真实 Top-3/混合决策门禁；Conversation 新增 2 个推荐追问场景，11/11。详见第十二节。
 - 2026-09-13（阶段 4 最终收尾）：Media **150/150**、Agent **244/244**、Web **21/21**，lint 零 error、Web 构建通过。两种环境各 **42/42** 验收；真实 MySQL 迁移专项 6 项、分片/对象存储 4 项、Agent 断连恢复 3 项、备份恢复 3 项通过。浏览器验证六路由、宽窄屏、QA 会话保留与停止、Workspace/角色清理和只读入口；k6 3 VUs/150 请求零失败，限于本机小样本。现有用户服务保持原状，原迁移来源未改动。最新口径见第十一节。
 - 2026-09-13（接手收尾）：阶段 2 会话/SSE 与阶段 3 配置、编号迁移、领域边界和运行并发配置完成，QA 组件拆分完成。新增 ADR-0016/0017，修正 AGENTS 的失效 Skill 路径与读取归档的启动 harness。最终 Agent **241/241**、Web **13/13**、Media **135/135**、localhost **36/36**；V6、PRD、Knowledge Lifecycle、V5 通过，Conversation V1 **9/9**。浏览器验证真实 JWT 注册/文档上传、连续追问、新建、宽窄屏和 Workspace 清理；临时 SQLite 备份校验及恢复通过。详情见第十一节。
 - 收尾回归发现并修复：显式换客户时来源混入、比较后指代错误、模型摘要虚构主题、相邻块重新引入已排除客户、租约失效误报 500，以及问答页面样式依赖其他懒加载页面。失败样例已纳入回归；未切换模型、未改两服务边界。
@@ -330,7 +331,7 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 - 阶段 3 的配置、DDL、façade 收口三项体检指标完全没动，阶段 2 的会话记忆与流式输出是用户能直接看到的差异，建议作为下一批。
 
 
-## 十一、2026-09-13 接手结果与交接
+## 十一、2026-09-13 阶段 0–4 接手结果（参考站复核前）
 
 本轮基线为 `40c2093`，接手时 Agent 199 个用例；阶段 0–4 已提交为 `af2dc6e`，发布修复为 `daa29bf` 与 `03f810b`，当前分支为 `main`。原迁移来源保持只读，保留模型选择、两后端/统一前端、JWT scope、证据、审批和审计。
 
@@ -362,3 +363,13 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 当前授权的架构优化和本机部署已完成。先对目标库备份与副本演练，再升级既有 `enterprise-insight-local`；两次迁移均保留原字段与数据摘要，升级后 baseline=false。正式入口为 `http://127.0.0.1:8080`，当前 Web 来自 `03f810b`，后端来自 `af2dc6e`。备份、旧镜像与固定部署配置见 `knowledge/OPERATIONS.md`，验证日志见 `knowledge/QUALITY.md`。正式 Keycloak/RS256、外部 AI、长时间容量、多实例与对象存储灾备仍需目标环境补证。处理任务恢复仅自动关闭旧处理阶段，DELIVERY 的硬崩溃 RUNNING 关联恢复仍是观测边界，不影响 outbox lease 到期后重投。
 
 交接位置：`main` 上的上述功能与发布修复提交；ADR-0016/0017/0018 与阶段契约均在本仓库。没有配置 Git remote，本轮未推送。本轮 `codex-stage4-f4819d11` 和发布副本 `codex-release-20260913132509` 的测试容器/网络及浏览器已清理；阶段 4 测试卷已删除，发布副本文件保留。日志、截图、MySQL 归档和 `backups/local-release-20260913-132509/pre-upgrade.zip` 保留在忽略目录。正式三容器 healthy，`erp-mssql` 保持运行。后续维护先运行 harness brief，核对本节与 `QUALITY.md` 最新条目，勿重跑一次性改造脚本或直接覆盖现有运行数据；本机发布不再有待办，生产补证另行定范围。
+
+## 十二、2026-09-13 参考站再次复核
+
+本轮从 `main@9c713be` 的干净工作树继续。有效入口和当前 88 页目录、公开/预览边界、逐项代码映射、补齐项与范围差异统一记录在 [NEXUS_REFERENCE_AUDIT.md](NEXUS_REFERENCE_AUDIT.md)，检索决策见 [ADR-0019](../knowledge/decisions/0019-retrieval-ranking-and-channel-isolation.md)。
+
+已完成：最终名次与相关性分离；standard/agentic/分析冻结保留排序；通道先过滤并有界隔离；hash 降级不参与独立语义投票；精排畸形输出降级；多轮 query 来源合并；通道最终计数与失败指标；根据证据生成追问；修正真实 Top-3 与 hybrid 决策门禁。没有新增中间件或改变模型和审批边界。
+
+代码验证：Agent **269/269**、Media **150/150**、Web **26/26**；V6 **45 题**，hybrid 决策 **44/45**、真实 Recall@3 与事实覆盖 **39/40**；PRD **12/12**、Conversation **11/11**、Lifecycle/V5/lint/build 通过。新旧评测分母和旧 Recall@3 窗口不同，不能直接把百分比变化宣传为模型提效。
+
+当前下一步：保留本机 Agent 旧镜像与 SQLite 快照，提交、更新 `enterprise-insight-local` 的 Agent，再跑实际 nginx 入口与浏览器验收；完成后把提交、镜像与恢复位置写回本节、`OPERATIONS.md` 和 `QUALITY.md`。

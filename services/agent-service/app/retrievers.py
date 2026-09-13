@@ -7,8 +7,8 @@ with tests and evaluation scripts that patch ``app.retrievers.*``.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from app import database  # noqa: F401 - patch target for tests (app.retrievers.database)
@@ -21,7 +21,7 @@ from app.chunk_index import (
     load_chunk_index,
     load_chunks,
 )
-from app.config import get_retriever_mode
+from app.config import get_retriever_mode, get_settings
 from app.embeddings import (
     build_embedding,
     cosine_similarity,
@@ -31,6 +31,7 @@ from app.embeddings import (
     rerank_pairs,
     similarity_to_score,
 )
+from app.retrieval_execution import get_retrieval_executor
 from app.text import (
     CHAR_STOPS,
     STOP_TERMS,
@@ -38,6 +39,7 @@ from app.text import (
     deduplicate_preserve_order,
     extract_search_terms,
     normalize_text,
+    title_term_boost,
     tokenize_words,
 )
 
@@ -47,6 +49,19 @@ class RetrievalHit:
     chunk: Chunk
     score: int
     matched_queries: list[str]
+    # Final retriever ordering, deliberately separate from absolute relevance.
+    # None preserves the legacy keyword/embedding selection policy.
+    selection_rank: int | None = None
+
+
+@dataclass(frozen=True)
+class RetrievalChannelObservation:
+    name: str
+    status: str
+    duration_ms: float
+    raw_count: int = 0
+    accepted_keys: frozenset[tuple[str, int]] = frozenset()
+    min_score: float = 0
 
 
 @dataclass
@@ -57,6 +72,10 @@ class RetrievalResult:
     # "unavailable": configured but inference failed -> fused order kept, made visible in trace.
     rerank_status: str = "disabled"
     embedding_status: str = "not_used"
+    channels: list[RetrievalChannelObservation] = field(default_factory=list)
+    rerank_duration_ms: float | None = None
+    rerank_reason: str | None = None
+    fusion_strategy: str = "score"
 
 
 # RRF 的平滑常数，取检索文献常用的 60：排名靠前的差异被放大，长尾被压平。
@@ -245,46 +264,50 @@ class HybridRetriever:
     name = "hybrid"
 
     def search(self, queries: list[str], scope: RetrievalScope | None = None) -> RetrievalResult:
-        # 两路共用一次快照加载并并行执行：关键词路径是纯 Python，向量路径在真实模型下会释放 GIL。
+        # Authorization precedes dispatch; both channels see the same snapshot.
         index = load_chunk_index(scope)
         query_texts = [query for query in queries if query.strip()]
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="hybrid") as pool:
-            keyword_future = pool.submit(KeywordRetriever().search_index, queries, index)
-            embedding_future = (
-                pool.submit(EmbeddingRetriever().search_chunks, query_texts, list(index.chunks))
-                if query_texts
-                else None
-            )
-            keyword_result = keyword_future.result()
-            embedding_result = (
-                embedding_future.result()
-                if embedding_future is not None
-                else RetrievalResult(hits=[], scanned_count=0)
-            )
+        if not index.chunks or not query_texts:
+            return RetrievalResult(hits=[], scanned_count=len(index.chunks))
+        settings = get_settings().hybrid_retrieval
+        executor = get_retrieval_executor()
+        executions = executor.run({
+            "keyword": lambda: KeywordRetriever().search_index(queries, index),
+            "embedding": lambda: EmbeddingRetriever().search_chunks(query_texts, list(index.chunks)),
+        }, settings.channel_timeout_seconds)
+        keyword_result = executions["keyword"].value or RetrievalResult([], 0)
+        embedding_result = executions["embedding"].value or RetrievalResult([], 0)
+        embedding_status = (embedding_result.embedding_status if executions["embedding"].status == "ok"
+                            else executions["embedding"].status)
+        thresholds = {
+            "keyword": max((hit.score for hit in keyword_result.hits), default=0) * settings.keyword_min_ratio,
+            "embedding": settings.semantic_min_score if embedding_status == "semantic" else settings.hash_min_score,
+        }
 
         chunks: dict[tuple[str, int], Chunk] = {}
         keyword_scores: dict[tuple[str, int], int] = {}
         embedding_scores: dict[tuple[str, int], int] = {}
         matched: dict[tuple[str, int], list[str]] = {}
+        ranked_lists: list[list[tuple[str, int]]] = []
+        channels: list[RetrievalChannelObservation] = []
 
-        for result, scores in ((keyword_result, keyword_scores), (embedding_result, embedding_scores)):
-            for hit in result.hits:
+        for name, result, scores in (("keyword", keyword_result, keyword_scores),
+                                     ("embedding", embedding_result, embedding_scores)):
+            # Weak matches cannot acquire an extra RRF vote or inflate the gate.
+            accepted = [hit for hit in result.hits if hit.score > 0 and hit.score >= thresholds[name]]
+            if name == "keyword":
+                accepted.sort(key=lambda hit: hit.score + title_term_boost(query_texts[0], hit.chunk.title), reverse=True)
+            ranked_lists.append([hit.chunk.key for hit in accepted])
+            channels.append(RetrievalChannelObservation(
+                name=name, status=executions[name].status, duration_ms=executions[name].duration_ms,
+                raw_count=len(result.hits), accepted_keys=frozenset(hit.chunk.key for hit in accepted),
+                min_score=thresholds[name],
+            ))
+            for hit in accepted:
                 key = (hit.chunk.document_id, hit.chunk.chunk_index)
                 chunks.setdefault(key, hit.chunk)
                 scores[key] = hit.score
                 matched[key] = deduplicate_preserve_order(matched.get(key, []) + hit.matched_queries)
-
-        # 只让真正命中的 chunk 参与排名，否则零分文档也会白拿一份 RRF 权重。
-        fused = reciprocal_rank_fusion(
-            [
-                [
-                    (hit.chunk.document_id, hit.chunk.chunk_index)
-                    for hit in result.hits
-                    if hit.score > 0
-                ]
-                for result in (keyword_result, embedding_result)
-            ]
-        )
 
         hits = [
             RetrievalHit(
@@ -297,36 +320,51 @@ class HybridRetriever:
             )
             for key, chunk in chunks.items()
         ]
-        # RRF 平局（两路排名互为镜像，常见于小语料）时优先精确词项覆盖，再看融合门控分：
-        # 关键词命中是可审计的字面证据，向量分（尤其 64 维哈希保底）只是近似信号。
-        # 否则在没有本地 BGE 模型的环境里，"生成退款时效 PRD" 这类目标会被噪声向量分反超。
-        ranked_hits = sorted(
-            hits,
-            key=lambda hit: (
-                fused.get((hit.chunk.document_id, hit.chunk.chunk_index), 0.0),
-                keyword_scores.get((hit.chunk.document_id, hit.chunk.chunk_index), 0),
-                hit.score,
-            ),
-            reverse=True,
-        )
+        fusion_strategy = "rrf"
+        if embedding_status.startswith("hash_"):
+            # Hash n-grams are another lexical approximation, not an independent
+            # semantic vote. Keep accepted keyword ranks, then append hash-only
+            # candidates; collisions must not displace direct textual evidence.
+            fallback_order = dict.fromkeys(ranked_lists[0] + ranked_lists[1])
+            by_key = {hit.chunk.key: hit for hit in hits}
+            ranked_hits = [by_key[key] for key in fallback_order]
+            fusion_strategy = "keyword_then_hash"
+        else:
+            # With a real semantic channel, RRF resolves different score scales;
+            # exact keyword coverage remains the deterministic tie-breaker.
+            fused = reciprocal_rank_fusion(ranked_lists)
+            ranked_hits = sorted(
+                hits,
+                key=lambda hit: (fused.get(hit.chunk.key, 0.0), keyword_scores.get(hit.chunk.key, 0), hit.score),
+                reverse=True,
+            )
 
-        # A3: 可选 reranker 精排——只重排 RRF 候选头部，门控分保持不变。
+        # Optional reranker changes candidate order, never evidence confidence.
         # 默认关闭（RERANKER_MODEL 为空）；启用后对延迟预算负责（见 embeddings.py 注释）。
         rerank_status = "disabled"
+        rerank_duration_ms = None
+        rerank_reason = None
         if len(ranked_hits) > 1 and queries and is_reranker_configured():
-            reranked = self._rerank_head(queries[0], ranked_hits)
-            if reranked is not None:
-                ranked_hits = reranked
+            execution = executor.run({"rerank": lambda: self._rerank_head(queries[0], ranked_hits)},
+                                     settings.rerank_timeout_seconds)["rerank"]
+            rerank_duration_ms = execution.duration_ms
+            if execution.value is not None:
+                ranked_hits = execution.value
                 rerank_status = "applied"
             else:
                 # 精排失败不伪造分数：保留融合榜，并让调用方在 trace 中标明降级。
                 rerank_status = "unavailable"
+                rerank_reason = "invalid_or_unavailable" if execution.status == "ok" else execution.status
 
         return RetrievalResult(
-            hits=ranked_hits,
-            scanned_count=max(keyword_result.scanned_count, embedding_result.scanned_count),
+            hits=[replace(hit, selection_rank=rank) for rank, hit in enumerate(ranked_hits, start=1)],
+            scanned_count=len(index.chunks),
             rerank_status=rerank_status,
-            embedding_status=embedding_result.embedding_status,
+            embedding_status=embedding_status,
+            channels=channels,
+            rerank_duration_ms=rerank_duration_ms,
+            rerank_reason=rerank_reason,
+            fusion_strategy=fusion_strategy,
         )
 
     def _rerank_head(
@@ -334,7 +372,7 @@ class HybridRetriever:
     ) -> list[RetrievalHit] | None:
         head = ranked_hits[:RERANK_CANDIDATES]
         scores = rerank_pairs([(question, hit.chunk.content) for hit in head])
-        if scores is None:
+        if scores is None or len(scores) != len(head) or not all(math.isfinite(score) for score in scores):
             return None
         order = sorted(range(len(head)), key=lambda i: scores[i], reverse=True)
         return [head[i] for i in order] + ranked_hits[RERANK_CANDIDATES:]

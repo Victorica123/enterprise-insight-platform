@@ -60,6 +60,10 @@ def run_case(case: dict, index: int) -> bool:
     passed = (decision == case["decision"]
               and (not case.get("contains") or case["contains"] in response.answer)
               and (not case.get("excludes") or case["excludes"] not in response.answer)
+              and (not case.get("follow_up_contains") or any(case["follow_up_contains"] in question for question in response.follow_up))
+              and (not case.get("follow_up_excludes") or all(case["follow_up_excludes"] not in question for question in response.follow_up))
+              and (not case.get("no_follow_up") or not response.follow_up)
+              and len(response.follow_up) <= 3
               and all(source.document_id in authorized for source in response.sources))
     print(f"{'PASS' if passed else 'FAIL'} {case['id']}: decision={decision}, sources={len(response.sources)}")
     return passed

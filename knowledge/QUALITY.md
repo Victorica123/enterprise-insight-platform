@@ -1,6 +1,31 @@
 # 质量知识
 
-## 最新验证：2026-09-13 本机提交与部署收尾
+## 最新验证：2026-09-13 参考站复核与补齐
+
+以 `main@9c713be` 的干净工作树为起点，核对 Nexus 当前 88 页公开目录，补齐最终证据排序、通道过滤/隔离与观测、畸形精排降级、重试来源并集、证据追问和评测统计。范围与明确取舍见 [参考站复核](../docs/NEXUS_REFERENCE_AUDIT.md) 和 ADR-0019。此处先记录已完成的代码验证；本轮本机 Agent 更新与入口验收待完成。
+
+| 验证 | 结果 | 证据 |
+| --- | --- | --- |
+| 先复现回归 | 最初 8 个方法出现 **14 个子断言失败 / 2 个错误**；再复现固定追问与失败指标两项 | `runtime/codex-reference-regressions-before.log`、`runtime/codex-reference-followup-before.log` |
+| Agent 全量 | **269/269 PASS**（比起点增加 25 个用例），Python 3.12 | `runtime/codex-reference-agent-final.log` |
+| 检索专项 | 反向精排进入 standard/agentic 答案与分析快照；阈值、预算后计数、双向通道故障、超时、持续饱和、取消、ContextVar、迟到结果、畸形分数与 legacy adapter 均通过 | `tests/test_retrieval_pipeline.py`；聚焦记录 `runtime/codex-reference-focused-expanded.log` |
+| V6 | **45 题 PASS**；hybrid 决策 **44/45**，真实 Recall@3 与事实覆盖均 **39/40**（展示均约 98%）；p95 **11.7 ms** | `runtime/codex-reference-v6-final.log` |
+| PRD V1 | **12/12 PASS**，十项 100%；p95 **11.08 ms** | `runtime/codex-reference-prd.log` |
+| Knowledge Lifecycle | **3 场景 PASS**，九项 100% | `runtime/codex-reference-lifecycle.log` |
+| Conversation V1 | **11/11 PASS**，新增上下文追问与拒答不推荐；JSON/SSE 推荐一致由服务回归验证 | `runtime/codex-reference-conversation-final.log`、`runtime/codex-reference-followup-focused.log` |
+| V5 | 观测检查 **100% PASS**，p95 **30.25 ms** | `runtime/codex-reference-v5-final.log` |
+| Media | **150/150 PASS**，failure/error/skipped 均 0，JDK 17.0.18 | `runtime/codex-reference-media.log`、Surefire XML |
+| Web | **26/26 PASS**，lint **0 error / 10 warnings**，TypeScript/Vite build PASS | `runtime/codex-reference-web-{tests,lint,build}.log` |
+| Python lint | **PASS**，ruff 0.16.6 | `runtime/codex-reference-lint-final.log` |
+| 维护与知识 | 单测 **3/3**、14 份 JSON 契约解析、知识生成/漂移与语义路由 **PASS** | `runtime/codex-reference-maintenance-tests.log`、`runtime/codex-reference-knowledge-{update,check}.log`、`runtime/codex-reference-semantic-query.log` |
+
+评测均使用 hash embedding、空真实 embedding/reranker、`LLM_ROUTER_ENABLED=0`。V6 同次 keyword 为 98/98/98（p95 12.9 ms），单独 hash embedding 为 87/68/75（p95 16.5 ms）；本轮并不证明真实 BGE 或 cross-encoder 效果。原 42 题在修正降级路径后仍为 41/42 决策、36/37 事实覆盖；扩展后的分母为 45/40，不应把百分比变化夸称模型进步。`para-04`“系统上线前的质量门槛”仍是已知闭集未答题。
+
+**评测口径修正**：旧 `recall3` 实际检查全部最多四条来源；本轮严格检查前三条，同时补上 hybrid 自身的 decision 阈值。新增 `tests/test_evaluation_contracts.py` 防止第四条被算作前三条命中、keyword 成绩掩盖 hybrid 决策失败。历史 baseline 和旧验证数字保留，但旧 recall3 不应再当成精确 Top-3 比较。
+
+线程池满员与超时是故障注入测试，原生推理不能被 Python 强制终止；有界占槽与迟到结果隔离不等于生产容量或真实模型压测。已有 MySQL/Redis/RocketMQ/MinIO 证据属于下方阶段 4 历史，本轮未重测这些中间件。
+
+## 历史验证：2026-09-13 本机提交与部署收尾（参考复核前）
 
 用户批准的阶段 0–4 已提交为 `af2dc6e`，本机 `enterprise-insight-local` 已升级。浏览器验收发现并修复 nginx 丢失外部端口导致登录 403（`daa29bf`），以及 `/media` 相对基址导致播放 URL 无效/丢失代理前缀（`03f810b`）。当前入口为 **http://127.0.0.1:8080**，三个容器均 healthy。Web 镜像来自 `03f810b`，两个后端来自 `af2dc6e`；完整镜像、配置和恢复位置见 `OPERATIONS.md`。仓库未配置 remote，本轮完成本地提交与本机部署，没有推送。
 
@@ -289,7 +314,7 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 
 ## Agent 评测适用边界
 
-- V6 黄金集包含 42 个手工案例和 4 份固定 fixture：37 个应回答、5 个应拒绝。当前显示的 98% decision 是 41/42 四舍五入，97% recall@3 与 fact 是 36/37 四舍五入，不是“98 个样本中答对 98 个”。
+- V6 当前包含 45 个手工案例和 4 份固定 fixture：40 个应回答、5 个应拒绝。hybrid 决策为 44/45，真实 Recall@3 与 fact 为 39/40，四舍五入均约 98%。此前 42 题与 37 个应答题的记录是历史分母；旧 recall3 实际覆盖最多四条，不能和当前真实 Top-3 直接相比。
 - `evaluate_v6.py` 显式关闭 LLM Router，使用确定性回答路径；judge 检查是否答/拒、Top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。
 - PRD V1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective Top-1、跨租户过滤、显式冲突、视频时间定位、引用支持、验收可测试性、阶段稳定和 specialist 固定顺序。当前质量项均为 100%，首次本机 P95 为 22.28 ms；样本规模小、与规则共同维护且没有真实客户 holdout，因此只能作为确定性回归门禁，不能外推 PRD 业务接受率或开放域模型能力。
 - Knowledge Lifecycle V1 只有 personal 替代、personal 撤回、team 替代三类固定场景，用于防止治理语义回退；它不覆盖大规模图谱增量成本、长期数据保留策略或真实多人组织流程。

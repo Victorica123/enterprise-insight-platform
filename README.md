@@ -51,6 +51,8 @@ flowchart LR
 
 2026-09-13 的架构优化已完成阶段 0–4，包括 Media 职责/配置拆分、Flyway、真实阶段日志与投递熔断，以及 Web Router/Query、会话状态下沉和 Workspace/角色切换隔离。完整进度、历史性能基准与交接见 [`docs/ARCHITECTURE_OPTIMIZATION_PLAN.md`](docs/ARCHITECTURE_OPTIMIZATION_PLAN.md)。会话记忆仍是受限主题提示，每轮重新检索证据；本轮未验证外部模型或生产容量。
 
+同日追加的 [`Nexus 参考站复核`](docs/NEXUS_REFERENCE_AUDIT.md) 记录了 88 页公开目录的核对范围、确认遗漏与修复：最终证据保留融合/精排名次，检索通道先过滤并隔离故障，追问依据本轮证据；评测严格统计 Top-3。具体取舍与最新验证见该记录。
+
 ## LLM 通道边界
 
 Agentic RAG 的 Router、Planner 和 Tool Agent 是可选的 LLM 辅助通道：

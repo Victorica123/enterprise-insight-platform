@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 def infer_standard_outcome(response: ChatResponse) -> str:
     if response.agent_summary:
         return "refused"
+    # New failure wording must not become a successful answer in observability.
+    evidence = next((step for step in reversed(response.trace) if step.name == "evidence_check"), None)
+    if evidence is not None and evidence.status != "passed":
+        return "refused"
+    if any(step.name == "retrieve" and step.status in {"empty", "no_match", "unavailable"}
+           for step in response.trace):
+        return "refused"
     refused_markers = [
         "不能可靠回答",
         "证据强度不足",

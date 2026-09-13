@@ -107,11 +107,18 @@ Web 使用 `#/media`、`#/qa`、`#/analysis`、`#/tickets`、`#/graph`、`#/moni
 | `AGENT_WORKERS` | 1 | uvicorn 进程数；Compose 可用 `LOCAL_AGENT_WORKERS` 传入 |
 | `AGENT_THREAD_POOL_SIZE` | 40 | 每进程同步 HTTP / SSE 阻塞阶段共用的 anyio 线程额度 |
 | `AGENT_SPECIALIST_WORKERS` | 4 | 每进程确定性领域执行器线程上限 |
+| `HYBRID_CHANNEL_WORKERS` | 4 | 每进程 keyword/embedding/rerank 各自的在途上限，无额外排队额度；默认合计最多 12 |
+| `HYBRID_CHANNEL_TIMEOUT_SECONDS` | 2 | 每条召回通道从提交到完成的独立截止 |
+| `HYBRID_RERANK_TIMEOUT_SECONDS` | 3 | 可选精排的截止，超时保留精排前顺序 |
+| `HYBRID_KEYWORD_MIN_RATIO` | 0.35 | 关键词通道相对于最高原始分的下限 |
+| `HYBRID_SEMANTIC_MIN_SCORE` / `HYBRID_HASH_MIN_SCORE` | 45 / 10 | 0–100 分数下限；不得把真实语义阈值直接用于 hash |
 | `CONVERSATION_LEASE_SECONDS` | 120 | 每三分之一周期续租，过期轮次不得复活 |
 | `EMBEDDING_REBUILD_BATCH_SIZE` | 64 | 后台补齐批次，后台循环最多 512 条 |
 | `EMBEDDING_BACKFILL_INTERVAL_SECONDS` | 60 | 后台补齐周期，推理不占数据库写事务 |
 
 每个 worker 有独立模型、缓存、指标和后台循环；增加进程前先量测内存、数据库竞争与真实吞吐。缓存依靠持久化 revision 失效，会话依靠数据库 CAS，不能把进程内缓存当作分布式锁。
+
+检索通道的 `timeout` 不代表原生推理被终止：该任务继续占槽直到退出，持续卡住会使后续同通道立即返回 `saturated`，其他通道仍可提供合格证据。排障看 `retrieval_keyword*` / `retrieval_embedding*` trace 的状态、耗时和原始/接受/保留数，再按需要重启 Agent；勿用不断创建新线程绕过容量。配置变更后重启服务。hash 路径明确记录 `keyword_then_hash`，真实语义路径为 `rrf`；这些状态不能被混记为真实模型验收。
 
 `database.init_db()` 通过编号迁移和 `schema_migrations` 升级。SQLite 用 `BEGIN IMMEDIATE`，失败整体回滚；MySQL 用 advisory lock，DDL 自动提交，迁移必须可重试。升级前先停写并备份，先在数据库副本演练；未来变化追加迁移。若数据库版本未知或高于应用，启动会拒绝，勿手改 ledger 绕过。blob/JSON 双写只保障向量读兼容，不代表整个数据库可随意降级。
 

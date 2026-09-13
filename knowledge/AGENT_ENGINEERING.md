@@ -23,7 +23,7 @@
 - `ExecutorRegistry` 按模式注册唯一执行器：`ClarificationExecutor`、`ToolOnlyExecutor`、`RetrievalExecutor`（`rag.answer_question`）、`AgenticExecutor`（`agentic_rag`）。agentic 执行器复用计划里的分类结果与 query，不重复调用路由模型；未注册的模式直接报错而不是静默降级。
 - 每个 `TraceStep` 带 `duration_ms`：链内每步、检索、图谱、工具、生成、引用审核各自计时，随 `chat_logs.trace_json` 落库；旧日志该字段为 null。
 - 每请求调用预算（`app/call_limits.py`）：`ConversationOrchestrator.run` 用 ContextVar 绑定一个 `LimitCounter`，模型调用上限 8 次、工具调用上限 6 次（`AGENT_MAX_MODEL_CALLS` / `AGENT_MAX_TOOL_CALLS`）。只有真正出网的 `create_chat_completion` 消耗模型预算；超限抛 `CallLimitExceeded`，路由 / 规划 / 工具选择退回规则，答案生成退回模板并写 `answer=call_limited`。工具超限不执行、不进审批，记一条 `limited` 审计后返回失败结果。请求结束时若有任何预算申请，追加一条 `call_limits` trace（超限为 degraded）。未绑定请求的调用（后台任务、工单路由直调、单元测试）不受限。
-- 证据字符预算（`app/evidence_budget.py`）：来源先按分数选出（`MAX_SOURCES=4`），再扩展授权的同文档同章节相邻块，最后按单来源 2200、总量 5200 字符裁剪（`EVIDENCE_SOURCE_CHAR_BUDGET` / `EVIDENCE_TOTAL_CHAR_BUDGET`）。句末优先、省略号标记，剩余不足 120 字符时丢弃后续低分来源。主题过滤在 Top-K 与块扩展两处生效，避免不同客户的邻块重新混入；视频不合并。证据门控、模型和引用审核使用同一份预算后证据，trace 为 `evidence_budget` 或 `evidence_budget_<round>`。
+- 证据字符预算（`app/evidence_budget.py`）：来源按最终检索名次选出（`MAX_SOURCES=4`），再扩展授权的同文档同章节相邻块，最后按单来源 2200、总量 5200 字符裁剪（`EVIDENCE_SOURCE_CHAR_BUDGET` / `EVIDENCE_TOTAL_CHAR_BUDGET`）。句末优先、省略号标记，剩余不足 120 字符时丢弃后续来源。主题过滤在 Top-K 与块扩展两处生效，避免不同客户的邻块重新混入；视频不合并。证据门控、模型和引用审核使用同一份预算后证据，trace 为 `evidence_budget` 或 `evidence_budget_<round>`。
 - 影子路由：`decide_mode` 在写入实际模式的同时用规则版 `shadow_decision` 记录"不带 `workflow_mode` 时系统自己会选什么"（clarify > tool_only > 复杂 / 需要工具 / 风险因果意图 → agentic > retrieval；链上已有分类结果时复用，不多调模型）。`ExecutionPlan` 新增 `shadow_mode` / `shadow_reason` / `mode_agreement`；`chat_metrics` 新增 `execution_mode`、`shadow_mode`、`mode_agreement`（-1 为未评估）；`/metrics/summary` 新增 `execution_mode_usage`、`shadow_mode_usage`、`mode_agreement_samples`、`mode_agreement_rate`、`mode_disagreements`，监控面板显示"路由一致率"与不一致配对。它只记录不改变决策，用于在切换自动模式前用真实流量评估规则。
 
 ## 会话与流式传输
@@ -35,6 +35,8 @@
 `chat_events.py` 用 64 项队列、15 秒心跳和取消信号连接同步执行器；异步答案 provider 的总时限为 timeout × (retries + 1)。本地模板计算完才分片，API 答案可先发待审核 delta；`done` 才携带引用审核结果。前端停止会关闭 fetch，上游流随之取消；同步阻塞规划受调用超时约束。会话已完成但客户端未收到 done 的情况不自动重放。
 
 Conversation V1 九场景覆盖连续指代、摘要、显式换题、两种歧义、删除/替换后的新证据、owner 隔离和同章节跨客户合并。它是合成规则回归，真实模型质量需要单独评估。决策与验证边界见 ADR-0016。
+
+追问由 `follow_up.py` 根据本轮预算后证据生成最多三个规则建议：携带问题里的客户/项目主题，跳过已问意图，拒答时不推荐。它不额外调用模型，JSON/SSE 与持久化轮次使用相同结果；不声称实现开放式 LLM 推荐。
 
 ## 证据策略
 
@@ -59,8 +61,10 @@ Conversation V1 九场景覆盖连续指代、摘要、显式换题、两种歧�
 
 - hash embedding 是 64 维字符 n-gram 的离线保底；本地 BGE 可用时批量生成 512 维 `embedding_v2`，失败时整体回退，不留下混合维度结果。
 - 两套向量新增 float32 二进制列，旧 JSON 双写并可回退读取；旧数据由后台每批默认 64 条补齐，推理不持有写事务，提交前复核内容与文档活跃状态。请求缺少完整语义向量时走 `hash_backfill_pending`，不在检索期间补算文档向量。未据此宣称新性能倍数。
-- hybrid 先独立执行 keyword 与 embedding，再以 RRF 融合相对排名；证据门控继续使用两路归一化绝对分，避免“只有一个结果所以必然第一”被误判为强证据。RRF 平局时先比较 keyword 覆盖分再比较融合分：精确词项命中是可审计的字面证据，哈希保底向量只是近似信号。
-- 可选 cross-encoder 只精排 Top-12，默认关闭；开启前必须用黄金集与延迟预算验证收益。`RetrievalResult.rerank_status` 区分 disabled / applied / unavailable：配置了精排却推理失败时保留 RRF 融合榜并在 trace 写入 `rerank_skipped`（status=degraded），不伪造分数也不静默降级。
+- hybrid 共用一次授权快照，先过滤各通道，再融合。keyword 相对阈值默认 0.35；semantic/hash 的 0–100 分数下限分别为 45/10。真实语义路径用 RRF（K=60），平局优先 keyword 覆盖分；哈希降级明确为 `keyword_then_hash`，保留合格关键词名次，再补 hash 独有候选，不把词面碰撞当作独立语义投票。
+- `RetrievalHit.selection_rank` 与 `score` 分开：standard/agentic Top-K、预算顺序及分析快照保留最终名次，标题先验位于融合之前；证据门控继续使用接受信号的固定 0.5/0.5 相关性分。失败通道不重归一化，多轮去重保留最佳名次、最高相关性与 query 并集。
+- `retrieval_execution.py` 为 keyword/embedding/rerank 提供进程共享的独立有界池，每通道默认 4 个在途任务；通道 2 秒、精排 3 秒截止，异常/超时/饱和均可见。ContextVar 与取消/租约 guard 贯穿 worker，迟到结果不能回写；无法强杀的原生推理继续占槽，不额外扩建线程池。见 ADR-0019。
+- 可选 cross-encoder 只精排 Top-12，默认关闭；开启前须验证真实模型收益。等长且全为有限数值的结果才能标记 applied；异常、畸形结果、超时、满员均保留精排前排序并写 `rerank_skipped`。每通道 trace 记录原始/接受/最终保留锚点数、阈值、耗时和实际 embedding/fusion 策略；有库但无合格证据与通道全失败分别处理，失败阶段不会被指标误记为已回答。
 - chunk 快照 LRU 的 key 包含数据库路径、持久化 content revision 和 tenant/owner/asset scope；revision 按租户维护（`system_meta` 的 `content_revision:<tenant>`），一个租户的写入只让该租户与未指定租户的快照失效，全局重建仍让全部租户失效。快照构建时为每个 chunk 预计算词项集并建立词项倒排，关键词检索只对共享至少一个词项的 chunk 打分；hybrid 两路共用一次快照并并行执行。多进程读不会长期复用旧授权范围或旧内容。
 - BGE 向量 LRU 以 model identity + 文本 SHA-256 为 key，最大 512 项；同 batch 去重，缓存只保存向量，不保存原文。该缓存是 embedding 计算复用，不等同于 LLM attention KV cache。
 - 两个业务缓存都通过已鉴权的 `/embeddings/status` 暴露进程级 entries、capacity、hits、misses、requests 与 hit rate；统一 Web 监控页展示这些指标。计数不按租户展开、不暴露 key，公开 `/system/status` 不返回缓存流量。

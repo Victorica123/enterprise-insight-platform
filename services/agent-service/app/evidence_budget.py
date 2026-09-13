@@ -1,13 +1,12 @@
 """Evidence character budget (optimisation plan 0.5).
 
-Sources are selected by score first (``MAX_SOURCES`` in ``rag.py``), then cut
+Sources follow the final retrieval rank (``MAX_SOURCES`` in ``rag.py``), then are cut
 to a per-source cap and a total cap.  Trimming prefers a sentence boundary,
 marks the excerpt with an ellipsis, and never reorders sources; when the total
 budget leaves less than ``MIN_TAIL_CHARS`` for the next source that source and
-everything after it (lower scored) is dropped.  What the model sees is what
+everything after it (lower ranked) is dropped.  What the model sees is what
 the evidence check and citation review see, because both run on the budgeted
-sources.  With the current 600-character document chunks the budget only bites
-for long media transcript segments or once parent/child merging lands.
+sources. Long media segments and expanded parent sections can both hit the cap.
 """
 
 from __future__ import annotations
@@ -45,11 +44,11 @@ class BudgetedEvidence:
             f"（单来源上限 {self.budget.per_source_chars}）。"
         )
         if not self.changed:
-            return text + "按分数选出的来源均在预算内，未裁剪。"
+            return text + "按最终排名选出的来源均在预算内，未裁剪。"
         if self.trimmed:
             text += f"裁剪 {len(self.trimmed)} 个：{'；'.join(self.trimmed)}。"
         if self.dropped:
-            text += f"预算耗尽后丢弃 {len(self.dropped)} 个低分来源：{'；'.join(self.dropped)}。"
+            text += f"预算耗尽后丢弃 {len(self.dropped)} 个排名靠后的来源：{'；'.join(self.dropped)}。"
         return text + f"原始共 {self.original_chars} 字符。"
 
     def trace_step(self, name: str = "evidence_budget") -> TraceStep:

@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -11,13 +12,14 @@ from app.citation_review import review_citations
 from app.config import get_llm_pricing
 from app.database import connect, init_db, insert_document, list_document_rows
 from app.evidence_budget import apply_evidence_budget
-from app.evidence_sources import expand_parent_sources, filter_topic_hits
+from app.evidence_sources import expand_parent_sources, filter_topic_hits, rank_evidence_hits
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
 from app.models import ChatResponse, DocumentSummary, DocumentUploadResponse, Source, TokenUsage, TraceStep
 from app.retrievers import RetrievalHit, RetrievalResult, RetrievalScope, get_retriever
 from app.text import deduplicate_preserve_order, extract_cjk_windows
+from app.text import title_term_boost as title_term_boost
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +233,7 @@ def answer_question(
     retrieval_result = retriever.search(queries) if scope is None else retriever.search(queries, scope)
     ranked_hits = retrieval_result.hits
 
-    if not ranked_hits:
+    if not ranked_hits and retrieval_result.scanned_count == 0:
         trace.append(
             TraceStep(
                 name="retrieve",
@@ -247,30 +249,29 @@ def answer_question(
         )
 
     useful_hits = filter_topic_hits(question, (hit for hit in ranked_hits if hit.score > 0))
+    unavailable = bool(retrieval_result.channels) and all(channel.status != "ok" for channel in retrieval_result.channels)
     trace.append(
         TraceStep(
             name="retrieve",
-            status="ok" if useful_hits else "no_match",
+            status="ok" if useful_hits else "unavailable" if unavailable else "no_match",
             detail=(
-                f"使用 {retriever.name} 检索器，共扫描 {retrieval_result.scanned_count} 个 chunk，"
+                f"使用 {retriever.name} 检索器，授权快照包含 {retrieval_result.scanned_count} 个 chunk，"
                 f"命中 {len(useful_hits)} 个分数大于 0 的 chunk。{describe_rerank(retrieval_result)}"
             ),
         )
     )
-    trace.extend(rerank_trace_steps(retrieval_result))
-    timer.mark()
     if not useful_hits:
+        trace.extend(retrieval_trace_steps(retrieval_result, []))
+        timer.mark()
         return ChatResponse(
-            answer="我没有在已上传资料中找到足够相关的内容，因此暂时不能可靠回答这个问题。",
+            answer=("检索通道暂时不可用，本次无法核验资料，请稍后重试。" if unavailable
+                    else "我没有在已上传资料中找到足够相关的内容，因此暂时不能可靠回答这个问题。"),
             sources=[],
             trace=trace,
         )
 
-    selected = sorted(
-        useful_hits,
-        key=lambda hit: hit.score + title_term_boost(question, hit.chunk.title),
-        reverse=True,
-    )[:MAX_SOURCES]
+    timer.mark()
+    selected = rank_evidence_hits(question, useful_hits)[:MAX_SOURCES]
     sources = [
         Source(
             source_type="video" if hit.chunk.source_type == "video" else "document",
@@ -303,14 +304,15 @@ def answer_question(
         TraceStep(
             name="select_sources",
             status="ok",
-            detail=f"选择前 {len(sources)} 个来源作为回答证据，最高分为 {sources[0].score}。{selected_query_detail}",
+            detail=f"按最终排名选择前 {len(sources)} 个来源作为回答证据，最高相关性分为 {max(source.score for source in sources)}。{selected_query_detail}",
         )
     )
     timer.mark()
 
-    # 阶段 0.5：先按分数选，再按字符预算裁；模型、证据检查与引用审核看到的是同一份裁剪后证据。
+    # 排名决定 Top-K 和预算次序；模型、证据门控与引用审核看到同一份裁剪后证据。
     budgeted = apply_evidence_budget(expand_parent_sources(sources, scope, question=question))
     sources = budgeted.sources
+    trace.extend(retrieval_trace_steps(retrieval_result, sources))
     trace.append(budgeted.trace_step())
     timer.mark()
 
@@ -361,27 +363,6 @@ def expand_queries(question: str) -> list[str]:
     return deduplicate_preserve_order(queries)
 
 
-def title_term_boost(question: str, title: str) -> int:
-    """A4 选择阶段加成：问题的双字词命中块标题（标题层级链）时 +25。
-
-    只影响来源选择排序，Source.score 展示仍为原始分。
-    例："工单处理要求"命中"运维工单处理手册 / 工单分级与时限"标题，
-    让分级时限块进入 Top-K，而不是被无关 query 拉起的其他块挤掉。
-    """
-    if not title:
-        return 0
-    compact = re.sub(r"\s+", "", question.lower())
-    stop = {"什么", "情况", "问题", "一下", "这个", "那个", "方案", "怎么", "如何", "哪里", "哪些", "多少", "请问"}
-    bigrams = {
-        compact[i : i + 2]
-        for i in range(len(compact) - 1)
-        if "\u4e00" <= compact[i] <= "\u9fff" or "\u4e00" <= compact[i + 1] <= "\u9fff"
-    }
-    bigrams -= stop
-    title_lower = title.lower()
-    return 25 if any(bigram in title_lower for bigram in bigrams) else 0
-
-
 def build_matched_query_detail(selected_hits: list[RetrievalHit]) -> str:
     if not selected_hits:
         return ""
@@ -390,7 +371,8 @@ def build_matched_query_detail(selected_hits: list[RetrievalHit]) -> str:
         [
             (
                 f"{hit.chunk.filename}#chunk{hit.chunk.chunk_index}=score{hit.score}"
-                f"，query={format_matched_queries(hit.matched_queries)}"
+                + (f"，rank={hit.selection_rank}" if hit.selection_rank is not None else "")
+                + f"，query={format_matched_queries(hit.matched_queries)}"
             )
             for hit in selected_hits
         ]
@@ -422,9 +404,37 @@ def rerank_trace_steps(retrieval_result: RetrievalResult) -> list[TraceStep]:
         TraceStep(
             name="rerank_skipped",
             status="degraded",
-            detail="Reranker 已配置但推理失败，本次沿用 RRF 融合排序，分数未伪造。",
+            detail=f"Reranker 已配置但本次不可用，保留检索排序（{retrieval_result.fusion_strategy}），分数未伪造。"
+                   + (f"原因：{retrieval_result.rerank_reason}。" if retrieval_result.rerank_reason else ""),
+            duration_ms=retrieval_result.rerank_duration_ms,
         )
     ]
+
+
+def retrieval_trace_steps(result: RetrievalResult, sources: list[Source], *, round_index: int | None = None) -> list[TraceStep]:
+    """Persist channel counts after Top-K, parent expansion and the final budget."""
+    selected = {(source.document_id, source.chunk_index) for source in sources}
+    steps = []
+    for channel in result.channels:
+        detail = {
+            "channel": channel.name, "raw_count": channel.raw_count,
+            "accepted_count": len(channel.accepted_keys),
+            "selected_count": len(channel.accepted_keys & selected),
+            "min_score": round(channel.min_score, 3),
+            "fusion_strategy": result.fusion_strategy,
+        }
+        if channel.name == "embedding":
+            detail["embedding_status"] = result.embedding_status
+        steps.append(TraceStep(
+            name=f"retrieval_{channel.name}" + (f"_{round_index}" if round_index else ""),
+            status=channel.status, detail=json.dumps(detail, ensure_ascii=False),
+            duration_ms=channel.duration_ms,
+        ))
+    steps.extend(rerank_trace_steps(result))
+    if result.rerank_status == "applied":
+        steps.append(TraceStep(name="rerank", status="applied", detail="精排顺序已用于最终证据选择，相关性分数保持独立。",
+                               duration_ms=result.rerank_duration_ms))
+    return steps
 
 
 def check_evidence(question: str, sources: list[Source]) -> EvidenceCheck:

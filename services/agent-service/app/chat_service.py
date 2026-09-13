@@ -25,6 +25,7 @@ from app.conversation_store import (
     begin_turn,
     finish_turn,
 )
+from app.follow_up import build_follow_up_questions
 from app.model_egress import bind_model_egress_tenant, is_model_egress_allowed, reset_model_egress_tenant
 from app.models import ChatRequest, ChatResponse, TokenUsage
 
@@ -92,15 +93,15 @@ def execute_chat(prepared: PreparedChat, *, metric_recorder: Callable,
                     response.token_usage = usage
             response.conversation_id = prepared.conversation_id
             response.exchange_id = prepared.exchange_id
-            response.follow_up = ["负责人是谁？", "还有哪些风险？"] if response.sources else []
+            summary = response.agent_summary
+            outcome = "answered" if summary and summary.evidence_status in {"passed", "not_required"} else infer_standard_outcome(response)
+            response.follow_up = build_follow_up_questions(question, response.sources) if outcome == "answered" else []
             check_chat_cancelled()
             if lease:
                 finish_turn(lease, question=request.question, rewritten_question=question, response=response,
                             model_calls=counter.model_calls, tool_calls=counter.tool_calls,
                             summary=memory.summary, summary_through=memory.summary_through)
             completed = True
-            summary = response.agent_summary
-            outcome = "answered" if summary and summary.evidence_status in {"passed", "not_required"} else infer_standard_outcome(response)
             log_id = metric_recorder(request=request, response=response, latency_ms=(perf_counter() - started) * 1000,
                                      outcome=outcome, principal=principal, plan=plan)
             if isinstance(log_id, int):
