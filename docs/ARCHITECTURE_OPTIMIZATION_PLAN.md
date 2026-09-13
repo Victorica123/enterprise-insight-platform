@@ -7,7 +7,7 @@
 
 ## 当前状态（2026-09-13）
 
-阶段 0–4 及其本机部署已经完成，历史提交为 `af2dc6e`、`daa29bf`、`03f810b`。用户随后要求再次核对参考网站；本轮确认并修复了检索排名被回答层覆盖、通道未先过滤、失败/超时未隔离、精排输出校验与观测不足，以及固定追问和评测口径问题。当前 Agent **269/269**、Media **150/150**、Web **26/26**，V6 45 题 hybrid **44/45 决策、39/40 真实 Recall@3 与事实覆盖**，Conversation **11/11**；本轮本机 Agent 更新待完成。新复核看第十二节、[逐项对照](NEXUS_REFERENCE_AUDIT.md) 与 `knowledge/QUALITY.md`，阶段 0–4 原验证仍在第十一节。
+阶段 0–4 及其本机部署已经完成，历史提交为 `af2dc6e`、`daa29bf`、`03f810b`。用户随后要求再次核对参考网站；本轮确认并修复了检索排名被回答层覆盖、通道未先过滤、失败/超时未隔离、精排输出校验与观测不足，以及固定/重复追问和评测口径问题。最终 Agent **271/271**、Media **150/150**、Web **26/26**，V6 45 题 hybrid **44/45 决策、39/40 真实 Recall@3 与事实覆盖**，Conversation **14/14**；检索提交 `ee51a8e` 与追问补丁 `acb1d7e` 均已本机部署，入口业务 **42/42**、同源 **5/5** 和宽窄屏浏览器验收通过。新复核看第十二节、[逐项对照](NEXUS_REFERENCE_AUDIT.md) 与 `knowledge/QUALITY.md`，阶段 0–4 原验证仍在第十一节。
 
 第一至四节保留 **2026-09-11 原始评审快照**，“现状/缺少”指立项时；第十节保留 **2026-09-12 历史提交对比**，第十一节保留本次参考复核前的交付状态。当前以第十二节及最新质量证据为准，不把历史指标当作本轮新增收益。
 
@@ -368,8 +368,8 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 
 本轮从 `main@9c713be` 的干净工作树继续。有效入口和当前 88 页目录、公开/预览边界、逐项代码映射、补齐项与范围差异统一记录在 [NEXUS_REFERENCE_AUDIT.md](NEXUS_REFERENCE_AUDIT.md)，检索决策见 [ADR-0019](../knowledge/decisions/0019-retrieval-ranking-and-channel-isolation.md)。
 
-已完成：最终名次与相关性分离；standard/agentic/分析冻结保留排序；通道先过滤并有界隔离；hash 降级不参与独立语义投票；精排畸形输出降级；多轮 query 来源合并；通道最终计数与失败指标；根据证据生成追问；修正真实 Top-3 与 hybrid 决策门禁。没有新增中间件或改变模型和审批边界。
+已完成：最终名次与相关性分离；standard/agentic/分析冻结保留排序；通道先过滤并有界隔离；hash 降级不参与独立语义投票；精排畸形输出降级；多轮 query 来源合并；通道最终计数与失败指标；根据证据生成追问；修正真实 Top-3 与 hybrid 决策门禁。浏览器又发现已问问题被重复推荐，已补齐最近四轮同主题去重，并验证不同主题和独立提问不被误屏蔽。没有新增中间件或改变模型和审批边界。
 
-代码验证：Agent **269/269**、Media **150/150**、Web **26/26**；V6 **45 题**，hybrid 决策 **44/45**、真实 Recall@3 与事实覆盖 **39/40**；PRD **12/12**、Conversation **11/11**、Lifecycle/V5/lint/build 通过。新旧评测分母和旧 Recall@3 窗口不同，不能直接把百分比变化宣传为模型提效。
+代码验证：最终 Agent **271/271**、会话专项 **25/25**、Media **150/150**、Web **26/26**；V6 **45 题**，hybrid 决策 **44/45**、真实 Recall@3 与事实覆盖 **39/40**；PRD **12/12**、Conversation 最终 **14/14**、Lifecycle/V5/lint/build 通过。新旧评测分母和旧 Recall@3 窗口不同，不能直接把百分比变化宣传为模型提效。
 
-当前下一步：保留本机 Agent 旧镜像与 SQLite 快照，提交、更新 `enterprise-insight-local` 的 Agent，再跑实际 nginx 入口与浏览器验收；完成后把提交、镜像与恢复位置写回本节、`OPERATIONS.md` 和 `QUALITY.md`。
+最终交付：`ee51a8e` 与 `acb1d7e` 已提交并部署至 `enterprise-insight-local`，当前 Agent 为 `release-acb1d7e` / `a6180c2959a9`。实际 nginx 入口业务链 **42/42**、同源 **5/5**、两轮问答/去重及 1280/390px 布局通过。在线 SQLite 备份和八个表原行保留通过，schema 不变；Web/Media 容器保持原状，测试浏览器已关闭。恢复材料为 `backups/reference-followup-20260913-163320/`，第一轮 `backups/reference-review-20260913-160222/` 继续保留。详见 `OPERATIONS.md` 与 `QUALITY.md`；本轮参考复核没有待办，已列明的生产/付费能力差异不计入已实现范围。

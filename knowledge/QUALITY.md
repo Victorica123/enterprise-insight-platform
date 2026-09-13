@@ -2,7 +2,7 @@
 
 ## 最新验证：2026-09-13 参考站浏览器收尾
 
-检索补齐提交 `ee51a8e` 已更新至本机 Agent，经 nginx 且携带 Origin 的业务验收 **42/42**、同源检查 **5/5** 通过。在线 SQLite 备份与六个核心表的原行保留验证通过，schema ledger 仍为 8；过程记录 `runtime/codex-reference-release-state.json`，恢复材料 `backups/reference-review-20260913-160222/`。
+检索补齐提交 `ee51a8e` 与后续追问补丁 `acb1d7e` 均已更新至本机 Agent，当前镜像为 `enterprise-insight-local-agent:release-acb1d7e` / `a6180c2959a9`。两次均通过经 nginx 且携带 Origin 的业务验收 **42/42**、同源检查 **5/5**。最新在线 SQLite 备份与八个表的原行保留验证通过，schema ledger 仍为 8；过程记录 `runtime/codex-reference-followup-release-state.json`，恢复材料 `backups/reference-followup-20260913-163320/`。第一轮六个核心表验证和 `backups/reference-review-20260913-160222/` 按历史保留。
 
 浏览器首轮确认正确答案、明确主题的追问、证据与通道数量/耗时/降级展示，随后复现“延期原因 → 负责人 → 重复推荐延期原因”。本轮追加最近四轮同主题用户问题去重，复用已有授权记忆，不读取历史答案或模型摘要；不同主题与独立提问模式保留各自推荐。
 
@@ -12,8 +12,12 @@
 | Agent 全量 | **271/271 PASS**，Python 3.12、hash/local、关闭 LLM Router | `runtime/codex-reference-agent-complete.log` |
 | Conversation V1 | **14/14 PASS**，增加最近问题去重、不同主题及独立提问场景 | `runtime/codex-reference-conversation-complete.log` |
 | Python lint | **PASS**，ruff 0.16.6 | `runtime/codex-reference-lint-complete.log` |
+| 最终入口验收 | 业务链 **42/42**、同源 **5/5 PASS**；三个容器 healthy | `runtime/codex-reference-followup-deployed-acceptance.log`、`runtime/codex-reference-followup-origin-check.log` |
+| 最终浏览器 | 两轮 SSE 问答、明确主题推荐、历史问题去重、证据/通道展示通过；1280/390px 对应 document 宽 1270/380，均无横向溢出 | `runtime/codex-reference-browser-final.log`、`output/playwright/reference-followup-*.png`，已查看宽窄屏截图 |
+| 数据保留 | 在线备份 SHA-256 / quick-check PASS；六个核心表及 conversations/conversation_turns 的原行指纹保留 | `runtime/codex-reference-followup-release-state.json`；无 schema 变更，未回退数据 |
+| 知识交接 | 生成/漂移、语义路由与 diff check PASS | `runtime/codex-reference-closeout-knowledge-{update,check}.log`、`runtime/codex-reference-closeout-semantic.log`、`runtime/codex-reference-closeout-diff.log` |
 
-检索、PRD、生命周期、Media 与 Web 的完整验证沿用下方同日记录。当前下一步是提交并更新该追问补丁，再复查实际浏览器两轮问答、1280/390px 展示并记录最终部署与知识检查。
+检索、PRD、生命周期、Media 与 Web 的完整验证沿用下方同日记录。浏览器复查途中测试账号到期，页面正确要求重新登录，重新登录后完成最终验收；记录 `runtime/codex-reference-browser-expired-session.log`。最终脚本未出现新的 pageerror，不宣称整个浏览器会话从未出现控制台 401。已关闭本轮 `nexusreview` 浏览器；当前本机交付完成，后续维护从 harness brief、`OPERATIONS.md` 与本节恢复。真实外部模型和生产容量仍以相应环境验收为准。
 
 ## 验证：2026-09-13 GitHub 首次托管
 

@@ -74,6 +74,8 @@ After startup, run `python scripts/check_local_web.py` (or `--port <port>` for a
 
 The Web playback client resolves service-relative stream paths under the configured Media prefix, so `/api/media/...` remains `/media/api/media/...` in this deployment. Absolute signed object URLs keep their host and query unchanged. Playback URL regression tests cover both proxy and direct-backend configurations.
 
+For an Agent-only update without a schema change, pin and verify the currently running image IDs and environment, take an online SQLite backup with `Connection.backup()`, verify its checksum and quick-check, and retain the prior Compose configuration and image. Build the reviewed commit, update only Agent with `up -d --no-deps --no-build agent`, wait for health, verify retained business rows, then reload nginx so it resolves the new upstream. Finish through the actual browser origin with the platform acceptance and browser checks. Do not copy a live H2 file as part of this procedure. The 2026-09-13 reference review followed this path; current images and restore artifacts are recorded in `knowledge/OPERATIONS.md`.
+
 ## Production-like localhost reliability lab
 
 For real MySQL, Redis, RocketMQ and MinIO integration, concurrent soak, JFR/thread/heap diagnostics and optional Toxiproxy fault injection, use `docs/LOCAL_RELIABILITY_RUNBOOK.md`. This still runs entirely on the development machine and deliberately keeps external AI providers optional.

@@ -10,17 +10,25 @@
 
 ## 当前本机部署（2026-09-13）
 
-阶段 0–4 代码提交 `af2dc6e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。nginx 同源修复为 `daa29bf`，播放代理前缀修复为 `03f810b`；Web 使用最后的修复镜像，两个后端保持架构提交对应镜像。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。该次本机部署时尚未配置 remote；当前托管状态见上方 GitHub 记录。
+参考站复核的检索修复 `ee51a8e` 与浏览器追问补丁 `acb1d7e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。当前 Agent 来自 `acb1d7e`；Web 沿用播放代理前缀修复 `03f810b`，Media 沿用阶段 0–4 的 `af2dc6e`。两次均只更新 Agent，Web/Media 容器 ID 保持不变，随后 reload nginx 解析新上游。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。源码托管状态见上方 GitHub 记录。
 
 | 服务容器 | 固定镜像 | 已核对 Image ID（前 12 位） |
 | --- | --- | --- |
 | `enterprise-insight-local-web-1` | `enterprise-insight-local-web:release-03f810b` | `39c308d4bca2` |
 | `enterprise-insight-local-media-1` | `enterprise-insight-local-media:release-af2dc6e` | `fae401c1022d` |
-| `enterprise-insight-local-agent-1` | `enterprise-insight-local-agent:release-af2dc6e` | `8e6d45906b65` |
+| `enterprise-insight-local-agent-1` | `enterprise-insight-local-agent:release-acb1d7e` | `a6180c2959a9` |
 
 本机使用文件 H2、SQLite、local 存储、HS256 JWT、mock 转写/摘要和 local Agent。Media 已执行显式 V1 baseline→V2，最终 `MEDIA_FLYWAY_BASELINE_ON_MIGRATE=false`、`SPRING_JPA_HIBERNATE_DDL_AUTO=validate`；Agent ledger 为 8。这不是 Keycloak 或外部模型发布。
 
-发布材料位于 `backups/local-release-20260913-132509/`：`pre-upgrade.zip` 已校验 516 文件；`compose-deployed.json` 固定当前三份镜像与目标环境；`compose-rollback.json` 保留旧镜像及升级前环境。完整 Image ID 与过程状态见 `runtime/codex-local-release-state.json`。这些本机文件含部署凭证，保持在忽略目录内。升级前旧镜像保留为 `enterprise-insight-local-{web,media,agent}:pre-20260913-132509`，不要只切旧镜像而继续使用新 schema。
+本轮最终恢复材料为 `backups/reference-followup-20260913-163320/`：在线备份 `agent-before.sqlite3` 已通过 SHA-256 与 SQLite quick-check，`compose-deployed.json` 固定当前镜像/环境，`compose-before.json` 保留前一版 Agent `release-ee51a8e`。完整 Image ID、备份摘要和验证状态在 `runtime/codex-reference-followup-release-state.json`。部署后核对 documents、chunks、analysis_sessions、knowledge_versions、tickets、schema_migrations、conversations、conversation_turns **8 个表的原行指纹仍存在**。全库已备份，但不声称逐表核对全部数据。本次 schema 不变，没有停止或复制 H2，也未执行数据回退。
+
+第一轮检索发布的 `backups/reference-review-20260913-160222/` 与 `runtime/codex-reference-release-state.json` 继续保留；该次 Agent 镜像为 `release-ee51a8e` / `cfdae85e9c1e`，核对了六个核心表的原行保留。它的 `compose-before.json` 指向 `release-af2dc6e`。记录的 release tag 与运行中无 tag 别名按物理 Image ID 核对，配置环境逐项一致。上述 JSON 和 smoke-session 文件可能含凭证，均留在忽略目录；一次性准备脚本不得覆盖已有备份。
+
+最终发布验收：实际 nginx 入口业务链 **42/42**、同源检查 **5/5**；浏览器两轮问答、推荐去重、证据与通道状态、1280/390px 布局通过。原有模型选择保持不变，验收使用 hash/local 模式。证据为 `runtime/codex-reference-followup-deployed-acceptance.log`、`runtime/codex-reference-followup-origin-check.log`、`runtime/codex-reference-browser-final.log` 和 `output/playwright/reference-followup-*.png`。测试浏览器 `nexusreview` 已关闭，合成验收账号和文档留在其个人工作区。
+
+### 上一次阶段 0–4 升级（历史）
+
+当次发布材料位于 `backups/local-release-20260913-132509/`：`pre-upgrade.zip` 已校验 516 文件；`compose-deployed.json` 固定当时三份镜像与目标环境；`compose-rollback.json` 保留旧镜像及升级前环境。完整 Image ID 与过程状态见 `runtime/codex-local-release-state.json`。这些本机文件含部署凭证，保持在忽略目录内。升级前旧镜像保留为 `enterprise-insight-local-{web,media,agent}:pre-20260913-132509`，不要只切旧镜像而继续使用新 schema。
 
 先在数据副本、再在目标库停写升级，均在恢复 Web 写入前逐表核对原字段/行数/内容摘要；原 H2 为 9 表/0 行，SQLite 为 16 表/1 行。副本 project `codex-release-20260913132509` 已关闭并移除容器/网络，保留副本文件。正式部署之后新增了验收账号与示例数据，恢复升级前备份前必须先保留这些新写入；本轮未对正式本机执行降级回退。
 

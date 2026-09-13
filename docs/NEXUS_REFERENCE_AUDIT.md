@@ -30,7 +30,7 @@
 | [精排与最终 Top-K](https://javaup.chat/super-agent/chat-executors/channel-retrieval-rerank/) | **本轮修复**：`selection_rank` 独立于 `score`，standard、agentic、多轮去重和分析快照均保留最终顺序；可选 Top-12 精排发生在最终选择之前。畸形分数、异常、超时会保留先前顺序并记录原因。 |
 | [父子块与证据预算](https://javaup.chat/super-agent/chat-executors/final-topk-and-summary/) | `evidence_sources.py`、`evidence_budget.py`：按最终排名取 4 个锚点，再扩展同文档同章节的授权相邻块，单来源 2200、总量 5200 字符。视频保持原段落/时间范围。这里精排的是命中子块；章节扩展发生在选择之后，没有照搬 Pro 的整父块/结构树精排。 |
 | [通道与文档观测](https://javaup.chat/super-agent/chat-executors/trace-channel-observations/) | **本轮补齐**：各通道原始数、过滤后数、最终保留锚点数、阈值、耗时、embedding/fusion 状态；精排失败原因。JSON/SSE 共用 trace，并由现有聊天日志持久化。来源继续保留文档/块、相关性与视频定位。 |
-| [流式输出与推荐追问](https://javaup.chat/super-agent/chat-system-architecture/end-to-end-flow/) | JSON/SSE 共用 `chat_service.py`，`done` 才是最终回答。**本轮补齐** `follow_up.py`：根据本轮已授权、预算后的证据生成最多 3 个规则追问，携带明确主题、跳过已问意图；拒答不推荐。未增加模型调用。 |
+| [流式输出与推荐追问](https://javaup.chat/super-agent/chat-system-architecture/end-to-end-flow/) | JSON/SSE 共用 `chat_service.py`，`done` 才是最终回答。**本轮补齐** `follow_up.py`：根据本轮已授权、预算后的证据生成最多 3 个规则追问，携带明确主题、跳过当前及最近四轮同主题已问意图；拒答不推荐。独立提问不使用历史，未增加模型调用。 |
 | [文档生命周期](https://javaup.chat/super-agent/feature-guide/document-lifecycle/) | 支持 txt/md/PDF 文本解析、结构切块、双格式向量、后台补齐；视频由 Media 管理。批准知识另有版本、替代/撤回与历史引用状态，不混同普通上传。 |
 | [图谱与受控工具](https://javaup.chat/super-agent/feature-guide/graph-query-and-tool-calling/) | 已有 SQLite 确定性图谱与授权遍历，工具走白名单、预算、审批与审计。图谱是辅助上下文，没有宣称完成 Pro 五通道统一检索或开放式联网 Agent。 |
 | [提示词、观测与 Harness](https://javaup.chat/super-agent/overview/ai-harness-refactoring/) | 外置 Prompt、阶段计时、影子路由、反馈与失败回放；仓库 Skill、启动 harness、人工知识源、增量路由索引与 CI 漂移门禁均保留。**本轮修正** Recall@3 的统计窗口和 hybrid 决策门禁。 |
@@ -45,6 +45,7 @@
 5. **畸形精排输出与重试证据丢失**：短数组、NaN/Inf 等会造成异常或虚假的 applied 状态；重试高分替换会丢掉旧 query。现验证长度/有限值并保留最佳排名、最高相关性及完整 query 并集。
 6. **用户提示与统计失真**：有库但无合格证据不再报“请先上传”，通道全失败单独提示暂不可用；指标依据失败阶段识别拒答。固定追问改为本轮证据支持的主题建议，JSON/SSE 一致。
 7. **质量门禁遗漏**：Recall@3 原来检查了全部最多 4 个来源，且决策阈值只检查 keyword。现严格检查前三条，并同时检查 hybrid 决策；新增 3 条排序黄金题和 2 条追问场景。
+8. **浏览器连续追问重复推荐**：最初只跳过当前问题，会出现“延期原因 → 负责人 → 又推荐延期原因”。现复用授权记忆，跳过最近四轮同一明确主题集合中已经问过的意图；不拿历史答案或模型摘要做去重依据，不屏蔽其他主题或独立提问。追加 3 个会话场景，并验证 JSON/SSE 一致。
 
 以上通过端到端来源选择、预算裁剪、分析冻结、故障/超时/饱和/取消、SSE 与评测口径回归验证，详见 [ADR-0019](../knowledge/decisions/0019-retrieval-ranking-and-channel-isolation.md) 和 [最新质量证据](../knowledge/QUALITY.md)。
 
@@ -58,6 +59,6 @@
 
 ## 验证与交接
 
-代码门禁：Agent **269/269**、Media **150/150**（JDK 17.0.18）、Web **26/26**；Python lint 通过，Web lint 0 error / 10 warnings，构建通过。V6 45 题，hybrid 决策 **44/45**、真实 Recall@3 与事实覆盖均 **39/40**；PRD **12/12**、生命周期、V5 通过；Conversation **11/11**。这些是小型闭集回归，不是开放域准确率。
+代码门禁：最终 Agent **271/271**、会话专项 **25/25**、Media **150/150**（JDK 17.0.18）、Web **26/26**；Python lint 通过，Web lint 0 error / 10 warnings，构建通过。V6 45 题，hybrid 决策 **44/45**、真实 Recall@3 与事实覆盖均 **39/40**；PRD **12/12**、生命周期、V5 通过；Conversation 最终 **14/14**。这些是小型闭集回归，不是开放域准确率。
 
-当前下一步是保留本机 Agent 镜像/SQLite 快照，部署本轮 Agent 代码并从 nginx 入口验证；最终部署状态与恢复位置写入 `knowledge/OPERATIONS.md`，原阶段 0–4 和发布记录按日期保留。
+检索补齐提交 `ee51a8e`、浏览器追问补丁 `acb1d7e` 已部署，当前入口为 [本机工作区](http://127.0.0.1:8080)。最终实际业务链 **42/42**、同源 **5/5**、浏览器两轮问答/去重与 1280/390px 布局通过。当前 Agent 镜像为 `release-acb1d7e` / `a6180c2959a9`，Web/Media 沿用原镜像；在线备份、八个表原行保留与恢复位置见 [运维记录](../knowledge/OPERATIONS.md)，完整日志见 [质量记录](../knowledge/QUALITY.md)。原阶段 0–4 和两次发布材料按日期保留。
