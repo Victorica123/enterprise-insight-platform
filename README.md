@@ -1,5 +1,7 @@
 # Enterprise Insight Platform
 
+源码仓库：[Victorica123/enterprise-insight-platform](https://github.com/Victorica123/enterprise-insight-platform)（私有仓库，默认分支 `main`）。
+
 第一次阅读建议从 [`docs/START_HERE.md`](docs/START_HERE.md) 开始：它用 10 分钟阅读顺序、模块地图和按症状定位表解释项目，不需要先通读所有历史文档。
 
 面向客户访谈、需求评审和故障复盘的企业多模态洞察平台：把视频与业务文档转化为可回放证据、结构化分析、可评审 PRD、受治理知识和可追踪行动项。

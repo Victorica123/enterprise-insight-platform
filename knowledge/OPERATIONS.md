@@ -1,8 +1,16 @@
 # 运维知识
 
+## GitHub 源码托管（2026-09-13）
+
+仓库为 [Victorica123/enterprise-insight-platform](https://github.com/Victorica123/enterprise-insight-platform)，可见性为私有，默认分支为 `main`。本地 `origin` 使用 `https://github.com/Victorica123/enterprise-insight-platform.git`；日常提交后运行 `git push origin main`。托管基线包含检索与通道隔离修复 `ee51a8e` 及其完整 Git 历史。
+
+真实 `.env`、`runtime/`、`backups/`、依赖与构建目录继续按现有忽略规则留在本机。早期误跟踪的 Media 编辑器设置和 7 份演示上传/临时视频已从当前版本索引移除，本机文件与历史版本均保留。首次托管前检查了工作树与历史 blob 中的常见凭证模式和大文件；命中的示例占位值与代码表达式已人工复核。
+
+`.github/workflows/quality.yml` 在 push / pull request 时运行 Agent、Media、Web 和 localhost smoke 四组检查。最新本地验证见 `QUALITY.md`；GitHub 上的每次执行结果以仓库 Actions 页面为准。本机 Compose 的镜像、数据和恢复材料仍按下方部署记录管理。
+
 ## 当前本机部署（2026-09-13）
 
-阶段 0–4 代码提交 `af2dc6e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。nginx 同源修复为 `daa29bf`，播放代理前缀修复为 `03f810b`；Web 使用最后的修复镜像，两个后端保持架构提交对应镜像。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。仓库没有 remote，本轮没有远程推送。
+阶段 0–4 代码提交 `af2dc6e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。nginx 同源修复为 `daa29bf`，播放代理前缀修复为 `03f810b`；Web 使用最后的修复镜像，两个后端保持架构提交对应镜像。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。该次本机部署时尚未配置 remote；当前托管状态见上方 GitHub 记录。
 
 | 服务容器 | 固定镜像 | 已核对 Image ID（前 12 位） |
 | --- | --- | --- |

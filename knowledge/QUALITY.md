@@ -1,6 +1,21 @@
 # 质量知识
 
-## 最新验证：2026-09-13 参考站复核与补齐
+## 最新验证：2026-09-13 GitHub 首次托管
+
+以功能提交 `ee51a8e` 为基线准备私有仓库 `Victorica123/enterprise-insight-platform`，保留既有历史。源码托管配置见 `OPERATIONS.md`，本轮验证使用 JDK 17.0.18、Python 3.12、hash embedding 与 mock/local AI。
+
+| 验证 | 结果 | 本机证据 |
+| --- | --- | --- |
+| 服务 harness | Agent **269/269**、维护工具 **3/3**；V6、PRD、Knowledge Lifecycle、Conversation **11/11** 与 V5 门禁均通过；Python lint PASS | `runtime/codex-github-verify.log` |
+| Web | **26/26**；lint 0 error / 10 个既有 warnings；TypeScript/Vite build PASS | 同上 |
+| Media | 修正测试时间前提后，聚焦 **4/4**、全量 **150/150**，failure/error/skipped 均 0 | `runtime/codex-github-outbox-fixed.log`、`runtime/codex-github-media-final.log` |
+| localhost smoke | **42/42 PASS**，随机端口、临时 H2/SQLite、真实 JWT 与 mock AI | `runtime/codex-github-local-acceptance.log` |
+
+首次 Media 全量和复跑均在 `OutboxClaimIntegrationTests.expiredClaimCanBeTakenOverAndOldWorkerCannotCompleteIt` 的初次领取阶段失败，单独运行通过。与已有 Workflow outbox fixture 保持一致，将测试事件的 `nextAttemptAt` 显式设为一秒前，确保“事件已到可领取时间”这一前提独立于 JDBC 时间戳精度与时钟分辨率；随后聚焦与全量通过。失败日志保留在 `runtime/codex-github-media-tests.log` 和 `runtime/codex-github-media-recheck.log`。
+
+工作树与 Git 历史中的常见凭证模式、大文件已检查；命中项为模板值或代码表达式，未发现真实 API Key、私钥或超出 GitHub 文件限制的 blob。早期误跟踪的 8 份本机编辑器/演示文件退出当前索引，本机文件与历史仍保留。知识生成、漂移检查与 `git diff --check` 作为提交前收尾检查；GitHub Actions 的云端结果以该提交对应的执行记录为准。
+
+## 验证：2026-09-13 参考站复核与补齐
 
 以 `main@9c713be` 的干净工作树为起点，核对 Nexus 当前 88 页公开目录，补齐最终证据排序、通道过滤/隔离与观测、畸形精排降级、重试来源并集、证据追问和评测统计。范围与明确取舍见 [参考站复核](../docs/NEXUS_REFERENCE_AUDIT.md) 和 ADR-0019。此处先记录已完成的代码验证；本轮本机 Agent 更新与入口验收待完成。
 

@@ -92,7 +92,10 @@ class OutboxClaimIntegrationTests {
 
 	private IntegrationEventOutbox newEvent() {
 		String eventId = "test-outbox-" + UUID.randomUUID();
-		return new IntegrationEventOutbox(eventId, "test.event.v1", "aggregate-1", "{}");
+		IntegrationEventOutbox event = new IntegrationEventOutbox(eventId, "test.event.v1", "aggregate-1", "{}");
+		// Eligibility must not depend on JDBC timestamp rounding or wall-clock resolution.
+		org.springframework.test.util.ReflectionTestUtils.setField(event, "nextAttemptAt", Instant.now().minusSeconds(1));
+		return event;
 	}
 
 	@Test
