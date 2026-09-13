@@ -1,5 +1,23 @@
 # 运维知识
 
+## 当前本机部署（2026-09-13）
+
+阶段 0–4 代码提交 `af2dc6e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。nginx 同源修复为 `daa29bf`，播放代理前缀修复为 `03f810b`；Web 使用最后的修复镜像，两个后端保持架构提交对应镜像。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。仓库没有 remote，本轮没有远程推送。
+
+| 服务容器 | 固定镜像 | 已核对 Image ID（前 12 位） |
+| --- | --- | --- |
+| `enterprise-insight-local-web-1` | `enterprise-insight-local-web:release-03f810b` | `39c308d4bca2` |
+| `enterprise-insight-local-media-1` | `enterprise-insight-local-media:release-af2dc6e` | `fae401c1022d` |
+| `enterprise-insight-local-agent-1` | `enterprise-insight-local-agent:release-af2dc6e` | `8e6d45906b65` |
+
+本机使用文件 H2、SQLite、local 存储、HS256 JWT、mock 转写/摘要和 local Agent。Media 已执行显式 V1 baseline→V2，最终 `MEDIA_FLYWAY_BASELINE_ON_MIGRATE=false`、`SPRING_JPA_HIBERNATE_DDL_AUTO=validate`；Agent ledger 为 8。这不是 Keycloak 或外部模型发布。
+
+发布材料位于 `backups/local-release-20260913-132509/`：`pre-upgrade.zip` 已校验 516 文件；`compose-deployed.json` 固定当前三份镜像与目标环境；`compose-rollback.json` 保留旧镜像及升级前环境。完整 Image ID 与过程状态见 `runtime/codex-local-release-state.json`。这些本机文件含部署凭证，保持在忽略目录内。升级前旧镜像保留为 `enterprise-insight-local-{web,media,agent}:pre-20260913-132509`，不要只切旧镜像而继续使用新 schema。
+
+先在数据副本、再在目标库停写升级，均在恢复 Web 写入前逐表核对原字段/行数/内容摘要；原 H2 为 9 表/0 行，SQLite 为 16 表/1 行。副本 project `codex-release-20260913132509` 已关闭并移除容器/网络，保留副本文件。正式部署之后新增了验收账号与示例数据，恢复升级前备份前必须先保留这些新写入；本轮未对正式本机执行降级回退。
+
+发布验收：Web 26/26、实际入口带 Origin 的业务链路 42/42、同源检查 5/5；浏览器登录、3 秒 MP4/206 回放、阶段日志、SSE 证据与六路由宽窄屏通过。快速复核用 `python scripts/check_local_web.py`；该命令不创建账号或修改数据。nginx 保留 Host 的外部端口，播放客户端保留 `/media` 路径前缀，不能用只测后端直连接口代替浏览器检查。后续维护从 harness brief、本文与 `QUALITY.md` 最新条目恢复，原迁移来源只读，既有一次性备份/副本脚本不要重跑覆盖。
+
 ## 支持的本地工具链
 
 - Media Service：以其 Maven 配置声明的 JDK 17/18 为准。

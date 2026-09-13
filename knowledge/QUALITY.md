@@ -1,8 +1,32 @@
 # 质量知识
 
-## 最新验证：2026-09-13 阶段 0–4 完成
+## 最新验证：2026-09-13 本机提交与部署收尾
 
-基于 `main@40c2093` 的未提交工作树完成本轮接手范围，原迁移来源只读，模型和两服务边界不变。以下为最终代码实跑证据；此前同日的 241/135/13/36 属于阶段 0–3 历史记录。
+用户批准的阶段 0–4 已提交为 `af2dc6e`，本机 `enterprise-insight-local` 已升级。浏览器验收发现并修复 nginx 丢失外部端口导致登录 403（`daa29bf`），以及 `/media` 相对基址导致播放 URL 无效/丢失代理前缀（`03f810b`）。当前入口为 **http://127.0.0.1:8080**，三个容器均 healthy。Web 镜像来自 `03f810b`，两个后端来自 `af2dc6e`；完整镜像、配置和恢复位置见 `OPERATIONS.md`。仓库未配置 remote，本轮完成本地提交与本机部署，没有推送。
+
+| 验证 | 发布结果 | 本机证据 |
+| --- | --- | --- |
+| Web 最终回归 | **26/26 PASS**；新增 5 个播放 URL 回归，覆盖相对代理、末尾斜杠、直连、绝对代理前缀与签名地址；lint 0 error / 10 warnings；构建 PASS | `runtime/codex-local-playback-{tests,lint,build}.log` |
+| Python lint | **PASS**，ruff 0.16.6 | `runtime/codex-local-release-python-lint.log` |
+| 浏览器 Origin 回归 | **5/5 PASS**；登录验证、预检与非受信 Origin 拒绝均通过；旧部署上先复现 403 | `scripts/check_local_web.py`；`runtime/codex-local-web-before-fix.log`、`runtime/codex-local-release-final-origin.log` |
+| 部署业务验收 | **42/42 PASS**；所有请求经 nginx 并携带入口 Origin；副本与正式本机均通过 | `runtime/codex-local-web-rehearsal-smoke-origin.log`、`runtime/codex-local-release-final-smoke.log` |
+| 升级前备份 | **516 文件 SHA-256 / SQLite quick-check PASS**，保留旧镜像 | `backups/local-release-20260913-132509/pre-upgrade.zip`；`runtime/codex-local-release-backup.log` |
+| 副本与正式升级 | **两次原字段/行数/内容摘要一致**；Media 显式 V1 baseline→V2，Agent ledger=8；baseline=false 后正常重启 | `runtime/codex-local-release-{preservation,target-preservation}.log` |
+| 浏览器主链路 | 登录 200、真实 3 秒 MP4 上传与播放、5 个已完成阶段、SSE 问答最终证据及引用回放 **PASS**；视频 Range 返回 206 | `runtime/codex-local-release-browser-{login-final,media-final,qa,evidence}.log` |
+| 页面与布局 | 六路由 × 1280/390px **12/12 PASS**，深链接刷新通过；有回答后的 390px 页面也无横向溢出；最新独立浏览器会话控制台 error/warning 均 0 | `runtime/codex-local-release-browser-{routes,console}.log`；`output/playwright/local-release-*.png`，已查看播放、窄屏媒体和问答截图 |
+| 知识与交接 | 维护单测 **3/3 PASS**；知识生成/漂移、语义路由与 diff check **PASS** | `runtime/codex-local-release-maintenance-tests.log`、`runtime/codex-local-release-final-knowledge-{update,check}.log`、`runtime/codex-local-release-final-semantic.log` |
+
+两个后端源代码自 `af2dc6e` 未改变，沿用下方阶段 4 的 Agent **244/244**、Media **150/150**（JDK 17.0.18）、V6/PRD/Lifecycle/Conversation/V5 和真实中间件证据；本次额外验证的是实际 Docker 入口、数据升级和浏览器发布问题。升级前实际数据量为 H2 **9 表/0 行**、SQLite **16 表/1 行**，两次摘要比较均在放开 Web 写入前完成；不能把这个小库升级视为大规模生产迁移证据。
+
+当前部署使用 H2/SQLite、真实 HS256 JWT、mock 转写/摘要和 local Agent。真实视频时长为 3 秒，mock 证据使用固定 0–5 秒示例段，只证明播放与证据链路，不证明真实转写质量。原始服务日志中的首次登录 403、播放地址异常与中途测试浏览器退出保留为排障历史，最新通过结果不抹去这些记录。
+
+隔离副本 project `codex-release-20260913132509` 的容器/网络和本轮浏览器已关闭，备份、副本数据、固定镜像与日志保留；正式三个容器持续 healthy，`erp-mssql` 未操作。升级前旧镜像为 `enterprise-insight-local-{web,media,agent}:pre-20260913-132509`。已经准备可恢复材料，未在正式本机执行降级回退；回退需先保留升级后的写入，并恢复与旧应用兼容的备份。
+
+真实外部 AI、Keycloak/RS256/JWKS、生产容量、多实例及对象存储灾备仍是后续生产验证边界，本次本机发布不扩大这些结论。
+
+## 历史验证：2026-09-13 阶段 0–4 完成（部署前）
+
+基于 `main@40c2093` 之上的工作树完成接手范围，当时尚未提交或部署；随后形成 `af2dc6e`。原迁移来源只读，模型和两服务边界不变。以下为架构阶段的实跑证据；此前同日的 241/135/13/36 属于阶段 0–3 历史记录。
 
 | 验证 | 最新结果 | 本机证据 |
 | --- | --- | --- |
@@ -40,7 +64,7 @@ V6 使用 hash embedding、空 `EMBEDDING_MODEL`/`RERANKER_MODEL`、`LLM_ROUTER_
 
 ## 历史验证：2026-09-13 阶段 0–3 接手
 
-从 `40c2093` 的 Agent 199/199 起步，保留模型、两服务、JWT scope、证据和审批边界，完成阶段 0–3 与 QA 组件拆分。当前改动未提交；下表为本轮实跑结果，后面的日期条目保留历史数字。
+从 `40c2093` 的 Agent 199/199 起步，保留模型、两服务、JWT scope、证据和审批边界，完成阶段 0–3 与 QA 组件拆分。该阶段验证时改动尚未提交；下表保留当时实跑结果。
 
 | 验证 | 最新结果 | 本机证据/命令 |
 | --- | --- | --- |

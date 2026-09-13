@@ -7,7 +7,7 @@
 
 ## 当前状态（2026-09-13）
 
-阶段 0–4 已按批准的项目边界完成并验证。阶段 4 补齐 Media 职责与配置拆分、Flyway、真实阶段日志、Agent 投递熔断，以及 Web 路由、查询缓存、请求取消和 feature 状态下沉。Agent **244/244**、Web **21/21**、Media **150/150**；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 纵向验收均为 **42/42**。Conversation V1 **9/9**，其余门禁、MySQL 迁移/备份恢复、断连恢复和有限 k6 证据见第十一节与 `knowledge/QUALITY.md`。未提交或部署现有服务。
+阶段 0–4 已按批准的项目边界完成、提交为 `af2dc6e` 并部署到本机 **http://127.0.0.1:8080**。阶段 4 补齐 Media 职责与配置拆分、Flyway、真实阶段日志、Agent 投递熔断，以及 Web 路由、查询缓存、请求取消和 feature 状态下沉。Agent **244/244**、Media **150/150**；Web 经发布修复后 **26/26**；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 纵向验收均为 **42/42**。发布追加同源端口与播放前缀修复 `daa29bf` / `03f810b`，实际 nginx 入口带 Origin 的 42 项、同源检查 5 项与浏览器验收通过。Conversation V1 **9/9**，其他证据、备份与生产边界见第十一节及 `knowledge/QUALITY.md`。
 
 第一至四节保留 **2026-09-11 原始评审快照**，“现状/缺少”指立项时；第十节保留 **2026-09-12 历史提交对比**，不代表本轮新增改造的性能收益。当前完成项看第五、八、九、十一节。
 
@@ -332,7 +332,7 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 
 ## 十一、2026-09-13 接手结果与交接
 
-本轮基线为 `40c2093`，接手时 Agent 199 个用例；当前仍在 `main`，本轮改动未提交。原迁移来源保持只读，保留模型选择、两后端/统一前端、JWT scope、证据、审批和审计。
+本轮基线为 `40c2093`，接手时 Agent 199 个用例；阶段 0–4 已提交为 `af2dc6e`，发布修复为 `daa29bf` 与 `03f810b`，当前分支为 `main`。原迁移来源保持只读，保留模型选择、两后端/统一前端、JWT scope、证据、审批和审计。
 
 | 项目 | 接手前 | 当前工作树与证据 |
 | --- | --- | --- |
@@ -341,7 +341,7 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 | 业务环境读取 | 13 个文件 | 仅 config.py；旧 API 兼容，启动类型校验 |
 | DDL | 分布在 7 个领域文件 | schema 包统一八项编号迁移与 ledger；SQLite 与真实 MySQL 旧库/双进程启动、长文本保存通过 |
 | routes 依赖 | 业务实现直接导入 | architecture 入口；基础类型例外显式列出，静态门禁 |
-| Web / localhost | 7 个 Web 用例 / 33 项验收 | 21/21；H2/SQLite 与真实中间件各 42/42；路由、Query、会话与 viewer UI 通过 |
+| Web / localhost | 7 个 Web 用例 / 33 项验收 | 最终 26/26（阶段 4 为 21/21）；两种基础设施各 42/42；部署 Origin 5/5、真实浏览器登录/播放通过 |
 | Media | 135 个用例 | JDK 17.0.18 下 150/150；职责/配置拆分、Flyway V1/V2、阶段日志、熔断通过 |
 | 检索/分析质量 | V6 hybrid 98/97/97，PRD 12/12 | V6 hybrid 98/97/97（p95 16.1ms），PRD 12/12 十项 100%；Lifecycle、V5 通过；本机耗时不作提速声明 |
 | 数据与恢复 | 轻量环境证据 | MySQL 8.4 迁移 6 项；两库 33 表/518 行备份恢复摘要一致；Agent 断连后 4 事件全部 SENT |
@@ -359,6 +359,6 @@ Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Fly
 
 采用受约束的字面指代补全、同一应用流水线加事件 sink、Agent 自有编号迁移和默认单 worker，是本轮对初始方案的具体化；Media 使用 Flyway，Web 使用 Router/Query，详见 ADR-0016/0017/0018。真实中间件沿用已批准的 MySQL、Redis、RocketMQ 和 MinIO，没有引入新的基础设施类别。未进行二进制向量/新增 worker 的大语料或吞吐基准；第十节的速度变化只属于当时两个提交。
 
-当前授权的架构优化已完成。新增配置与迁移见 `knowledge/OPERATIONS.md`，逐项验收日志和备份位置见 `knowledge/QUALITY.md`。下一次如进入部署阶段，先在目标库副本演练备份/升级，并按正式 Keycloak/RS256、外部 AI、长时间容量、多实例与对象存储灾备补证；本轮未升级或部署既有用户服务。处理任务恢复仅自动关闭旧处理阶段，DELIVERY 的硬崩溃 RUNNING 关联恢复仍是观测边界，不影响 outbox lease 到期后重投。
+当前授权的架构优化和本机部署已完成。先对目标库备份与副本演练，再升级既有 `enterprise-insight-local`；两次迁移均保留原字段与数据摘要，升级后 baseline=false。正式入口为 `http://127.0.0.1:8080`，当前 Web 来自 `03f810b`，后端来自 `af2dc6e`。备份、旧镜像与固定部署配置见 `knowledge/OPERATIONS.md`，验证日志见 `knowledge/QUALITY.md`。正式 Keycloak/RS256、外部 AI、长时间容量、多实例与对象存储灾备仍需目标环境补证。处理任务恢复仅自动关闭旧处理阶段，DELIVERY 的硬崩溃 RUNNING 关联恢复仍是观测边界，不影响 outbox lease 到期后重投。
 
-交接位置：`main@40c2093` 的未提交工作树；新增 ADR-0016/0017/0018 与阶段契约均在本仓库。知识生成/漂移、语义路由和 diff check 已通过。本轮 `codex-stage4-f4819d11` 测试容器/卷及应用/浏览器已清理，保留 `runtime/codex-stage4-*` 日志、MySQL 归档和 `output/playwright/stage4-*.png`。原三容器应用与 `erp-mssql` 保持运行。后续维护先运行 harness brief，核对本节与 `QUALITY.md` 最新条目，勿重跑一次性改造脚本或直接覆盖现有运行数据。
+交接位置：`main` 上的上述功能与发布修复提交；ADR-0016/0017/0018 与阶段契约均在本仓库。没有配置 Git remote，本轮未推送。本轮 `codex-stage4-f4819d11` 和发布副本 `codex-release-20260913132509` 的测试容器/网络及浏览器已清理；阶段 4 测试卷已删除，发布副本文件保留。日志、截图、MySQL 归档和 `backups/local-release-20260913-132509/pre-upgrade.zip` 保留在忽略目录。正式三容器 healthy，`erp-mssql` 保持运行。后续维护先运行 harness brief，核对本节与 `QUALITY.md` 最新条目，勿重跑一次性改造脚本或直接覆盖现有运行数据；本机发布不再有待办，生产补证另行定范围。

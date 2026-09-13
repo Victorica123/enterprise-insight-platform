@@ -1,7 +1,7 @@
 # Enterprise Insight Platform 项目收尾基线
 
 - 状态：面试交付基线已封板
-- 日期：2026-08-30 封板；2026-09-13 架构优化增量收尾
+- 日期：2026-08-30 封板；2026-09-13 架构优化提交、本机部署与增量收尾
 - 发布口径：可本地复现的工程型试点，不是生产发布
 
 ## 收尾结论
@@ -22,7 +22,13 @@
 
 ### 2026-09-13 架构优化接手完成
 
-用户批准的阶段 0–4 已完成，当前 `main@40c2093` 之上的改动未提交。Agent 244/244、Media 150/150、Web 21/21 和全部相关 Agent 门禁通过；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 各 42/42。新增 Media 职责/配置拆分、Flyway/阶段记录/熔断，以及 Web Router/Query/会话与角色隔离。MySQL 新旧库迁移、断连恢复、两库备份还原和有限 k6 通过；仍不宣称外部 AI、Keycloak/RS256、生产容量或完整灾备已验收。下方交付清单继续适用，旧日期保留历史；当前证据以 `knowledge/QUALITY.md` 最新条目为准。
+用户批准的阶段 0–4 已完成并提交为 `af2dc6e`。Agent 244/244、Media 150/150、当时 Web 21/21 和全部相关 Agent 门禁通过；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 各 42/42。新增 Media 职责/配置拆分、Flyway/阶段记录/熔断，以及 Web Router/Query/会话与角色隔离。MySQL 新旧库迁移、断连恢复、两库备份还原和有限 k6 通过；仍不宣称外部 AI、Keycloak/RS256、生产容量或完整灾备已验收。下方交付清单继续适用，旧日期保留历史；当前证据以 `knowledge/QUALITY.md` 最新条目为准。
+
+### 2026-09-13 本机发布完成
+
+入口 **http://127.0.0.1:8080** 已更新，`enterprise-insight-local` 三容器均 healthy。发布浏览器验收补齐了 nginx 同源端口修复 `daa29bf` 与播放代理前缀修复 `03f810b`，Web 最终 **26/26**；实际入口带 Origin 的 **42/42** 业务验收及 **5/5** 同源检查通过。真实登录、3 秒视频播放/206、五个阶段、SSE 证据回放与六路由宽窄屏已实走。
+
+升级前备份 `backups/local-release-20260913-132509/pre-upgrade.zip` 的 516 文件校验通过；数据副本与实际库迁移均保留原表字段、行数和内容摘要，baseline 已复位 false。旧镜像和环境配置保留，正式降级回退未执行；细节见 `knowledge/OPERATIONS.md`。测试副本和浏览器已关闭，原迁移来源及 `erp-mssql` 未修改。当前仍是 H2/SQLite、HS256 与 mock/local AI 的本机交付；仓库无 remote，提交未推送。
 
 ## 已封板的交付物
 
