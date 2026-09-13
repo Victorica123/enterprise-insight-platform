@@ -1,6 +1,21 @@
 # 质量知识
 
-## 最新验证：2026-09-13 GitHub 首次托管
+## 最新验证：2026-09-13 参考站浏览器收尾
+
+检索补齐提交 `ee51a8e` 已更新至本机 Agent，经 nginx 且携带 Origin 的业务验收 **42/42**、同源检查 **5/5** 通过。在线 SQLite 备份与六个核心表的原行保留验证通过，schema ledger 仍为 8；过程记录 `runtime/codex-reference-release-state.json`，恢复材料 `backups/reference-review-20260913-160222/`。
+
+浏览器首轮确认正确答案、明确主题的追问、证据与通道数量/耗时/降级展示，随后复现“延期原因 → 负责人 → 重复推荐延期原因”。本轮追加最近四轮同主题用户问题去重，复用已有授权记忆，不读取历史答案或模型摘要；不同主题与独立提问模式保留各自推荐。
+
+| 验证 | 结果 | 本机证据 |
+| --- | --- | --- |
+| 浏览器缺陷回归 | 修复前 2 个测试方法的 **6 个子场景失败**；修复后会话专项 **25/25 PASS**，覆盖 window/summary、standard/agentic、JSON/SSE、换题与关闭记忆 | `runtime/codex-reference-followup-history-{before,focused}.log` |
+| Agent 全量 | **271/271 PASS**，Python 3.12、hash/local、关闭 LLM Router | `runtime/codex-reference-agent-complete.log` |
+| Conversation V1 | **14/14 PASS**，增加最近问题去重、不同主题及独立提问场景 | `runtime/codex-reference-conversation-complete.log` |
+| Python lint | **PASS**，ruff 0.16.6 | `runtime/codex-reference-lint-complete.log` |
+
+检索、PRD、生命周期、Media 与 Web 的完整验证沿用下方同日记录。当前下一步是提交并更新该追问补丁，再复查实际浏览器两轮问答、1280/390px 展示并记录最终部署与知识检查。
+
+## 验证：2026-09-13 GitHub 首次托管
 
 以功能提交 `ee51a8e` 为基线准备私有仓库 `Victorica123/enterprise-insight-platform`，保留既有历史。源码托管配置见 `OPERATIONS.md`，本轮验证使用 JDK 17.0.18、Python 3.12、hash embedding 与 mock/local AI。
 
@@ -20,7 +35,7 @@
 
 ## 验证：2026-09-13 参考站复核与补齐
 
-以 `main@9c713be` 的干净工作树为起点，核对 Nexus 当前 88 页公开目录，补齐最终证据排序、通道过滤/隔离与观测、畸形精排降级、重试来源并集、证据追问和评测统计。范围与明确取舍见 [参考站复核](../docs/NEXUS_REFERENCE_AUDIT.md) 和 ADR-0019。此处先记录已完成的代码验证；本轮本机 Agent 更新与入口验收待完成。
+以 `main@9c713be` 的干净工作树为起点，核对 Nexus 当前 88 页公开目录，补齐最终证据排序、通道过滤/隔离与观测、畸形精排降级、重试来源并集、证据追问和评测统计。范围与明确取舍见 [参考站复核](../docs/NEXUS_REFERENCE_AUDIT.md) 和 ADR-0019。以下记录 `ee51a8e` 的代码验证；本机部署与浏览器追加修复见上方最新条目。
 
 | 验证 | 结果 | 证据 |
 | --- | --- | --- |

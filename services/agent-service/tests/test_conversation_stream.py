@@ -74,14 +74,46 @@ class ConversationApiTests(unittest.TestCase):
         self.assertEqual(history["turns"][-1]["question"], "它的负责人是谁？")
 
     def test_followup_suggestions_use_current_evidence_and_skip_the_answered_topic(self):
+        for mode in ("window", "summary"):
+            for workflow in ("standard", "agentic"):
+                with self.subTest(mode=mode, workflow=workflow):
+                    first = self.ask(memory_mode=mode, workflow_mode=workflow).json()
+                    self.assertEqual(first["follow_up"], ["客户A的负责人是谁？"])
+                    second = self.ask("它的负责人是谁？", conversation_id=first["conversation_id"],
+                                      memory_mode=mode, workflow_mode=workflow).json()
+                    self.assertIn("李四", second["answer"])
+                    self.assertEqual(second["follow_up"], [])
+
+    def test_followup_history_is_scoped_to_topics_and_optional(self):
+        ingest_document("other.md", "客户B的项目延期原因是审批进展缓慢。客户B项目负责人是王五。",
+                        tenant_id="tenant-a", owner_id="alice")
         first = self.ask().json()
-        self.assertTrue(any("负责人" in question for question in first["follow_up"]))
-        self.assertFalse(any("风险" in question for question in first["follow_up"]))
-        self.assertTrue(all("客户A" in question for question in first["follow_up"]))
-        second = self.ask("它的负责人是谁？", conversation_id=first["conversation_id"]).json()
-        self.assertFalse(any("负责人" in question for question in second["follow_up"]))
-        self.assertTrue(any("延期" in question for question in second["follow_up"]))
-        self.assertLessEqual(len(second["follow_up"]), 3)
+        other = self.ask("客户B的负责人是谁？", conversation_id=first["conversation_id"]).json()
+        self.assertIn("王五", other["answer"])
+        self.assertEqual(other["follow_up"], ["客户B的延期原因是什么？"])
+        independent = self.ask("客户A的负责人是谁？", conversation_id=first["conversation_id"],
+                               memory_mode="none").json()
+        self.assertEqual(independent["follow_up"], ["客户A的延期原因是什么？"])
+
+    def test_followup_stream_skips_recent_questions_like_json(self):
+        for endpoint in ("/chat", "/chat/stream"):
+            with self.subTest(endpoint=endpoint):
+                first = self.ask().json()
+                result = self.client.post(endpoint, headers=self.headers(), json={
+                    "question": "它的负责人是谁？", "conversation_id": first["conversation_id"],
+                    "memory_mode": "window", "answer_mode": "local", "workflow_mode": "standard",
+                    "retriever_mode": "hybrid",
+                })
+                self.assertEqual(result.status_code, 200, result.text)
+                if endpoint.endswith("stream"):
+                    events = [json.loads(line[6:]) for line in result.text.splitlines() if line.startswith("data: ")]
+                    self.assertEqual(events[-1]["type"], "done")
+                    response = events[-1]["content"]
+                    self.assertEqual(next(event["content"] for event in events if event["type"] == "follow_up"), [])
+                else:
+                    response = result.json()
+                self.assertIn("李四", response["answer"])
+                self.assertEqual(response["follow_up"], [])
 
     def test_refused_answer_with_sources_has_no_followup_suggestions(self):
         response = self.ask("客户A有哪些违约风险？").json()

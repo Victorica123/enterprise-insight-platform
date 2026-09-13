@@ -17,14 +17,26 @@ _RULES = (
 )
 
 
-def build_follow_up_questions(question: str, sources: list[Source]) -> list[str]:
+def _topics(text: str) -> list[str]:
+    return list(dict.fromkeys(re.sub(r"\s+", "", value) for value in _TOPIC.findall(text)))
+
+
+def build_follow_up_questions(question: str, sources: list[Source], *,
+                              recent_questions: tuple[str, ...] = ()) -> list[str]:
     text = "\n".join(f"{source.title} {source.content}" for source in sources)
-    topics = list(dict.fromkeys(re.sub(r"\s+", "", value) for value in _TOPIC.findall(question)))
+    topics = _topics(question)
+    topic_keys = {topic.casefold() for topic in topics}
+    covered_questions = [question.lower()]
+    # Suppress only the same explicit subject set. A prior customer's question
+    # or a model summary is not proof that this subject has already been asked.
+    if topic_keys:
+        covered_questions.extend(previous.lower() for previous in recent_questions[-4:]
+                                 if {topic.casefold() for topic in _topics(previous)} == topic_keys)
     # Keep multiple explicit subjects together instead of silently choosing one.
     prefix = "与".join(topics) + "的" if topics else ""
     return [
         prefix + suggestion
         for triggers, answered, suggestion in _RULES
         if any(term in text for term in triggers)
-        and not any(term in question.lower() for term in answered)
+        and not any(term in previous for previous in covered_questions for term in answered)
     ][:3]

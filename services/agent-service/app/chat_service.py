@@ -95,7 +95,9 @@ def execute_chat(prepared: PreparedChat, *, metric_recorder: Callable,
             response.exchange_id = prepared.exchange_id
             summary = response.agent_summary
             outcome = "answered" if summary and summary.evidence_status in {"passed", "not_required"} else infer_standard_outcome(response)
-            response.follow_up = build_follow_up_questions(question, response.sources) if outcome == "answered" else []
+            response.follow_up = build_follow_up_questions(
+                question, response.sources, recent_questions=memory.recent_questions if memory else (),
+            ) if outcome == "answered" else []
             check_chat_cancelled()
             if lease:
                 finish_turn(lease, question=request.question, rewritten_question=question, response=response,

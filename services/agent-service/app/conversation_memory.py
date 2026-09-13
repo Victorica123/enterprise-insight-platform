@@ -44,6 +44,7 @@ class PreparedMemory:
     trace: TraceStep
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    recent_questions: tuple[str, ...] = ()
 
 
 def prepare_memory(question: str, mode: str, lease: ConversationLease, *, allow_model: bool) -> PreparedMemory:
@@ -103,4 +104,5 @@ def prepare_memory(question: str, mode: str, lease: ConversationLease, *, allow_
     return PreparedMemory(rewritten, summary, through, TraceStep(
         name="conversation_memory", status="rewritten" if rewritten != question else mode,
         detail=f"使用最近 {len(turns)} 轮主题提示；历史回答不作为证据。摘要策略：{summary_status}。",
-    ), prompt_tokens, completion_tokens)
+    ), prompt_tokens, completion_tokens,
+        recent_questions=tuple(str(turn["rewritten_question"])[:550] for turn in turns))
