@@ -70,6 +70,8 @@ Open `http://127.0.0.1:8080`. The browser uses one origin; nginx routes `/agent/
 
 The Compose profile uses local H2, SQLite, mock transcription and local Agent responses. It is not evidence for Redis, RocketMQ, MySQL, S3 or an external model.
 
+After startup, run `python scripts/check_local_web.py` (or `--port <port>` for an isolated copy). This read-only gate checks the Web and Agent proxies, a browser-origin login request and preflight, and rejection of an untrusted Origin. nginx must preserve the full incoming Host including the external port; dropping `:8080` makes Spring reject a browser login as cross-origin even when HTTP acceptance without an Origin passes. Finish with a real browser login and upload/playback check.
+
 ## Production-like localhost reliability lab
 
 For real MySQL, Redis, RocketMQ and MinIO integration, concurrent soak, JFR/thread/heap diagnostics and optional Toxiproxy fault injection, use `docs/LOCAL_RELIABILITY_RUNBOOK.md`. This still runs entirely on the development machine and deliberately keeps external AI providers optional.

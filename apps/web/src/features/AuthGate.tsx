@@ -66,7 +66,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (session: Works
             {busy ? "正在连接本地工作区…" : mode === "login" ? "登录" : "注册并创建工作区"}
           </button>
         </form></> : null}
-        <footer><ShieldCheck size={15} />OIDC PKCE · RS256 JWT · tenant/owner 隔离</footer>
+        <footer><ShieldCheck size={15} />统一账号 · 工作区权限隔离</footer>
       </section>
     </main>
   );

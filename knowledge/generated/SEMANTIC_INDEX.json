@@ -1475,63 +1475,63 @@
       "vector_b64": "+QD5APkOAAAA8gAAAAAAAAAAAAcADgAOBwf5AAAAAAf5+fkAFfIABwD5BwD5APIO+Qf5APL5+fkAAPkAAMgA6wAAAPkHB/IPAAf5APn5ABUAAA4AABUAAAcA+QcAAAAA6w4AFQAA+QD5FvgAAAAHAAD5AAAHAAcO+QcA+QcAB/kADgAA4w4AAPkA8gAAAAAHAPIVB/kAAPkAAADdAAAAAPkAAA4ABwDyBwAAAAAADg4HAPkA+QAAAPkOAA4AAPkA"
     },
     {
-      "end_line": 72,
-      "fingerprint": "77aa6198a1f526b9cd861e8d09b8afc024ff8e177baa1df3d601aa24bb03f99c",
+      "end_line": 74,
+      "fingerprint": "947f52e95473fa9fca1234f81c1b0f226df7b8937bf3b16acdbec39b00740410",
       "heading": "Persistent localhost workspace",
-      "id": "040c0c4bb05393046bcf",
+      "id": "1a715bcc128745376636",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "## persistent localhost workspace ```powershell ./scripts/start_local.ps1 -build ``` open `http://127.0.0.1:8080`. the browser uses one origin; nginx routes `/agent/*` to fastapi and `/media/*` to spring boot. data is stored under the ignored `runtime/` directory: - `runtime/agent/knowledge_base.sqlite3` - `runtime/med",
       "start_line": 59,
-      "vector_b64": "AAwAAAAAAPQA5wz0AADnAAAAAAD0AAAMDAAAAAAAAAAn5vTyAAD0AAAADAD0AAAAAAAAAAAAAAAA9PQAANsA5wAAAAAAAAAA9AAMAAAMAAwAAAAAAAAA9AwA5wAAAAAAAAAA9AAAAAAMGgAAAAAADAAAAOcADAwAAAwAAAAAAAAAAAAA5gAADAAAAAAAABoAAAAAAAAAAAAAAPTnDAAADAAMAAAAGQAMAPQAAAD0AAAA9OcAAAAAAAAA9AAAAAAA"
+      "vector_b64": "AAjwCAAACPAA+Aj4CADwAAD4AAD4AAAICAAAAAAAAAAZ7/jgAAD4AAAACAAACAAAAAAAAPgA6QAI+PAQ+NEA8AAAAAAAAAAA+AAIAAAQABAAAAAA+AAA+AAA8AgAAAAAGQAA+AAAAAAAEQAAAAAACAAAAPAAHwj4ABcAAAgAAPgA+AAA9wAACAAA+PgAABEAAAAXAAAAAAAAAPDZCAD4CAAXAPgAEAAIAPgAAPj4AAAI+PAAAAAAAAAA+Aj4AAAA"
     },
     {
-      "end_line": 76,
+      "end_line": 78,
       "fingerprint": "7c8305bdf3e72a2922e876bd6df725c8d6496739c89de5635c5a930389e7b63e",
       "heading": "Production-like localhost reliability lab",
-      "id": "0acc9a9186e30d6317f9",
+      "id": "1c780409508e5631b285",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "## production-like localhost reliability lab for real mysql, redis, rocketmq and minio integration, concurrent soak, jfr/thread/heap diagnostics and optional toxiproxy fault injection, use `docs/local_reliability_runbook.md`. this still runs entirely on the development machine and deliberately keeps external ai provide",
-      "start_line": 73,
+      "start_line": 75,
       "vector_b64": "EQDvAAAAIgAAAAAAAAAAAAAAACIAAAARAAAA3gAAAAAAAN4AAAAAAAAAAAAAEQARAADvAAAAAAAAAAARAO8AAADvAAAA7wAA7+8AAAAAABEAAAAAAAAAAADvAAAAAAAAAAAAAAAAAAAAAAAAEQAAABEAAADvAAAAAAAAAAAAAAAAAAAA7QAAAO8AAAAAAAAAAAAAAAAAAAAAAADOAAAAEQDvAAAAIgAAAADvAADvAADvAADvAO8RAAAA7wAAAAAA"
     },
     {
-      "end_line": 92,
+      "end_line": 94,
       "fingerprint": "6ad518e90fa202ef30eb1dc5d49cb782f4bf55870b455d9325e270a28fe709a9",
       "heading": "Backup and restore drill",
-      "id": "d0f5b42c07ceef610d2b",
+      "id": "2093f692d7e10880dc34",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "## backup and restore drill stop the stack before copying h2: ```powershell ./scripts/stop_local.ps1 python scripts/local_data.py backup python scripts/local_data.py verify backups/local-yyyymmdd-hhmmss.zip python scripts/local_data.py restore backups/local-yyyymmdd-hhmmss.zip --force ./scripts/start_local.ps1 ``` rest",
-      "start_line": 77,
+      "start_line": 79,
       "vector_b64": "7xH3APcAAAAA9xEJEQD3AAAACQkJAAAJAAAAAAAAAAASAObeCQkAAAD3CQDvAPcAAAD3AAAJ7wkA9+8AAOYAAAAAAPcA994AAAAAAAAACQAAAAAAAAAA9wAA9/cJAAD3CgAAAAAA9wkJ7/f3AAAAAAD39wAJAAAJ9wAA9wAJAAD3AAAA9gkACQAAAOYJABIJIgAJ9wAAAAAA7wDMAPcAAAARAAAAAADvAAAAAAkAAAAA9wAA9wAAAPcAAAAACQAA"
     },
     {
-      "end_line": 121,
+      "end_line": 123,
       "fingerprint": "c0646ce67e24dfc018eeb1b019faaea8286ad566348e401682d0a9df76195de1",
       "heading": "Functional acceptance checklist",
-      "id": "2f3caa94792d7c334838",
+      "id": "71c945c6b0ac3b441b7b",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "## functional acceptance checklist the automated localhost runner verifies: 1. registration creates a personal workspace; 2. the issued jwt contains the trusted tenant identity; 3. a media upload creates a durable task; 4. local mock transcription completes without an external model; 5. the transactional outbox deliver",
-      "start_line": 93,
+      "start_line": 95,
       "vector_b64": "APsA+wAA+wUABQUFAAD3AOQABfsAAPv7AAAF+wUA+wAY9vvx9/cFAPvyAAAJCQAAAAAF+wAA6fsJ9wUFANYJ9/v7ABcA9/sKBQAABQAJAAUAAAAF+wkADgUFAAUAAAAAEwDyBQUA+wX7Cvb7BfIAAAD7AAX7AAAAAAD7FwAFAAAFAAD3+wkA6Q4AAAAAAA8FAAAvBQAA8gUABfLRCQD7BfsJDgAFBfv38gAJAA73BQAAAAUABfv7BfcAAAAAAAAF"
     },
     {
-      "end_line": 139,
+      "end_line": 141,
       "fingerprint": "0b2116c03e4cdb56a2df5d7906e7c6de3595332a299752d7eff64de90234b9f1",
       "heading": "Functional acceptance checklist",
-      "id": "b3bbe336a0cdcf5b4933",
+      "id": "aa1f5b2acfb76a3a0ea7",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "26. analysis exposes an objective-ranked hybrid evidence snapshot with revision and sha-256; 27. confirmation increments the checkpoint while preserving stages 1-4 and the frozen evidence fingerprint; 28. reusing the consumed resume token returns http 409. 29. approved knowledge supersession creates an immutable predec",
-      "start_line": 122,
+      "start_line": 124,
       "vector_b64": "BgAA+gb6APMAAAAGAADzAAAAAAYA7QAAAAAG+gAAAPoH8wbs+voAAAAAAPr6APoAAAb6+gYG8/PzBgAGDdT6APr6AA0A7Q0nAPoA+gANBgAAAAYG+hP6APoA+gAAAAAGDQAAEwAGBgD6DfMAAPoAAAAA+gAGBgAAAAAAGQDzDQD6DQ0GBgYA8wYGAAAADQ0AAAYfBgAA8wD6AAbOAAYABgAABvoGAAAA8/r6BgAABgYABvoABvoAAPoAAAAAAO0A"
     },
     {
-      "end_line": 142,
+      "end_line": 144,
       "fingerprint": "0c711cf06f70d0c923e820087ae089513e209b8f8854db865eccfdda12122b51",
       "heading": "Rollback",
-      "id": "4a49823164c3a6511120",
+      "id": "191f3944bc397c5ab7e1",
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
       "preview": "## rollback application rollback requires a schema version supported by that application. when the old application rejects a newer migration ledger, stop writers and restore the matching verified pre-upgrade backup into a recoverable target before switching. keep the current data available for recovery and review any w",
-      "start_line": 140,
+      "start_line": 142,
       "vector_b64": "AAAAAAAZAPQAAAAAAAAAJQAADAAMAAAMAAAAAAAAAAwAAPT0DAwAAAAAAAAA9AAAAAD09PQAAAz09PQAANsAAAAAAPQA9OcAAAAAAAAADAwAAAAAAAAAAAAAAAAAAAAA5wAAAAAAAAAMAPQAAAAMAAAAAPQAAAwAAAAAAAAAAPQAAPQA5QAAAAAAAPT0ABsA9AA+AAAAAAAAAADn9AAAAAAAAAz0AAAAAAAMAAAAAAwAAAAAAAAAAAD0AAAAAAAA"
     },
     {
@@ -4015,7 +4015,7 @@
       "vector_b64": "AAAAAAAAAAAAAAAAAAAAAADtAAAAAAAA7QAAAAAAAAAAAAAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAADtANoAACYA7e0AAAAAAAAAAAAAAAAAABMAAAAAAAAAAAATAAAAAAAAAAAAAAAA2u0AAADtEwAAAAAAABMAAAAA7QAAAAAAAAAAAAAAAAAAAADtACgA7QAAAADtAAAAAADtAAAAJgAAANrtAADtABMAAAAAAAAAAAAAAAAAAADtAAAAAAAA"
     }
   ],
-  "corpus_revision": "488289e1309c17101d950974b564064276f43f099e0041d6fd8bdb4f5167d879",
+  "corpus_revision": "8c6cbad48ca504eca6a28352c0b221af9332e78abb1b40cd13a6933bb0c94445",
   "embedding": {
     "algorithm": "hash-ngram-topic-embedding-v1",
     "dimension": 192,
@@ -4110,7 +4110,7 @@
     },
     {
       "path": "docs/LOCAL_RELEASE_RUNBOOK.md",
-      "sha256": "72994378646338e4edc42c68724f7033eab93057433ba943b229715c5828ef60"
+      "sha256": "686e54f0f01838dac5982cbcfaa444f1235b9c71dd47ec57fbfa3d5b0ba95a6c"
     },
     {
       "path": "docs/LOCAL_RELIABILITY_RUNBOOK.md",
