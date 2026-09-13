@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from time import perf_counter
 
 from app.agent_planning import detect_intents, is_complex_question
+from app.chat_events import emit_chat_event
 from app.models import TraceStep
 from app.text import CHAR_STOPS, QUESTION_STOP_BIGRAMS, STOP_TERMS, content_anchors
 
@@ -143,12 +144,14 @@ class PreparationChain:
                 continue
             before = len(draft.trace)
             started = perf_counter()
+            emit_chat_event("stage", {"name": step.name, "status": "running", "detail": "正在处理问题。"})
             step.run(draft)
             elapsed = round((perf_counter() - started) * 1000, 3)
             for trace_step in draft.trace[before:]:
                 if trace_step.duration_ms is None:
                     trace_step.duration_ms = elapsed
             executed.append(step.name)
+            emit_chat_event("stage", {"name": step.name, "status": "ok", "duration_ms": elapsed})
 
         if draft.mode is None:
             draft.mode = default_mode(draft.requested_mode)
@@ -331,6 +334,7 @@ class StageTimer:
         for step in self._trace[self._cursor :]:
             if step.duration_ms is None:
                 step.duration_ms = elapsed
+            emit_chat_event("stage", step.model_dump(mode="json"))
         self._cursor = len(self._trace)
         self._last = now
 

@@ -1,7 +1,7 @@
 # Enterprise Insight Platform 项目收尾基线
 
 - 状态：面试交付基线已封板
-- 日期：2026-08-30
+- 日期：2026-08-30 封板；2026-09-13 架构优化增量收尾
 - 发布口径：可本地复现的工程型试点，不是生产发布
 
 ## 收尾结论
@@ -19,6 +19,10 @@
 ### 2026-09-11 状态补充
 
 2026-09-01 至 09-10 的准生产基线工作已全部提交入库，Git 历史不再停留在 2026-08-31。新增 ruff 与 ESLint 门禁进入 CI；收尾回归中发现并修复两处缺陷：ruff 自动修复删除了 `graph_store` 的透传导入导致 Agent 服务无法加载，以及 PRD 门禁在没有本地 BGE 模型的环境里因 hybrid RRF 平局排序错误而失败。当前口径：Agent 158/158、Media 在 JDK 17 与 18 下 135/135、Web lint 0 error 与 7/7 单测、localhost-only 验收 33/33；`compose.local.yml` 三容器在本机 Docker 中健康运行。生产边界不变，细节见 `knowledge/QUALITY.md` 2026-09-11 条目。
+
+### 2026-09-13 架构优化接手完成
+
+用户批准的阶段 0–4 已完成，当前 `main@40c2093` 之上的改动未提交。Agent 244/244、Media 150/150、Web 21/21 和全部相关 Agent 门禁通过；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 各 42/42。新增 Media 职责/配置拆分、Flyway/阶段记录/熔断，以及 Web Router/Query/会话与角色隔离。MySQL 新旧库迁移、断连恢复、两库备份还原和有限 k6 通过；仍不宣称外部 AI、Keycloak/RS256、生产容量或完整灾备已验收。下方交付清单继续适用，旧日期保留历史；当前证据以 `knowledge/QUALITY.md` 最新条目为准。
 
 ## 已封板的交付物
 

@@ -9,12 +9,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections import deque
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
 
 from app import database
+from app.graph_algorithms import MAX_PATH_DEPTH as MAX_PATH_DEPTH
+from app.graph_algorithms import MAX_PATHS as MAX_PATHS
+from app.graph_algorithms import GraphPathStep as GraphPathStep
+from app.graph_algorithms import find_relation_paths, relation_neighborhood
 from app.graph_extraction import (
     GraphEntity,
     GraphRelation,
@@ -22,141 +24,15 @@ from app.graph_extraction import (
     normalize_name,
 )
 
-MAX_PATH_DEPTH = 4
-MAX_PATHS = 8
-
-_INITIALIZED_DB_PATH = None
-
-
-@dataclass
-class GraphPathStep:
-    source: str
-    relation: str
-    target: str
-    forward: bool = True
-
-    def display(self) -> str:
-        if self.forward:
-            return f"{self.source} —{self.relation}→ {self.target}"
-        return f"{self.source} ←{self.relation}— {self.target}"
-
 
 def init_graph_store() -> None:
-    global _INITIALIZED_DB_PATH
-    current_path = database.database_identity()
-    if database.initialization_marker_is_current(_INITIALIZED_DB_PATH):
-        return
-    database.prepare_database_storage()
-    with database.connect() as conn:
-        _ensure_scoped_graph_schema(conn)
-    _INITIALIZED_DB_PATH = current_path
+    database.init_db()
 
 
-def _ensure_scoped_graph_schema(conn: sqlite3.Connection) -> None:
-    """Migrate the V4 global graph to tenant/owner composite identities once."""
-    entity_exists = conn.execute(
-        "select 1 from sqlite_master where type = 'table' and name = 'graph_entities'"
-    ).fetchone()
-    if entity_exists and not _has_column(conn, "graph_entities", "tenant_id"):
-        conn.execute("alter table graph_entities rename to graph_entities_legacy")
-        conn.execute("alter table graph_relations rename to graph_relations_legacy")
-        conn.execute("alter table graph_meta rename to graph_meta_legacy")
-
-    conn.execute(
-        """
-        create table if not exists graph_entities (
-            entity_id varchar(128) primary key,
-            tenant_id varchar(128) not null default 'legacy',
-            owner_id varchar(128) not null default 'legacy',
-            name varchar(128) not null,
-            entity_type varchar(64) not null,
-            mention_count integer not null default 1,
-            document_ids text not null default '[]',
-            created_at text not null,
-            unique(tenant_id, owner_id, name, entity_type)
-        )
-        """
-    )
-    conn.execute(
-        """
-        create table if not exists graph_relations (
-            relation_id varchar(128) primary key,
-            tenant_id varchar(128) not null default 'legacy',
-            owner_id varchar(128) not null default 'legacy',
-            source_name varchar(128) not null,
-            source_type varchar(64) not null,
-            relation_type varchar(64) not null,
-            target_name varchar(128) not null,
-            target_type varchar(64) not null,
-            evidence text not null default '',
-            document_id varchar(128) not null default '',
-            filename varchar(191) not null default '',
-            chunk_index integer not null default 0,
-            created_at text not null,
-            unique(tenant_id, owner_id, source_name, relation_type, target_name, document_id, chunk_index)
-        )
-        """
-    )
-    conn.execute(
-        """
-        create table if not exists graph_meta (
-            tenant_id varchar(128) not null default 'legacy',
-            owner_id varchar(128) not null default 'legacy',
-            key varchar(128) not null,
-            value text not null default '',
-            primary key (tenant_id, owner_id, key)
-        )
-        """
-    )
-    legacy_exists = conn.execute(
-        "select 1 from sqlite_master where type = 'table' and name = 'graph_entities_legacy'"
-    ).fetchone()
-    if legacy_exists:
-        conn.execute(
-            """
-            insert or ignore into graph_entities (
-                entity_id, tenant_id, owner_id, name, entity_type,
-                mention_count, document_ids, created_at
-            )
-            select entity_id, 'legacy', 'legacy', name, entity_type,
-                   mention_count, document_ids, created_at
-            from graph_entities_legacy
-            """
-        )
-        conn.execute(
-            """
-            insert or ignore into graph_relations (
-                relation_id, tenant_id, owner_id, source_name, source_type, relation_type,
-                target_name, target_type, evidence, document_id, filename, chunk_index, created_at
-            )
-            select relation_id, 'legacy', 'legacy', source_name, source_type, relation_type,
-                   target_name, target_type, evidence, document_id, filename, chunk_index, created_at
-            from graph_relations_legacy
-            """
-        )
-        conn.execute(
-            """
-            insert or ignore into graph_meta (tenant_id, owner_id, key, value)
-            select 'legacy', 'legacy', key, value from graph_meta_legacy
-            """
-        )
-        conn.execute("drop table graph_entities_legacy")
-        conn.execute("drop table graph_relations_legacy")
-        conn.execute("drop table graph_meta_legacy")
-
-    conn.execute(
-        "create index if not exists idx_graph_entities_scope on graph_entities(tenant_id, owner_id, entity_type)"
-    )
-    conn.execute(
-        "create index if not exists idx_graph_relations_source on graph_relations(tenant_id, owner_id, source_name)"
-    )
-    conn.execute(
-        "create index if not exists idx_graph_relations_target on graph_relations(tenant_id, owner_id, target_name)"
-    )
 
 
-def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    return any(row["name"] == column for row in conn.execute(f"pragma table_info({table})"))
+
+
 
 
 def _now() -> str:
@@ -743,33 +619,10 @@ def find_paths(
     tenant_id: str = "legacy",
     owner_id: str | None = "legacy",
 ) -> list[list[GraphPathStep]]:
-    """无向 BFS 找两个实体之间的关系链（返回带方向标注的路径）。"""
+    """Build the authorized adjacency before traversing any graph edges."""
     init_graph_store()
-    max_depth = max(1, min(max_depth, MAX_PATH_DEPTH))
     adjacency = _build_adjacency(tenant_id=tenant_id, owner_id=owner_id)
-    if source not in adjacency or target not in adjacency:
-        return []
-
-    paths: list[list[GraphPathStep]] = []
-    queue: deque[tuple[str, list[GraphPathStep], set[str]]] = deque([(source, [], {source})])
-    while queue and len(paths) < MAX_PATHS:
-        node, path, visited = queue.popleft()
-        if len(path) >= max_depth:
-            continue
-        for neighbor, relation_type, forward in adjacency.get(node, []):
-            if neighbor in visited:
-                continue
-            step = (
-                GraphPathStep(source=node, relation=relation_type, target=neighbor, forward=True)
-                if forward
-                else GraphPathStep(source=node, relation=relation_type, target=neighbor, forward=False)
-            )
-            next_path = path + [step]
-            if neighbor == target:
-                paths.append(next_path)
-                continue
-            queue.append((neighbor, next_path, visited | {neighbor}))
-    return paths
+    return find_relation_paths(adjacency, source, target, max_depth)
 
 
 def get_entity_neighborhood(
@@ -780,32 +633,11 @@ def get_entity_neighborhood(
     tenant_id: str = "legacy",
     owner_id: str | None = "legacy",
 ) -> list[GraphRelation]:
-    """取一组实体周边 depth 跳内的关系，供 Graph Agent 组装上下文。"""
     init_graph_store()
-    depth = max(1, min(depth, MAX_PATH_DEPTH))
-    frontier = {name for name in names if name}
-    if not frontier:
-        return []
-    seen_relations: dict[tuple[str, str, str], GraphRelation] = {}
-    visited: set[str] = set()
-    for _ in range(depth):
-        if not frontier or len(seen_relations) >= limit:
-            break
-        batch = [name for name in frontier if name not in visited]
-        visited.update(batch)
-        next_frontier: set[str] = set()
-        for name in batch:
-            for relation in list_relations(
-                entity=name, limit=50,
-                tenant_id=tenant_id, owner_id=owner_id,
-            ):
-                key = (relation.source_name, relation.relation_type, relation.target_name)
-                if key not in seen_relations:
-                    seen_relations[key] = relation
-                next_frontier.add(relation.source_name)
-                next_frontier.add(relation.target_name)
-        frontier = next_frontier - visited
-    return list(seen_relations.values())[:limit]
+    return relation_neighborhood(
+        names, lambda name: list_relations(entity=name, limit=50, tenant_id=tenant_id, owner_id=owner_id),
+        depth, limit,
+    )
 
 
 def _build_adjacency(

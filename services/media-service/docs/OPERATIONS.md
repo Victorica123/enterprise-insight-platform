@@ -2,6 +2,8 @@
 
 > 合并自原部署/验证/排障文档，只保留可执行内容。参数依据与性能数据见 [PERFORMANCE.md](PERFORMANCE.md)。
 
+2026-09-13 整合仓库使用 Flyway V1/V2 与 Hibernate validate，十二组配置独立绑定，新增实际阶段记录和 Agent 投递熔断。旧库升级、baseline 限制、阶段分页与 DELIVERY 恢复边界统一见 [仓库运维知识](../../../knowledge/OPERATIONS.md)；新旧 MySQL 库、断连和备份还原证据见 [QUALITY.md](../../../knowledge/QUALITY.md)。以下独立服务命令不替代整合仓库的发布步骤。
+
 ## 一、三种运行模式
 
 | 模式 | 启动 | 依赖 |

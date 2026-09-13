@@ -5,7 +5,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-Set-Location $Root
 
 function Assert-LastExitCode {
     param([string]$Step)
@@ -15,48 +14,81 @@ function Assert-LastExitCode {
 }
 
 function Show-ImportantFiles {
-    rg --files `
-        -g "!apps/web/node_modules/**" `
-        -g "!apps/web/dist/**" `
-        -g "!services/agent-service/app/__pycache__/**" `
-        -g "!services/agent-service/data/**" `
-        -g "!*.tsbuildinfo"
+    rg --files services/agent-service/app services/agent-service/tests apps/web/src `
+        contracts scripts quality knowledge docs skills `
+        -g "!docs/archive/**" -g "!knowledge/generated/SEMANTIC_INDEX.json" `
+        -g "!**/__pycache__/**" -g "!*.tsbuildinfo"
+    Assert-LastExitCode "File inventory"
 }
 
 function Show-Brief {
-    Get-Content -Path "docs/archive/agent-docs/archive/context-brief.md"
-    ""
-    "## Current Important Files"
-    Show-ImportantFiles
+    Get-Content -LiteralPath "knowledge/INDEX.md" -Encoding UTF8
+    Write-Output "Next: docs/START_HERE.md; current task plan; latest knowledge/QUALITY.md evidence."
+    git status --short
+    Assert-LastExitCode "Working tree status"
+    git log -3 --oneline
+    Assert-LastExitCode "Recent commits"
 }
 
 function Run-Verify {
-    python -m compileall services\agent-service\app
-    Assert-LastExitCode "Python compile"
-    Push-Location services\agent-service
-    python -m pytest -q
-    Assert-LastExitCode "Python tests"
-    python -c "from app.rag import answer_question; from app.database import get_embedding_stats, rebuild_chunk_embeddings; from app.main import get_system_status; modes=['keyword','embedding','hybrid']; [print(mode, answer_question('smoke test','local',mode).trace[2].status) for mode in modes]; print(get_embedding_stats()); print(rebuild_chunk_embeddings()); print(get_system_status()); print('smoke_ok')"
-    Assert-LastExitCode "Backend smoke test"
-    Pop-Location
-    python quality\agent-evals\evaluate_v2.py
-    Assert-LastExitCode "V2 offline evaluation"
-    python quality\agent-evals\evaluate_v3.py
-    Assert-LastExitCode "V3 controlled-tool evaluation"
-    python quality\agent-evals\evaluate_v4.py
-    Assert-LastExitCode "V4 GraphRAG evaluation"
-    python quality\agent-evals\evaluate_v5.py
-    Assert-LastExitCode "V5 observability evaluation"
-    python quality\agent-evals\evaluate_v6.py
-    Assert-LastExitCode "V6 golden-set evaluation"
-    Push-Location apps\web
-    npm run build
-    Assert-LastExitCode "Frontend production build"
-    Pop-Location
+    $Python = Join-Path $Root ".venv/Scripts/python.exe"
+    if (-not (Test-Path -LiteralPath $Python)) {
+        $Python = (Get-Command python -ErrorAction Stop).Source
+    }
+    $Overrides = @{
+        LLM_ROUTER_ENABLED = "0"
+        EMBEDDING_MODEL = ""
+        RERANKER_MODEL = ""
+        AGENT_DATABASE_URL = ""
+        APP_ENV = "test"
+    }
+    $Previous = @{}
+    foreach ($Name in $Overrides.Keys) {
+        $Previous[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+        [Environment]::SetEnvironmentVariable($Name, $Overrides[$Name], "Process")
+    }
+    try {
+        if (Get-Command uvx -ErrorAction SilentlyContinue) {
+            uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality
+        } else {
+            & $Python -m ruff check --config ruff.toml services/agent-service scripts quality
+        }
+        Assert-LastExitCode "Python lint"
+        Push-Location services/agent-service
+        try {
+            & $Python -X utf8 -m unittest discover -s tests -q
+            Assert-LastExitCode "Agent tests"
+        } finally { Pop-Location }
+        foreach ($Gate in @("v6", "prd", "knowledge_lifecycle", "conversation", "v5")) {
+            & $Python -X utf8 "quality/agent-evals/evaluate_$Gate.py"
+            Assert-LastExitCode "Agent $Gate evaluation"
+        }
+        & $Python -X utf8 -m unittest discover -s scripts/tests -q
+        Assert-LastExitCode "Maintenance tests"
+        Push-Location apps/web
+        try {
+            npm run lint
+            Assert-LastExitCode "Web lint"
+            npm test
+            Assert-LastExitCode "Web tests"
+            npm run build
+            Assert-LastExitCode "Web production build"
+        } finally { Pop-Location }
+        & $Python -X utf8 scripts/update_knowledge.py --check
+        Assert-LastExitCode "Knowledge drift check"
+        Write-Output "Service gates passed. Platform changes also require Media tests, localhost acceptance and backup/restore; see the maintenance workflow."
+    } finally {
+        foreach ($Name in $Overrides.Keys) {
+            [Environment]::SetEnvironmentVariable($Name, $Previous[$Name], "Process")
+        }
+    }
 }
 
-switch ($Mode) {
-    "brief" { Show-Brief }
-    "files" { Show-ImportantFiles }
-    "verify" { Run-Verify }
-}
+Push-Location $Root
+try {
+    switch ($Mode) {
+        "brief" { Show-Brief }
+        "files" { Show-ImportantFiles }
+        "verify" { Run-Verify }
+    }
+} finally { Pop-Location }

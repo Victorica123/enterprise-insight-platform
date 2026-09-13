@@ -75,18 +75,19 @@ export type ToolCallLog = {
   created_at: string;
 };
 
-export async function getMetricsSummary(): Promise<ChatMetricsSummary> {
-  const response = await safeFetch(`${API_BASE_URL}/metrics/summary`);
+export async function getMetricsSummary(signal?: AbortSignal): Promise<ChatMetricsSummary> {
+  const response = await safeFetch(`${API_BASE_URL}/metrics/summary`, { signal });
   return parseJsonResponse<ChatMetricsSummary>(response);
 }
 
-export async function getToolMetrics(): Promise<ToolMetricsSummary> {
-  const response = await safeFetch(`${API_BASE_URL}/metrics/tools`);
+export async function getToolMetrics(signal?: AbortSignal): Promise<ToolMetricsSummary> {
+  const response = await safeFetch(`${API_BASE_URL}/metrics/tools`, { signal });
   return parseJsonResponse<ToolMetricsSummary>(response);
 }
 
-export async function listToolCalls(limit = 20, actorRole: ActorRole = "operator"): Promise<ToolCallLog[]> {
+export async function listToolCalls(limit = 20, actorRole: ActorRole = "operator", signal?: AbortSignal): Promise<ToolCallLog[]> {
   const response = await safeFetch(`${API_BASE_URL}/tool-calls?limit=${limit}`, {
+    signal,
     headers: { "X-User-Role": actorRole },
   });
   return parseJsonResponse<ToolCallLog[]>(response);
@@ -122,17 +123,19 @@ export type FeedbackResult = {
   feedback_note: string;
 };
 
-export async function listChatLogs(outcome = "", limit = 50, actorRole: ActorRole = "operator"): Promise<ChatLog[]> {
+export async function listChatLogs(outcome = "", limit = 50, actorRole: ActorRole = "operator", signal?: AbortSignal): Promise<ChatLog[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (outcome) params.set("outcome", outcome);
   const response = await safeFetch(`${API_BASE_URL}/chat-logs?${params.toString()}`, {
+    signal,
     headers: { "X-User-Role": actorRole },
   });
   return parseJsonResponse<ChatLog[]>(response);
 }
 
-export async function getChatLogDetail(logId: number, actorRole: ActorRole = "operator"): Promise<ChatLogDetail> {
+export async function getChatLogDetail(logId: number, actorRole: ActorRole = "operator", signal?: AbortSignal): Promise<ChatLogDetail> {
   const response = await safeFetch(`${API_BASE_URL}/chat-logs/${logId}`, {
+    signal,
     headers: { "X-User-Role": actorRole },
   });
   return parseJsonResponse<ChatLogDetail>(response);

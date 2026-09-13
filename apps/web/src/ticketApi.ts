@@ -57,9 +57,9 @@ export type ApprovalResponse = {
 
 // V3: 工单 API
 
-export async function listTickets(status?: string): Promise<TicketListResponse> {
+export async function listTickets(status?: string, signal?: AbortSignal): Promise<TicketListResponse> {
   const params = status ? `?status=${status}` : "";
-  const response = await safeFetch(`${API_BASE_URL}/tickets${params}`);
+  const response = await safeFetch(`${API_BASE_URL}/tickets${params}`, { signal });
   return parseJsonResponse<TicketListResponse>(response);
 }
 
@@ -94,8 +94,9 @@ export async function deleteTicket(ticketId: string, actorRole: ActorRole = "ope
 
 // V3: 审批 API
 
-export async function listPendingActions(status = "pending", actorRole: ActorRole = "operator"): Promise<PendingActionResponse[]> {
+export async function listPendingActions(status = "pending", actorRole: ActorRole = "operator", signal?: AbortSignal): Promise<PendingActionResponse[]> {
   const response = await safeFetch(`${API_BASE_URL}/pending-actions?status=${status}`, {
+    signal,
     headers: { "X-User-Role": actorRole },
   });
   return parseJsonResponse<PendingActionResponse[]>(response);

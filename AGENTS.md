@@ -4,9 +4,9 @@
 
 ## 启动要求
 
-1. 维护或扩展本项目时，读取并遵循全局 Skill：
-   `C:\Users\13688\.codex\skills\enterprise-insight-maintainer\SKILL.md`。
-2. 读取 `knowledge/INDEX.md`，再按任务加载相关知识文档。
+1. 维护或扩展本项目时，读取并遵循仓库版 Skill：
+   `skills/enterprise-insight-maintainer/SKILL.md`，不依赖其他机器上的用户目录。
+2. 读取 `knowledge/INDEX.md`，再按任务加载相关知识文档。首次接手先读 `docs/START_HERE.md`；可用 `quality/agent-evals/context-harness.ps1 -Mode brief` 恢复入口，并核对 Git 状态。
 3. 涉及业务定位、服务边界、身份模型、事件语义、数据所有权或交付范围的多种合理方案时，暂停并向用户确认，不自行改变已批准路线。
 
 ## 不变量
@@ -23,3 +23,4 @@
 - 运行与改动范围相称的测试。
 - 运行知识库更新器，并确认漂移检查通过。
 - 更新相应契约、ADR、质量证据与当前状态。
+- 交接状态写回现有 `knowledge/` 与相关计划；生成文件只通过更新器生成。历史评测数字保留日期，当前验证以 `knowledge/QUALITY.md` 最新条目为准。

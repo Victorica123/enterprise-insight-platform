@@ -1,5 +1,73 @@
 # 质量知识
 
+## 最新验证：2026-09-13 阶段 0–4 完成
+
+基于 `main@40c2093` 的未提交工作树完成本轮接手范围，原迁移来源只读，模型和两服务边界不变。以下为最终代码实跑证据；此前同日的 241/135/13/36 属于阶段 0–3 历史记录。
+
+| 验证 | 最新结果 | 本机证据 |
+| --- | --- | --- |
+| Agent 全量 | **244/244 PASS**，Python 3.12.13 | `runtime/codex-stage4-agent-final.log`；Agent 目录 `python -m unittest discover -s tests -q` |
+| Media 全量与打包 | **150/150 PASS**，40 份 Surefire XML，failure/error/skipped 均 0；Temurin 17.0.18 | `runtime/codex-stage4-media-final.log`；`mvn -q test package` |
+| Web | **21/21 PASS**；lint **0 error / 10 warnings**；TypeScript/Vite build PASS | `runtime/codex-stage4-web-{tests,lint,build}.log` |
+| Python lint | **PASS**，ruff 0.16.6 | `runtime/codex-stage4-python-lint.log`；根目录共享 lint 配置 |
+| V6 | hybrid **98% / 97% / 97%**，p95 **16.1 ms**；门禁 PASS | `runtime/codex-stage4-final-v6.log` |
+| PRD V1 | **12/12**；十项 **100%**；p95 **10.42 ms** | `runtime/codex-stage4-final-prd.log` |
+| Knowledge Lifecycle / V5 | **PASS**；Lifecycle 九项 100% | `runtime/codex-stage4-final-{knowledge_lifecycle,v5}.log` |
+| Conversation V1 | **9/9 PASS** | `runtime/codex-stage4-final-conversation.log` |
+| H2/SQLite 纵向验收 | **42/42 PASS**，真实 HS256 JWT、临时数据库、mock/local AI | `runtime/codex-stage4-localhost-acceptance-final.log` |
+| 真实中间件纵向验收 | **42/42 PASS**，MySQL 8.4、Redis、RocketMQ、MinIO、HS256 JWT、mock/local AI | `runtime/codex-stage4-middleware-acceptance-final.log` |
+| MySQL 迁移专项 | **6 项 PASS** | `runtime/codex-stage4-mysql-migrations.log` |
+| 分片与对象存储 | **4 项 PASS** | `runtime/codex-stage4-middleware-chunks.log` |
+| Agent 断连恢复 | **3 项 PASS**；四条事件最终全部 SENT，四个下游视频文档 | `runtime/codex-stage4-middleware-outage.log` |
+| MySQL 备份恢复 | **3 项 PASS**；Media 11 表/161 行、Agent 22 表/357 行逐表行数与内容 SHA-256 一致 | `runtime/codex-stage4-mysql-backup.log`；`runtime/codex-stage4-fixture/backup-verification.json` |
+| 有限 k6 冒烟 | **PASS**；3 VUs、30 iterations、150 HTTP 请求，失败 0，checks 100%，HTTP p95 **52.01 ms** | `runtime/codex-stage4-k6.log`、`runtime/codex-stage4-k6-summary.json` |
+| 维护工具单测 | **3/3 PASS** | `runtime/codex-stage4-maintenance-tests.log` |
+| 知识与交接 | 生成器、漂移检查、语义路由、Skill quick validation、14 份 JSON 契约解析、Git diff check **PASS** | `runtime/codex-stage4-knowledge-{update,check}.log`、`runtime/codex-stage4-semantic-query.log`、`runtime/codex-stage4-diff-check.log` |
+
+V6 使用 hash embedding、空 `EMBEDDING_MODEL`/`RERANKER_MODEL`、`LLM_ROUTER_ENABLED=0`。本次 keyword 为 98/97/97（p95 14.1 ms），hash embedding 为 88/84/81（p95 15.0 ms）；混合检索达到当前门禁。不要把历史可选 BGE 的三路数字或本次并行验收时延当作新增优化收益。k6 是 mock/local AI 的本机小样本，未形成容量、泄漏或生产 SLA 结论。
+
+迁移验收覆盖 Media 旧库显式 V1 baseline→V2、冻结结构校验、原账号保留和重启，Media 新库 V1/V2；Agent 旧文档/chunk、legacy scope、八项 ledger 保留，新 MySQL 库双进程初始化、旧应用拒绝未来 ledger。七个 LONGTEXT 列以长中文和 20 个 UUID 数组 roundtrip 验证无截断。实测修复了 Connector/J ENUM 元数据、`replacement_evidence_json` 的 varchar(191) 截断，以及 `AS key` 保留字造成的监控 500；已有 1–7 迁移未重写，新增 `m008_mysql_text_fields` 与回归。
+
+真实 Redis 验证分片 session 和重新初始化续传同一 uploadId，合并后清理会话，经 RocketMQ 推进到 Agent；MinIO 签名 Range 的前 1024 字节与原 MP4 完全一致。Agent 暂停期间三次实际失败触发熔断，第四条就绪事件仍为 PENDING/attempts=0；恢复后四条事件的 DELIVERY 成功记录及下游文档均齐全。这不是多个 Media 实例竞争或进程硬崩溃的验收；处理恢复的 ABANDONED 标记不覆盖独立 DELIVERY 残留 RUNNING。
+
+浏览器用 Playwright 完成注册、可播放 3 秒 MP4、五个实际阶段、文档上传/连续追问、前进后退会话保留、停止后迟到响应隔离、新建会话、六路由×1280/390 两种宽度和深链接刷新。Workspace 与跨标签页真实角色 JWT 更新清空旧缓存/对话；viewer 的视频、文档、分析写入口禁用，授权提问可用。追加三个 viewer 页面 390px 检查均无横向溢出；已查看宽窄屏截图。结果见 `runtime/codex-stage4-browser-{qa,routes,scope-final,viewer-mobile}.log`，图片在 `output/playwright/stage4-*.png`。分析→确认→PRD 申请/二次发布→知识批准→行动项→工单审批也已实走。控制台历史有 favicon 404、测试服务重启后的 Vite 重连错误和已修复的监控 SQL 500，不能声称全程零错误。
+
+备份前停止本轮 Agent/Media/Vite，mysqldump 两个独立测试库，ZIP 内校验 SHA-256 后恢复到新 schema；共 **33 表/518 行** 摘要一致。归档：`runtime/codex-stage4-fixture/verified-mysql-backup.zip`。只证明业务 MySQL 数据恢复，不包括 MinIO 对象、Keycloak 或异机灾备。临时 Compose project 为 `codex-stage4-f4819d11`，与原 `enterprise-insight-local`、`erp-mssql` 隔离。
+
+收尾已停止本轮三个应用与测试浏览器，删除该临时 project 的五个容器、网络与四个测试卷；日志、脚本、截图和校验后的 MySQL 归档保留在本机忽略目录。原 `enterprise-insight-local` 三容器仍健康，`erp-mssql` 仍运行，测试端口不再监听。清理记录为 `runtime/codex-stage4-cleanup.log`；本轮未提交、推送或部署既有服务。
+
+本轮不调用外部模型，不以 HS256 测试代替 Keycloak/RS256/JWKS；长时间压力、多实例、正式升级回退、对象存储灾备、密钥轮换和统一告警仍需部署环境证据。已有业务功能和本轮批准的架构阶段已完成，这些是后续生产验证边界。
+
+## 历史验证：2026-09-13 阶段 0–3 接手
+
+从 `40c2093` 的 Agent 199/199 起步，保留模型、两服务、JWT scope、证据和审批边界，完成阶段 0–3 与 QA 组件拆分。当前改动未提交；下表为本轮实跑结果，后面的日期条目保留历史数字。
+
+| 验证 | 最新结果 | 本机证据/命令 |
+| --- | --- | --- |
+| Agent 全量 | **241/241 PASS**，Python 3.12.13 | Agent 目录 `python -m unittest discover -s tests -q`；`runtime/codex-final-agent-tests.log` |
+| Python lint | ruff 0.16.6 **0 error** | 根目录 `ruff check --config ruff.toml services/agent-service scripts quality`；`runtime/codex-final-python-lint.log` |
+| V6 | hybrid **98% / 97% / 97%**，p95 **8.5 ms**；PASS | `quality/agent-evals/evaluate_v6.py`；`runtime/codex-final-evaluate_v6.log` |
+| PRD V1 | **12/12**，十项 **100%**，p95 **7.55 ms** | `quality/agent-evals/evaluate_prd.py`；`runtime/codex-final-evaluate_prd.log` |
+| Knowledge Lifecycle / V5 | 均 **PASS** | 对应 `evaluate_*.py` 与 `runtime/codex-final-evaluate_*.log` |
+| Conversation V1 | **9/9 PASS**，已加入 CI | `quality/agent-evals/evaluate_conversation.py`；`runtime/codex-final-evaluate_conversation.log` |
+| Media | **135/135 PASS**，Failures/Errors/Skipped 0，Temurin **17.0.18** | `mvn -q test`；`runtime/codex-final-media-tests.log` 与 36 份 Surefire XML |
+| Web | **13/13 PASS**，lint **0 error / 18 个原有 warning**，类型/构建 PASS | `npm run lint`、`npm test`、`npm run build`；`runtime/codex-final-web-*.log` |
+| localhost | **36/36 PASS**，真实 JWT、临时 H2/SQLite、mock/local AI | `python scripts/local_acceptance.py`；`runtime/codex-final-local-acceptance.log` |
+| 维护工具 | 索引单测 **3/3**，仓库 Skill quick validation PASS，harness brief/verify PASS | `python -m unittest discover -s scripts/tests -q`；`runtime/codex-harness-brief.log`、`runtime/codex-final-harness-verify.log` |
+| 交接一致性 | 知识生成/漂移检查、语义查询和 Git diff check PASS | `scripts/update_knowledge.py`、`--check`、`scripts/knowledge_index.py query`；`runtime/codex-final-diff-check.log` |
+
+新增回归覆盖 float32/JSON 兼容、请求不补算文档向量、后台批次/revision/写锁、主题与相邻块范围、Settings、旧库升级保留数据、迁移失败回滚、双进程初始化、未知版本拒绝和 MySQL 失败释放锁。会话回归覆盖 JSON/SSE 一致、旧客户端、隔离、证据重检索、竞争/续租/失效 fencing、预算、提前断流、provider 首字与关闭。
+
+评测复现并修复了显式换题混入其他客户的问题；Top-K 过滤后又发现 Parent-Child 重新引入被排除客户，现已让主题规则贯穿扩展，并加入第九个场景。比较后指代、摘要虚构标识、租约失效 HTTP 409 也有回归。失败样例用于完善机制，不能把小型合成集的通过率外推为开放域模型质量。
+
+Edge + Playwright 验证真实 JWT 注册、文档上传、指代追问、新建及 Workspace 切换；切换后回答/历史/引用清空、个人文档不可见，再提问使用 0 轮旧记忆并拒答。已查看宽窄屏截图；390 / 988px 视口的 document 宽为 380 / 978，无页面横向溢出。截图在 `output/playwright/conversation-{followup,mobile,workspace-cleared}.png`。控制台存在既有 favicon 404，不能声称零错误。
+
+浏览器临时服务正常停止后，对含会话数据的 SQLite 备份、SHA-256 校验、quick-check 和新临时目录恢复 **PASS（1 个文件）**；归档为 `runtime/codex-browser-data-backup.zip`。H2 为内存模式，不证明 MySQL 或对象存储灾备。
+
+追加浏览器停止验收：通过 Playwright 暂缓真实后端响应，点击“停止生成”后再释放响应，页面保持“已停止生成”，未显示最终答案或新增历史，提问按钮恢复可用；结果 **PASS**，截图 `output/playwright/conversation-stopped.png`。这验证客户端取消/迟到响应隔离；provider 流关闭由服务单测验证。第二套临时服务也正常停止，备份恢复 PASS；旧服务停止后的 Vite HMR 重连错误属于已结束测试环境，不计为业务运行时错误。
+
+评测均使用 hash embedding、关闭可选 reranker、`LLM_ROUTER_ENABLED=0`。本轮没有真实外部模型、真实 MySQL 升级、多 worker 容量或新增向量改造的大语料基准。受限主题规则、事件 sink、自有编号迁移和默认单 worker 的取舍见 ADR-0016/0017。阶段 4 的其他按需项不计入完成范围。
+
 ## 分层验证
 
 - 单元：纯领域逻辑、状态机、鉴权、切分、引用验证、幂等。
@@ -8,7 +76,7 @@
 - Agent 评测：检索命中、引用正确性、越权拒绝、冲突识别、PRD 完整性。
 - 平台 smoke：真实登录后上传视频，等待转写，提问并点击时间戳回放。
 
-## 当前已知基线
+## 历史基线与演进
 
 - Agent Service 在整合前的回归基线为 87 个 pytest 用例通过；首批契约、幂等摄取、检索隔离、JWT 与时间戳引用加入后为 98 个用例通过。
 - React 应用在整合前可完成 TypeScript/Vite 生产构建。
@@ -185,6 +253,8 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 
 ## 合并门禁
 
+2026-09-13 接手后的第一批验证：以 `40c2093` 实跑 Agent 199/199 为基线，新增检索优化回归后 **209/209**。验证二进制向量/旧 JSON 兼容、查询不补算文档向量、后台批次与租户 revision、推理期间不持有写事务、章节合并范围/预算/视频定位及授权主题澄清。V6 hybrid decision **98%**、recall@3 **97%**、fact **97%**（p95 9.5ms）；PRD **12/12**、十项指标 100%；Knowledge Lifecycle、V5 通过。均为 hash embedding、`LLM_ROUTER_ENABLED=0`。日志为忽略目录中的 `runtime/codex-retrieval-*.log`。这是第一批的历史记录，当前以本文最新验证条目为交付口径。
+
 - 相关服务全量测试通过。
 - `ruff check --config ruff.toml services/agent-service scripts quality` 与 `apps/web` 的 `npm run lint` 均为 0 error。
 - Web 类型检查和构建通过。
@@ -201,7 +271,7 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 - Knowledge Lifecycle V1 只有 personal 替代、personal 撤回、team 替代三类固定场景，用于防止治理语义回退；它不覆盖大规模图谱增量成本、长期数据保留策略或真实多人组织流程。
 - 六阶段确认接口使用创建时的冻结证据并保留阶段 1–4；同一 resume token 的两个并发请求已有确定性回归，验证一次数据库 CAS 成功、另一次返回 409。它仍是业务阶段 checkpoint，不是模型调用中断后的执行栈恢复。
 
-`.github/workflows/quality.yml` 将门禁拆为 Agent ruff lint + 全量用例 + V6 RAG + PRD V1 + Knowledge Lifecycle V1 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web ESLint + 前端单测 + 类型/生产构建，以及 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
+`.github/workflows/quality.yml` 将门禁拆为 Agent ruff lint + 全量用例 + V6 RAG + PRD V1 + Knowledge Lifecycle V1 + Conversation V1 + 维护索引单测与知识漂移、Media JDK 17 全量测试、Web ESLint + 前端单测 + 类型/生产构建，以及 localhost 平台 smoke。四个 job 独立暴露故障域，避免一个超长脚本掩盖具体失败位置。
 
 ## 不允许的质量声明
 

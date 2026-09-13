@@ -20,7 +20,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, TextIO
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / "services" / "agent-service"
@@ -46,6 +46,7 @@ def http_request(
     body: bytes | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 20,
+    redirects: int = 0,
 ) -> tuple[int, bytes]:
     parsed_url = urlsplit(url)
     if parsed_url.scheme not in {"http", "https"}:
@@ -66,6 +67,16 @@ def http_request(
     try:
         connection.request(method, path, body=body, headers=headers or {})
         response = connection.getresponse()
+        location = response.getheader("Location")
+        if method == "GET" and response.status in {301, 302, 303, 307, 308} and location and redirects > 0:
+            response.read()
+            destination = urljoin(url, location)
+            # Every hop is validated as localhost; never forward credentials across origins.
+            redirected_headers = dict(headers or {})
+            if urlsplit(destination).netloc != parsed_url.netloc:
+                redirected_headers = {key: value for key, value in redirected_headers.items()
+                                      if key.lower() not in {"authorization", "cookie", "proxy-authorization"}}
+            return http_request(destination, headers=redirected_headers, timeout=timeout, redirects=redirects - 1)
         return response.status, response.read()
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"HTTP request failed for {url}") from exc
@@ -148,12 +159,16 @@ def start(
     return process, log
 
 
-def main(external: bool = False) -> int:
+def main(
+    external: bool = False, *, agent_port: int | None = None, media_port: int | None = None,
+    environment_label: str | None = None,
+) -> int:
     if not external and (not MAVEN or not JAVA):
         raise RuntimeError(
             "本地验收需要 PATH 中可用的 Maven 与 Java（项目目标 JDK 17/18）。"
         )
-    agent_port, media_port = (18000, 18081) if external else (free_port(), free_port())
+    agent_port = agent_port or (18000 if external else free_port())
+    media_port = media_port or (18081 if external else free_port())
     with tempfile.TemporaryDirectory(
         prefix="enterprise-insight-acceptance-"
     ) as temp_raw:
@@ -180,6 +195,10 @@ def main(external: bool = False) -> int:
             {
                 "AGENT_AUTH_MODE": "jwt",
                 "APP_ENV": "development",
+                "AGENT_DATABASE_URL": "",
+                "AGENT_REQUIRE_MYSQL": "0",
+                "JWT_ALGORITHM": "HS256",
+                "LLM_ROUTER_ENABLED": "0",
                 "SHARED_JWT_SECRET": shared_secret,
                 "APP_JWT_ISSUER": "enterprise-insight",
                 "APP_JWT_AUDIENCE": "enterprise-insight-api",
@@ -195,6 +214,9 @@ def main(external: bool = False) -> int:
         media_env.update(
             {
                 "SERVER_PORT": str(media_port),
+                "SPRING_DATASOURCE_URL": f"jdbc:h2:mem:acceptance-{uuid.uuid4().hex};MODE=MySQL",
+                "SPRING_DATASOURCE_USERNAME": "sa",
+                "SPRING_DATASOURCE_PASSWORD": "",
                 "APP_JWT_SECRET": shared_secret,
                 "APP_JWT_ISSUER": "enterprise-insight",
                 "APP_JWT_AUDIENCE": "enterprise-insight-api",
@@ -335,6 +357,73 @@ def main(external: bool = False) -> int:
             assert video_sources, chat
             source = video_sources[0]
             assert source["asset_id"] == task["videoId"] and source["start_ms"] == 0
+            metrics_status, chat_metrics = request_json(
+                f"http://127.0.0.1:{agent_port}/metrics/summary", token=token,
+            )
+            assert metrics_status == 200 and chat_metrics["total_requests"] >= 1
+
+            stage_url = f"http://127.0.0.1:{media_port}/api/workflow/tasks/{task_id}/stages"
+            stage_contract = json.loads((ROOT / "contracts/http/media-task-stages-v1.schema.json").read_text(encoding="utf-8"))
+            deadline = time.monotonic() + 5
+            while True:
+                stage_status, stage_envelope = request_json(stage_url, token=token)
+                assert stage_status == 200
+                stage_page = stage_envelope["data"]
+                stages = stage_page["items"]
+                if any(item["stage"] == "DELIVERY" and item["status"] == "SUCCEEDED" for item in stages):
+                    break
+                assert time.monotonic() < deadline, stage_page
+                time.sleep(0.1)
+            assert set(stage_page) == set(stage_contract["required"])
+            item_contract = stage_contract["properties"]["items"]["items"]
+            for item in stages:
+                assert set(item) == set(item_contract["required"])
+                assert item["stage"] in item_contract["properties"]["stage"]["enum"]
+                assert item["status"] in item_contract["properties"]["status"]["enum"]
+                assert item["errorCode"] in item_contract["properties"]["errorCode"]["enum"]
+                assert str(uuid.UUID(item["runId"])) == item["runId"]
+                assert item["durationMs"] is None or item["durationMs"] >= 0
+            assert [item["stage"] for item in stages if item["stage"] != "DELIVERY"] == [
+                "STORAGE_RESOLVE", "TRANSCRIPTION", "SUMMARY", "RESULT_COMMIT",
+            ]
+            _, first_stage = request_json(f"{stage_url}?limit=1", token=token)
+            assert first_stage["data"]["hasMore"] and len(first_stage["data"]["items"]) == 1
+            cursor = first_stage["data"]["nextCursor"]
+            _, next_stages = request_json(f"{stage_url}?after={cursor}", token=token)
+            assert all(item["id"] > cursor for item in next_stages["data"]["items"])
+            assert first_stage["data"]["items"] + next_stages["data"]["items"] == stages
+            assert http_request(stage_url)[0] == 403
+            assert request_json(f"{stage_url}?limit=101", token=token)[0] == 400
+
+            stream_status, stream_body = http_request(
+                f"http://127.0.0.1:{agent_port}/chat/stream", method="POST",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                body=json.dumps({
+                    "question": "local-acceptance.mp4 的视频内容是什么？", "answer_mode": "local",
+                    "retriever_mode": "keyword", "workflow_mode": "standard", "memory_mode": "window",
+                    "asset_ids": [task["videoId"]],
+                }).encode("utf-8"),
+            )
+            assert stream_status == 200
+            events = [json.loads(line[6:]) for line in stream_body.decode("utf-8").splitlines() if line.startswith("data: ")]
+            assert events[0]["type"] == "stage" and events[-1]["type"] == "done"
+            streamed_chat = events[-1]["content"]
+            assert streamed_chat["conversation_id"]
+            assert any(item["source_type"] == "video" and item["asset_id"] == task["videoId"] for item in streamed_chat["sources"])
+            _, conversation_history = request_json(
+                f"http://127.0.0.1:{agent_port}/conversations/{streamed_chat['conversation_id']}", token=token,
+            )
+            assert conversation_history["revision"] == 1 and len(conversation_history["turns"]) == 1
+
+            memory_document, memory_type = multipart_file("file", "conversation-memory.md", "客户Z的项目延期原因是测试环境故障。客户Z项目负责人是李四。".encode())
+            _, uploaded_memory = request_json(f"http://127.0.0.1:{agent_port}/documents", method="POST", token=token, body=memory_document, content_type=memory_type)
+            _, memory_first = request_json(f"http://127.0.0.1:{agent_port}/chat", method="POST", token=token,
+                payload={"question": "客户Z的项目为什么延期？", "memory_mode": "window", "answer_mode": "local", "workflow_mode": "standard"})
+            _, memory_followup = request_json(f"http://127.0.0.1:{agent_port}/chat", method="POST", token=token,
+                payload={"question": "它的负责人是谁？", "conversation_id": memory_first["conversation_id"], "memory_mode": "window", "answer_mode": "local", "workflow_mode": "standard"})
+            assert "李四" in memory_followup["answer"]
+            assert any(step["name"] == "conversation_memory" and step["status"] == "rewritten" for step in memory_followup["trace"])
+            request_json(f"http://127.0.0.1:{agent_port}/documents/{uploaded_memory['document_id']}", method="DELETE", token=token)
 
             _, embedding_status = request_json(
                 f"http://127.0.0.1:{agent_port}/embeddings/status",
@@ -600,6 +689,7 @@ def main(external: bool = False) -> int:
                 playback_url,
                 headers={"Range": "bytes=0-3"},
                 timeout=10,
+                redirects=3,
             )
             assert playback_status == 206 and playback_body == SAMPLE_MP4[:4]
 
@@ -652,6 +742,7 @@ def main(external: bool = False) -> int:
             )
             member_team = member_team_envelope["data"]
             assert owner_team["role"] == "admin" and member_team["role"] == "operator"
+            assert request_json(stage_url, token=member_team["token"])[0] == 400
 
             team_upload_body, team_upload_type = multipart_file(
                 "file",
@@ -678,6 +769,9 @@ def main(external: bool = False) -> int:
                     break
                 time.sleep(0.2)
             assert team_task and team_task["status"] == "COMPLETED", team_task
+            team_stage_url = f"http://127.0.0.1:{media_port}/api/workflow/tasks/{team_task_id}/stages"
+            team_stage_status, team_stage_page = request_json(team_stage_url, token=member_team["token"])
+            assert team_stage_status == 200 and team_stage_page["data"]["items"]
             assert (
                 team_task["owner"] == auth["userId"]
                 and team_task["tenantId"] == team_tenant
@@ -841,6 +935,8 @@ def main(external: bool = False) -> int:
                 token=viewer_team["token"],
             )
             assert team_task_id in {item["taskId"] for item in viewer_tasks["data"]}
+            viewer_stage_status, viewer_stage_page = request_json(team_stage_url, token=viewer_team["token"])
+            assert viewer_stage_status == 200 and viewer_stage_page["data"]["items"]
             denied_body, denied_type = multipart_file(
                 "file", "viewer-denied.mp4", b"\x00\x00\x00\x18ftypisomdenied"
             )
@@ -858,7 +954,7 @@ def main(external: bool = False) -> int:
                     {
                         "result": "PASS",
                         "network_scope": "localhost-only",
-                        "environment": "MySQL/Redis/RocketMQ/MinIO/Keycloak/RS256; mock AI" if external else "H2/SQLite; mock AI",
+                        "environment": environment_label or ("Externally managed services; infrastructure verified separately" if external else "H2/SQLite; mock AI"),
                         "tenant_id": auth["tenantId"],
                         "team_tenant_id": team_tenant,
                         "task_id": task_id,
@@ -874,8 +970,17 @@ def main(external: bool = False) -> int:
                             "upload",
                             "mock_transcript",
                             "outbox_delivery",
+                            "media_stage_contract_and_execution",
+                            "media_stage_pagination",
+                            "media_stage_auth_boundary",
+                            "team_stage_cross_member_read",
+                            "viewer_stage_read_only",
                             "agent_retrieval",
+                            "populated_metrics_summary",
                             "timestamp_source",
+                            "sse_video_evidence",
+                            "conversation_persistence",
+                            "conversation_followup",
                             "analysis_wait_resume",
                             "evidence_prd",
                             "publication_approval_audit",

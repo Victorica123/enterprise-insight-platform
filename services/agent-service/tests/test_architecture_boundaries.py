@@ -1,5 +1,7 @@
+import ast
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
 from app.architecture.context import RequestContext
@@ -19,6 +21,39 @@ from app.retrievers import RetrievalScope
 
 
 class ArchitectureBoundaryTests(unittest.TestCase):
+    def test_http_routes_only_depend_on_facades_and_foundation_types(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        foundation = {"app.auth", "app.models", "app.analysis_models", "app.config"}
+        violations = []
+        for path in (app_dir / "routes").glob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                modules = ([node.module or ""] if isinstance(node, ast.ImportFrom)
+                           else [alias.name for alias in node.names] if isinstance(node, ast.Import) else [])
+                for module in modules:
+                    if module.startswith("app") and module not in foundation and not module.startswith("app.architecture."):
+                        violations.append(f"{path.name}:{node.lineno}: {module}")
+        self.assertEqual(violations, [])
+
+    def test_ddl_and_environment_reads_stay_at_their_boundaries(self) -> None:
+        app_dir = Path(__file__).resolve().parents[1] / "app"
+        violations = []
+        for path in app_dir.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            if path.name != "config.py":
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                        if node.value.id == "os" and node.attr in {"environ", "getenv"}:
+                            violations.append(f"{path.name}:{node.lineno}: environment read")
+            if path.parent.name != "schema" and path.name != "db_compat.py":
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                        if node.value.strip().lower().startswith(("create table", "alter table", "drop table")):
+                            violations.append(f"{path.name}:{node.lineno}: DDL")
+        for name in ("graph_algorithms.py", "ticket_domain.py"):
+            imports = [n.module for n in ast.walk(ast.parse((app_dir / name).read_text(encoding="utf-8"))) if isinstance(n, ast.ImportFrom)]
+            self.assertFalse(any(module and ("store" in module or module == "app.database") for module in imports))
+        self.assertEqual(violations, [])
+
     def test_panorama_manifest_describes_six_layers(self) -> None:
         manifest = panorama_manifest()
         self.assertEqual(

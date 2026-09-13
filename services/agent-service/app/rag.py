@@ -7,9 +7,11 @@ from uuid import uuid4
 from app import database
 from app.architecture.planning import StageTimer
 from app.call_limits import CallLimitExceeded
+from app.citation_review import review_citations
 from app.config import get_llm_pricing
 from app.database import connect, init_db, insert_document, list_document_rows
 from app.evidence_budget import apply_evidence_budget
+from app.evidence_sources import expand_parent_sources, filter_topic_hits
 from app.graph_store import delete_document_and_rebuild, index_document_graph, init_graph_store
 from app.llm import generate_answer, is_llm_configured
 from app.local_answer import build_fallback_answer, extract_delay_reason
@@ -244,7 +246,7 @@ def answer_question(
             trace=trace,
         )
 
-    useful_hits = [hit for hit in ranked_hits if hit.score > 0]
+    useful_hits = filter_topic_hits(question, (hit for hit in ranked_hits if hit.score > 0))
     trace.append(
         TraceStep(
             name="retrieve",
@@ -276,6 +278,8 @@ def answer_question(
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
+            parent_key=hit.chunk.parent_key,
+            chunk_indices=[hit.chunk.chunk_index],
             score=hit.score,
             content=hit.chunk.content,
             title=hit.chunk.title,
@@ -305,7 +309,7 @@ def answer_question(
     timer.mark()
 
     # 阶段 0.5：先按分数选，再按字符预算裁；模型、证据检查与引用审核看到的是同一份裁剪后证据。
-    budgeted = apply_evidence_budget(sources)
+    budgeted = apply_evidence_budget(expand_parent_sources(sources, scope, question=question))
     sources = budgeted.sources
     trace.append(budgeted.trace_step())
     timer.mark()
@@ -328,6 +332,10 @@ def answer_question(
 
     answer, answer_trace, token_usage = build_answer(question, sources, answer_mode)
     trace.extend(answer_trace)
+    timer.mark()
+
+    answer, citation_status, citation_detail = review_citations(answer, sources)
+    trace.append(TraceStep(name="citation_check", status=citation_status, detail=citation_detail))
     timer.mark()
 
     return ChatResponse(answer=answer, sources=sources, trace=trace, token_usage=token_usage)

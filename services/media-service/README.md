@@ -225,7 +225,7 @@ docs/                        PERFORMANCE / OPERATIONS / DEMO_SCRIPT
 
 ## 已知边界
 
-- 当前使用 Hibernate `ddl-auto=update`，更大规模上线前应引入 Flyway/Liquibase。
+- 当前使用 Flyway V1/V2 管理 H2/MySQL，Hibernate 仅 `validate`。旧库先备份并在副本通过冻结 V1 校验后显式 baseline；不可用 `ddl-auto=update` 绕过升级失败。操作与真实 MySQL 验收见仓库级 [运维知识](../../knowledge/OPERATIONS.md) 和 [质量证据](../../knowledge/QUALITY.md)。
 - S3 实现使用 JDK HttpClient + Signature V4，后续可替换官方 SDK。
 - 直传完成接口已做 owner/token/idempotency 保护，但还没有独立 upload-session 审计表。
 - 当前压测证明 MQ 的削峰语义，不代表生产容量承诺。

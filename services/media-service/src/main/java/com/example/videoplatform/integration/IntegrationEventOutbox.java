@@ -51,6 +51,8 @@ public class IntegrationEventOutbox {
 
 	private Instant claimExpiresAt;
 
+	public String getAggregateId() { return aggregateId; }
+
 	protected IntegrationEventOutbox() {
 		// JPA
 	}

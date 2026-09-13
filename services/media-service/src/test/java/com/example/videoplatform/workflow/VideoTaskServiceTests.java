@@ -30,8 +30,11 @@ class VideoTaskServiceTests {
 	private final WorkflowDispatchOutboxService workflowDispatchOutboxService =
 			org.mockito.Mockito.mock(WorkflowDispatchOutboxService.class);
 	private final VideoTaskService service = new VideoTaskService(
-			taskRepository, userAccountRepository, appProperties, transcriptOutboxService,
-			workflowDispatchOutboxService);
+			taskRepository,
+			new TaskQuotaService(taskRepository, userAccountRepository, appProperties.getQuota()),
+			new TaskLeaseService(taskRepository, appProperties.getWorkflow(), workflowDispatchOutboxService,
+					org.mockito.Mockito.mock(TaskStageLogService.class)),
+			new TaskCompletionService(taskRepository, transcriptOutboxService), workflowDispatchOutboxService);
 
 	@Test
 	void createTaskRejectsWhenActiveTaskLimitIsReached() {

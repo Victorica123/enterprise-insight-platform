@@ -1,10 +1,9 @@
 """Embedding 管理端点。全库重嵌入是重操作，仅 operator/admin 可触发。"""
 from fastapi import APIRouter, Depends
 
+from app.architecture.knowledge import build_embedding_status, get_embedding_stats, rebuild_chunk_embeddings
 from app.auth import ActorPrincipal, current_principal, require_write_role
-from app.database import get_embedding_stats, rebuild_chunk_embeddings
 from app.models import EmbeddingRebuildResponse, EmbeddingStatus
-from app.status_service import build_embedding_status
 
 router = APIRouter(tags=["embeddings"])
 

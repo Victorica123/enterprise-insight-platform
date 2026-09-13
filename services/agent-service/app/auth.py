@@ -11,13 +11,14 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 from fastapi import Header, HTTPException, status
+
+from app.config import get_settings
 
 VALID_ROLES = frozenset({"viewer", "operator", "admin"})
 VALID_WORKSPACE_TYPES = frozenset({"personal", "team"})
@@ -61,13 +62,13 @@ def get_auth_mode() -> str:
     # Fail closed when deployment configuration is absent.  The compatibility
     # header path remains available only when development is explicitly set in
     # .env or the process environment.
-    mode = os.getenv("AGENT_AUTH_MODE", "jwt").strip().lower()
+    mode = get_settings().auth_mode
     return mode if mode in {"development", "jwt"} else "jwt"
 
 
 def validate_auth_configuration() -> None:
     mode = get_auth_mode()
-    environment = os.getenv("APP_ENV", "development").strip().lower()
+    environment = get_settings().environment
     if environment in {"production", "prod"} and mode != "jwt":
         raise RuntimeError("Production requires AGENT_AUTH_MODE=jwt.")
     if mode != "jwt":
@@ -75,7 +76,7 @@ def validate_auth_configuration() -> None:
     algorithm = _jwt_algorithm()
     if algorithm == "HS256" and len(_jwt_secret()) < 32:
         raise RuntimeError("HS256 JWT mode requires SHARED_JWT_SECRET or APP_JWT_SECRET with at least 32 bytes.")
-    if algorithm == "RS256" and not os.getenv("JWT_JWKS_URL", "").strip():
+    if algorithm == "RS256" and not get_settings().jwt_jwks_url:
         raise RuntimeError("RS256 JWT mode requires JWT_JWKS_URL.")
     if algorithm not in {"HS256", "RS256"}:
         raise RuntimeError("JWT_ALGORITHM must be HS256 or RS256.")
@@ -153,7 +154,7 @@ def _validate_claim_semantics(
     claims: dict[str, Any], *, now: int | None, time_validated: bool
 ) -> dict[str, Any]:
     timestamp = int(time.time()) if now is None else now
-    leeway = _read_non_negative_int("JWT_CLOCK_SKEW_SECONDS", 30)
+    leeway = get_settings().jwt_clock_skew_seconds
     exp = _numeric_claim(claims, "exp")
     iat = _numeric_claim(claims, "iat")
     if not time_validated or now is not None:
@@ -164,9 +165,9 @@ def _validate_claim_semantics(
         if "nbf" in claims and _numeric_claim(claims, "nbf") > timestamp + leeway:
             raise JwtValidationError("Access token is not active yet.")
 
-    if claims.get("iss") != os.getenv("APP_JWT_ISSUER", "enterprise-insight"):
+    if claims.get("iss") != get_settings().jwt_issuer:
         raise JwtValidationError("Invalid access token issuer.")
-    expected_audience = os.getenv("APP_JWT_AUDIENCE", "enterprise-insight-api")
+    expected_audience = get_settings().jwt_audience
     audiences = claims.get("aud")
     valid_audience = (
         audiences == expected_audience
@@ -191,7 +192,7 @@ def _validate_claim_semantics(
 
 
 def _decode_rs256_jwt(token: str) -> dict[str, Any]:
-    jwks_url = os.getenv("JWT_JWKS_URL", "").strip()
+    jwks_url = get_settings().jwt_jwks_url
     if not jwks_url:
         raise JwtValidationError("JWT verification is not configured.")
     try:
@@ -202,9 +203,9 @@ def _decode_rs256_jwt(token: str) -> dict[str, Any]:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            issuer=os.getenv("APP_JWT_ISSUER", "enterprise-insight"),
-            audience=os.getenv("APP_JWT_AUDIENCE", "enterprise-insight-api"),
-            leeway=_read_non_negative_int("JWT_CLOCK_SKEW_SECONDS", 30),
+            issuer=get_settings().jwt_issuer,
+            audience=get_settings().jwt_audience,
+            leeway=get_settings().jwt_clock_skew_seconds,
             options={"require": ["exp", "iat", "sub", "tenant_id", "jti"]},
         )
     except Exception as exc:
@@ -253,11 +254,11 @@ def normalize_actor_user(raw_user: str) -> str:
 
 
 def _jwt_secret() -> str:
-    return os.getenv("SHARED_JWT_SECRET") or os.getenv("APP_JWT_SECRET", "")
+    return get_settings().jwt_secret
 
 
 def _jwt_algorithm() -> str:
-    return os.getenv("JWT_ALGORITHM", "HS256").strip().upper()
+    return get_settings().jwt_algorithm
 
 
 def _decode_json_part(encoded: str) -> dict[str, Any]:
@@ -285,11 +286,6 @@ def _numeric_claim(claims: dict[str, Any], name: str) -> int:
     return int(value)
 
 
-def _read_non_negative_int(name: str, default: int) -> int:
-    try:
-        return max(0, int(os.getenv(name, str(default))))
-    except ValueError:
-        return default
 
 
 def _unauthorized(detail: str) -> None:

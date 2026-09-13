@@ -3,7 +3,6 @@
 写操作要求 operator/admin；viewer 只读。
 """
 import logging
-import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -16,12 +15,13 @@ from app.architecture.knowledge import (
     parse_document,
 )
 from app.auth import ActorPrincipal, current_principal, require_write_role
+from app.config import get_settings
 from app.models import DocumentSummary, DocumentUploadResponse
 
 logger = logging.getLogger(__name__)
 
 # 上传大小上限（字节）：防止单文件读满内存；测试可通过环境变量调小。
-MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = get_settings().max_upload_bytes
 
 router = APIRouter(tags=["documents"])
 

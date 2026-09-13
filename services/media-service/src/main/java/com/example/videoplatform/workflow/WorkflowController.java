@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,16 +27,28 @@ public class WorkflowController {
 	private final AppProperties appProperties;
 	private final boolean mqEnabled;
 	private final ModelEgressPolicy modelEgressPolicy;
+	private final TaskStageLogService stageLogs;
 
 	public WorkflowController(VideoTaskService videoTaskService, MediaLifecycleService mediaLifecycleService,
 			WorkflowMetrics workflowMetrics, AppProperties appProperties,
-			@Value("${app.mq.enabled:false}") boolean mqEnabled, ModelEgressPolicy modelEgressPolicy) {
+			@Value("${app.mq.enabled:false}") boolean mqEnabled, ModelEgressPolicy modelEgressPolicy,
+			TaskStageLogService stageLogs) {
 		this.videoTaskService = videoTaskService;
 		this.mediaLifecycleService = mediaLifecycleService;
 		this.workflowMetrics = workflowMetrics;
 		this.appProperties = appProperties;
 		this.mqEnabled = mqEnabled;
 		this.modelEgressPolicy = modelEgressPolicy;
+		this.stageLogs = stageLogs;
+	}
+
+	@GetMapping("/tasks/{taskId}/stages")
+	public ApiResponse<TaskStageLogService.Page> getStages(Authentication authentication,
+			@PathVariable String taskId, @RequestParam(defaultValue = "0") long after,
+			@RequestParam(defaultValue = "50") int limit) {
+		WorkspacePrincipal principal = WorkspacePrincipal.require(authentication);
+		videoTaskService.requireTaskForWorkspace(taskId, principal.tenantId(), principal.userId(), principal.isTeam());
+		return ApiResponse.ok(stageLogs.list(taskId, after, limit));
 	}
 
 	/**

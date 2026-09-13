@@ -28,7 +28,7 @@ class WorkflowDispatchOutboxIntegrationTests {
 	@Test
 	void onlyLeaseOwnerCanCompleteDispatch() {
 		String taskId = "dispatch-" + UUID.randomUUID();
-		repository.saveAndFlush(new WorkflowDispatchOutbox(taskId));
+		repository.saveAndFlush(availableEvent(taskId));
 
 		WorkflowDispatchOutbox claimed = claim(taskId);
 
@@ -42,7 +42,7 @@ class WorkflowDispatchOutboxIntegrationTests {
 	@Test
 	void failedDispatchReturnsToBoundedBackoff() {
 		String taskId = "dispatch-" + UUID.randomUUID();
-		repository.saveAndFlush(new WorkflowDispatchOutbox(taskId));
+		repository.saveAndFlush(availableEvent(taskId));
 		WorkflowDispatchOutbox claimed = claim(taskId);
 
 		assertThat(outboxService.markRetry(taskId, claimed.getClaimId(), "queue full")).isTrue();
@@ -56,7 +56,7 @@ class WorkflowDispatchOutboxIntegrationTests {
 	void expiredLeaseCanBeClaimedAgain() throws Exception {
 		appProperties.getWorkflow().setDispatchClaimLeaseMs(100);
 		String taskId = "dispatch-" + UUID.randomUUID();
-		repository.saveAndFlush(new WorkflowDispatchOutbox(taskId));
+		repository.saveAndFlush(availableEvent(taskId));
 		WorkflowDispatchOutbox first = claim(taskId);
 		Thread.sleep(150);
 
@@ -71,5 +71,12 @@ class WorkflowDispatchOutboxIntegrationTests {
 		return outboxService.claimBatch().stream()
 				.filter(candidate -> taskId.equals(candidate.getTaskId()))
 				.findFirst().orElseThrow();
+	}
+
+	private WorkflowDispatchOutbox availableEvent(String taskId) {
+		WorkflowDispatchOutbox event = new WorkflowDispatchOutbox(taskId);
+		// Eligibility is a fixture precondition, independent of JDBC timestamp rounding or wall-clock resolution.
+		org.springframework.test.util.ReflectionTestUtils.setField(event, "nextAttemptAt", Instant.now().minusSeconds(1));
+		return event;
 	}
 }

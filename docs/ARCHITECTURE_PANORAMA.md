@@ -18,12 +18,12 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 
 | 图片层 | 当前 façade | 现有实现 | 真实状态 |
 | --- | --- | --- | --- |
-| 对话编排中心 | `app.architecture.orchestration` | 执行计划链（分类、规划、模式决策）、执行器注册表、受限补查、分析检查点 | 已实现；仍复用成熟的 `rag.py` 与 `agentic_rag.py` |
+| 对话编排中心 | `app.architecture.conversation` / `orchestration` | JSON/SSE 共用流水线、主题记忆、计划链、注册表、受限补查与分析检查点 | 已实现；复用成熟执行器，记忆不能替代新证据 |
 | 检索与证据 | `app.architecture.retrieval` | 授权范围过滤、关键词/向量/混合召回、RRF、可选 Top-12 rerank、引用和 provenance 校验 | 已实现；当前以 SQLite 扫描基线承载，尚非独立向量数据库集群 |
 | 三层执行器 | `app.architecture.execution` | 六阶段确定性领域 specialist、Agentic RAG、受审批工具执行 | 已实现；specialist 是有界规则执行器，不冒充自治多 Agent Runtime |
 | 知识底座 | `app.architecture.knowledge` | 文档解析/分块、视频转写事件摄取、embedding、图谱索引、知识生命周期 | 已实现；PGVector/Elasticsearch/Neo4j 只对应可替换适配方向 |
 | 治理与审批 | `app.architecture.governance` | PRD 发布、知识候选与生命周期、行动项、审计、CAS 检查点 | 已实现；写操作和知识发布保留人工门禁 |
-| 工程化护栏 | `app.architecture.observability` + 既有 stores | tenant/owner 隔离、JWT、缓存 revision、outbox、Trace、工具审计、保留策略 | 已实现的护栏在本地持久化；Redis、Kafka、MCP Runtime 仍是生产替换点 |
+| 工程化护栏 | `app.architecture.observability` + 配置/存储模块 | Settings、编号迁移、会话续租/预算/取消、JWT scope、revision、outbox、审计与保留 | 本地回归已验证；真实 MySQL、多实例与外部模型需独立验证 |
 
 ## 端到端请求路径
 
@@ -39,6 +39,7 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 `services/agent-service/app/architecture/` 是新的应用边界，不立即搬迁所有大型实现文件。旧模块继续作为 persistence/algorithm adapter，并保持原导入路径，避免一次性破坏已有契约和评测。新功能应优先从以下入口进入：
 
 - `context.py`：从已验证 principal 构造不可变请求上下文；
+- `conversation.py`：JSON/SSE 共用会话、记忆、租约与计量流水线；
 - `orchestration.py`：执行计划链（`planning.py`）+ 执行器注册表，按 `plan.mode` 选择 clarify / tool_only / retrieval / agentic；
 - `retrieval.py`：检索、图谱和证据 provenance；
 - `execution.py`：分析、Agentic RAG 与受控工具；
@@ -48,6 +49,8 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 
 这些 façade 不拥有数据库表，也不改变两个后端服务的职责。Media Service 仍拥有媒体生命周期，Agent Service 仍拥有知识与分析生命周期。
 
+所有 routes 的业务导入已收口到 façade，身份、配置与 DTO 是明确基础例外。DDL 位于编号 `schema/`，配置只从 `config.py` 读取；图算法与工单纯规则已从 store 分离。授权相邻块扩展遵循主题与预算，向量双写 blob/JSON 并有界后台补齐。会话累计模型 40 / 工具 30，默认 120 秒租约续期，SSE 只有 `done` 为最终引用审核结果。决策见 ADR-0016/0017。
+
 ## 生产边界与后续替换
 
 - 当前测试和本地验收使用 SQLite、进程内缓存和 mock/local 模式；它们是可重复的基线，不等于 Redis、Kafka、PGVector、Elasticsearch、Neo4j 或对象存储已经部署。
@@ -56,4 +59,3 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 - 真实生产声明仍需 MySQL、Keycloak、Redis、消息系统、对象存储和模型供应商 smoke 证据，以及故障注入和恢复数据支持。
 
 机器可读映射见 `services/agent-service/app/architecture/manifest.py`，边界回归见 `services/agent-service/tests/test_architecture_boundaries.py`。
-

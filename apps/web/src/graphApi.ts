@@ -55,29 +55,29 @@ export type GraphPathQuery = {
   paths: GraphPath[];
 };
 
-export async function getGraphOverview(): Promise<GraphOverview> {
-  const response = await safeFetch(`${API_BASE_URL}/graph/overview`);
+export async function getGraphOverview(signal?: AbortSignal): Promise<GraphOverview> {
+  const response = await safeFetch(`${API_BASE_URL}/graph/overview`, { signal });
   return parseJsonResponse<GraphOverview>(response);
 }
 
-export async function listGraphEntities(entityType = "", keyword = ""): Promise<GraphEntity[]> {
+export async function listGraphEntities(entityType = "", keyword = "", signal?: AbortSignal): Promise<GraphEntity[]> {
   const params = new URLSearchParams();
   if (entityType) params.set("entity_type", entityType);
   if (keyword) params.set("keyword", keyword);
   const query = params.toString();
-  const response = await safeFetch(`${API_BASE_URL}/graph/entities${query ? `?${query}` : ""}`);
+  const response = await safeFetch(`${API_BASE_URL}/graph/entities${query ? `?${query}` : ""}`, { signal });
   return parseJsonResponse<GraphEntity[]>(response);
 }
 
-export async function listGraphRelations(entity = ""): Promise<GraphRelation[]> {
+export async function listGraphRelations(entity = "", signal?: AbortSignal): Promise<GraphRelation[]> {
   const params = entity ? `?entity=${encodeURIComponent(entity)}` : "";
-  const response = await safeFetch(`${API_BASE_URL}/graph/relations${params}`);
+  const response = await safeFetch(`${API_BASE_URL}/graph/relations${params}`, { signal });
   return parseJsonResponse<GraphRelation[]>(response);
 }
 
-export async function queryGraphPaths(source: string, target: string, maxDepth = 3): Promise<GraphPathQuery> {
+export async function queryGraphPaths(source: string, target: string, maxDepth = 3, signal?: AbortSignal): Promise<GraphPathQuery> {
   const params = new URLSearchParams({ source, target, max_depth: String(maxDepth) });
-  const response = await safeFetch(`${API_BASE_URL}/graph/paths?${params.toString()}`);
+  const response = await safeFetch(`${API_BASE_URL}/graph/paths?${params.toString()}`, { signal });
   return parseJsonResponse<GraphPathQuery>(response);
 }
 

@@ -14,6 +14,8 @@
 4. `knowledge/TECHNICAL_IMPLEMENTATION.md`：准备讲解实现细节时再读。
 5. `knowledge/QUALITY.md`：面试官追问“如何证明”时查验证证据。
 
+架构优化阶段 0–4 已完成；接手时读 `docs/ARCHITECTURE_OPTIMIZATION_PLAN.md` 的当前状态、[ADR-0016](../knowledge/decisions/0016-bounded-conversations-and-sse.md)、[ADR-0017](../knowledge/decisions/0017-settings-schema-and-domain-boundaries.md) 和 [ADR-0018](../knowledge/decisions/0018-media-migrations-stages-and-web-queries.md)。启动 harness 的 `brief` 读取当前知识入口与 Git 状态，不再加载历史归档；`verify` 运行 Agent/Web/维护服务门禁，平台级验证另按维护规范执行。最新测试和真实中间件范围以 `knowledge/QUALITY.md` 为准。
+
 如果只是修一个明确问题，读完本文后直接进入对应模块，不需要通读全部知识文档。
 
 ## 只记住三个边界
@@ -34,8 +36,10 @@
 | --- | --- |
 | 登录、JWT、Workspace、成员角色 | `services/media-service/.../auth/` |
 | 上传、分片、播放与清理 | `services/media-service/.../media/` |
-| 媒体任务状态、幂等和重试 | `services/media-service/.../workflow/` |
-| 转写完成跨服务投递 | `services/media-service/.../integration/` |
+| 媒体任务状态、配额、租约与完成 | `workflow/VideoTaskService`、`TaskQuotaService`、`TaskLeaseService`、`TaskCompletionService` |
+| 阶段执行与分页查询 | `workflow/TaskStageLogService`、`TaskStageObserver`、`WorkflowController` |
+| 转写完成跨服务投递与熔断 | `integration/AgentOutboxDispatcher`、`AgentDeliveryCircuit` |
+| 配置绑定与 H2/MySQL 升级 | `config/AppConfiguration`、`MediaMigrationConfiguration`、`LegacyMediaSchema`；`src/main/resources/db/migration/` |
 
 ### Agent Service
 
@@ -44,15 +48,20 @@
 | 要找的问题 | 入口 | 职责 |
 | --- | --- | --- |
 | 文档/chunk/摄取回执 | `database.py` | 核心知识持久化，不含聊天观测逻辑 |
+| 配置与旧库升级 | `config.py`、`schema/` | Settings 校验、编号迁移、ledger 与启动锁 |
+| JSON/SSE 会话 | `architecture/conversation.py`、`chat_service.py`、`chat_events.py` | 共用授权流水线、有界队列、最终审核与取消 |
+| 主题记忆与会话预算 | `conversation_memory.py`、`conversation_store.py`、`conversation_lease.py` | 窗口/摘要提示、租约续期、预留退还与失效 fencing |
 | 问答指标、日志、反馈、历史引用 | `chat_observability_store.py` | 观测数据与回放 |
 | 标准/Agentic RAG | `rag.py`、`agentic_rag.py` | 工作流编排与回答 |
 | 授权检索和缓存 | `retrievers.py`、`chunk_index.py`、`text.py`、`embeddings.py` | 模型看到证据前的 scope 过滤 |
+| 主题路由与相邻块 | `topic_routing.py`、`evidence_sources.py` | 授权候选澄清、主题过滤、预算内章节扩展 |
+| 向量存储与维护 | `vector_codec.py`、`embedding_maintenance.py` | 二进制/JSON 兼容、有界后台补齐 |
 | 六阶段分析 | `analysis_evidence.py`、`analysis_pipeline.py`、`analysis_store.py` | 冻结证据、阶段执行与恢复 |
 | PRD 发布和派生交付物 | `publication_service.py`、`publication_artifacts.py` | 审批状态与交付物投影 |
 | 知识版本与替代/撤回 | `knowledge_lifecycle_store.py` | 版本物化、CAS 与原子回滚 |
 | 图谱抽取规则 | `graph_extraction.py` | 纯文本到实体/关系，不访问数据库 |
-| 图谱存储和重建 | `graph_store.py`、`graph_rag.py` | 持久化、失效和查询 |
-| 工单与待审批动作 | `ticket_store.py` | 工单、审批状态与恰好一次领取 |
+| 图谱存储和重建 | `graph_store.py`、`graph_algorithms.py`、`graph_rag.py` | 持久化、纯算法、失效和查询 |
+| 工单与待审批动作 | `ticket_store.py`、`ticket_domain.py` | 状态 CAS、审批与纯规则 |
 | 受控工具执行 | `tools.py` | 工具注册、策略校验与执行编排 |
 | 工具审计与指标 | `tool_observability_store.py` | 调用日志、状态统计与时延指标 |
 
@@ -61,6 +70,10 @@
 `apps/web/src/api.ts` 是兼容入口；新增代码应优先进入领域模块：
 
 - 通用请求/JWT：`apiClient.ts`
+- 会话/SSE：`chatApi.ts`、`hooks/useConversation.ts`、`features/qa/`
+- Router/Query/身份边界：`App.tsx`、`queryClient.ts`、`workspaceContext.ts`、`hooks/useWorkspaceSession.ts`
+- 页面数据与状态：`hooks/useQAWorkspace.ts`、`useKnowledgeWorkspace.ts`、`useAnalysisData.ts`、`useMediaWorkspace.ts`、`useTicketsWorkspace.ts`
+- 文档与 Embedding：`knowledgeApi.ts`
 - 分析与发布：`analysisApi.ts`
 - 媒体：`mediaApi.ts`
 - 图谱：`graphApi.ts`
@@ -74,6 +87,8 @@
 | --- | --- | --- |
 | 上传或转写不推进 | Media `workflow/`、`integration/` | 对应 Maven 测试 |
 | 问答召回错误或越权 | `retrievers.py`、`database.py` | RAG 测试 + V6 |
+| 连续追问串题、断流或租约冲突 | `chat_service.py`、`conversation_*`、`evidence_sources.py` | conversation stream tests + Conversation V1；改证据时加 V6 |
+| 启动配置或旧库升级失败 | `config.py`、`schema/` | Settings + schema startup tests |
 | 分析等待后结果漂移 | `analysis_evidence.py`、`analysis_store.py` | analysis workflow + PRD eval |
 | 知识撤回后仍被召回 | `knowledge_lifecycle_store.py`、`retrievers.py` | lifecycle eval + localhost smoke |
 | 图谱残留失效知识 | `graph_store.py` | graph tests + lifecycle eval |
@@ -86,7 +101,7 @@
 - `docs/archive/`：迁移历史，只用于追溯，不代表当前实现。
 - `knowledge/generated/SEMANTIC_INDEX.json`：机器向量索引，禁止人工阅读或编辑。
 - `runtime/`、SQLite、日志和上传文件：运行数据，不是代码事实。
-- `evaluate_v2.py`～`evaluate_v5.py`：历史评测演进；当前合并门禁以 V6、PRD V1 和 Knowledge Lifecycle V1 为主。
+- `evaluate_v2.py`～`evaluate_v5.py`：历史评测演进；当前合并门禁以 V6、PRD V1、Knowledge Lifecycle V1 和 Conversation V1 为主，V5 用于观测回归。
 
 ## 完成修改前
 

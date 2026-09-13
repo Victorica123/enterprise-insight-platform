@@ -18,6 +18,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.chat_events import check_chat_cancelled
 from app.config import CallLimits, get_call_limits
 from app.models import TraceStep
 
@@ -57,6 +58,7 @@ class LimitCounter:
 
     def try_acquire(self, kind: CallKind, *, label: str = "") -> bool:
         """Reserve one call; ``False`` (and a recorded denial) once the budget is spent."""
+        check_chat_cancelled()
         if self.used(kind) >= self.limit_for(kind):
             self.denials.append(f"{kind}:{label or '-'}")
             return False
@@ -139,12 +141,14 @@ def request_call_limits(
 
 def try_acquire_call(kind: CallKind, *, label: str = "") -> bool:
     """Budget gate for tool execution: always allowed outside a bound request."""
+    check_chat_cancelled()
     counter = _COUNTER.get()
     return True if counter is None else counter.try_acquire(kind, label=label)
 
 
 def acquire_call(kind: CallKind, *, label: str = "") -> None:
     """Budget gate for model calls: raises ``CallLimitExceeded`` inside a spent request."""
+    check_chat_cancelled()
     counter = _COUNTER.get()
     if counter is not None:
         counter.acquire(kind, label=label)

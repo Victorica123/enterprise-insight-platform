@@ -21,8 +21,18 @@ from app.publication_artifacts import (
     request_knowledge_lifecycle,
 )
 from app.publication_service import PublicationRuleError, approve_publication, request_publication
+from app.ticket_store import (
+    create_ticket,
+    delete_ticket,
+    get_pending_action,
+    get_ticket,
+    get_ticket_summary,
+    list_pending_actions,
+    list_tickets,
+)
 
 __all__ = [
+    'create_ticket', 'delete_ticket', 'get_pending_action', 'get_ticket', 'get_ticket_summary', 'list_pending_actions', 'list_tickets',
     "PublicationRuleError",
     "approve_publication",
     "decide_knowledge_candidate",

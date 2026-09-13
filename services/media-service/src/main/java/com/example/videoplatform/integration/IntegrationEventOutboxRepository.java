@@ -9,6 +9,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface IntegrationEventOutboxRepository extends JpaRepository<IntegrationEventOutbox, String> {
 
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update IntegrationEventOutbox e set e.status = com.example.videoplatform.integration.IntegrationEventOutbox.DeliveryStatus.PENDING, "
+			+ "e.nextAttemptAt = :retryAt, e.claimId = null, e.claimExpiresAt = null "
+			+ "where e.eventId = :eventId and e.claimId = :claimId and e.claimExpiresAt > :now "
+			+ "and e.status = com.example.videoplatform.integration.IntegrationEventOutbox.DeliveryStatus.CLAIMED")
+	int deferIfOwned(@Param("eventId") String eventId, @Param("claimId") String claimId,
+			@Param("now") Instant now, @Param("retryAt") Instant retryAt);
+
 	List<IntegrationEventOutbox> findTop50ByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAt(
 			IntegrationEventOutbox.DeliveryStatus status, Instant now);
 

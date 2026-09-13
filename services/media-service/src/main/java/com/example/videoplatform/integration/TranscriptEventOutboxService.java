@@ -44,6 +44,12 @@ public class TranscriptEventOutboxService {
 	 */
 	@Transactional
 	public List<IntegrationEventOutbox> claimBatch() {
+		return claimBatch(50);
+	}
+
+	@Transactional
+	public List<IntegrationEventOutbox> claimBatch(int limit) {
+		int boundedLimit = Math.max(1, Math.min(50, limit));
 		Instant now = Instant.now();
 		Instant leaseExpiresAt = now.plusMillis(
 				appProperties.getIntegration().getAgent().getClaimLeaseDurationMs());
@@ -55,6 +61,7 @@ public class TranscriptEventOutboxService {
 
 		List<IntegrationEventOutbox> claimed = new ArrayList<>();
 		for (IntegrationEventOutbox candidate : candidates) {
+			if (claimed.size() >= boundedLimit) break;
 			String claimId = UUID.randomUUID().toString();
 			int updated = repository.claimIfAvailable(
 					candidate.getEventId(),
@@ -66,6 +73,12 @@ public class TranscriptEventOutboxService {
 			}
 		}
 		return claimed;
+	}
+
+	/** A circuit skip is not a delivery attempt and must not exhaust the durable retry budget. */
+	@Transactional
+	public boolean defer(String eventId, String claimId, Instant retryAt) {
+		return repository.deferIfOwned(eventId, claimId, Instant.now(), retryAt) == 1;
 	}
 
 	@Transactional

@@ -1,4 +1,5 @@
 import React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
   Building2, Check, Copy, Loader2, Plus, Settings2, ShieldCheck, UserPlus, Users, X,
@@ -18,6 +19,7 @@ import {
   type WorkspaceSummary,
 } from "../mediaApi";
 import type { WorkspaceSession } from "../session";
+import { workspaceKey } from "../queryClient";
 import { getErrorMessage } from "./common";
 import "../styles/workspace.css";
 
@@ -33,9 +35,8 @@ export function WorkspaceSwitcher(props: {
   onSwitched: (session: WorkspaceSession) => void;
   onError: (message: string) => void;
 }) {
-  const [workspaces, setWorkspaces] = React.useState<WorkspaceSummary[]>([]);
+  const client = useQueryClient();
   const [selectedTenant, setSelectedTenant] = React.useState(props.session.tenantId);
-  const [members, setMembers] = React.useState<WorkspaceMember[]>([]);
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [teamName, setTeamName] = React.useState("");
@@ -43,34 +44,20 @@ export function WorkspaceSwitcher(props: {
   const [issuedInvitation, setIssuedInvitation] = React.useState<WorkspaceInvitation | null>(null);
   const [copied, setCopied] = React.useState(false);
 
+  const directoryKey = workspaceKey(props.session, "workspace-directory");
+  const directory = useQuery({ queryKey: directoryKey, queryFn: ({ signal }) => listWorkspaces(signal) });
+  const workspaces: WorkspaceSummary[] = directory.data ?? [];
   const selectedWorkspace = workspaces.find((item) => item.tenantId === selectedTenant);
+  const membersKey = [...workspaceKey(props.session, "workspace-members"), selectedTenant];
+  const memberQuery = useQuery({ queryKey: membersKey,
+    queryFn: ({ signal }) => listWorkspaceMembers(selectedTenant, signal),
+    enabled: open && selectedWorkspace?.workspaceType === "team" });
+  const members = memberQuery.data ?? [];
+  const queryError = directory.error ?? memberQuery.error;
+  const onError = props.onError;
+  React.useEffect(() => { if (queryError) onError(getErrorMessage(queryError)); }, [queryError, onError]);
 
-  const refreshWorkspaces = React.useCallback(async () => {
-    try {
-      const next = await listWorkspaces();
-      setWorkspaces(next);
-      setSelectedTenant((current) => next.some((item) => item.tenantId === current)
-        ? current
-        : props.session.tenantId);
-    } catch (caught) {
-      props.onError(getErrorMessage(caught));
-    }
-  }, [props.onError, props.session.tenantId]);
-
-  React.useEffect(() => {
-    setSelectedTenant(props.session.tenantId);
-    void refreshWorkspaces();
-  }, [props.session.tenantId, refreshWorkspaces]);
-
-  React.useEffect(() => {
-    if (!open || selectedWorkspace?.workspaceType !== "team") {
-      setMembers([]);
-      return;
-    }
-    void listWorkspaceMembers(selectedWorkspace.tenantId)
-      .then(setMembers)
-      .catch((caught) => props.onError(getErrorMessage(caught)));
-  }, [open, props.onError, selectedWorkspace?.tenantId, selectedWorkspace?.workspaceType]);
+  const refreshWorkspaces = () => client.invalidateQueries({ queryKey: directoryKey });
 
   async function run(label: string, operation: () => Promise<void>) {
     setBusy(label);
@@ -127,7 +114,9 @@ export function WorkspaceSwitcher(props: {
     if (!selectedWorkspace) return;
     void run(`role-${member.userId}`, async () => {
       const updated = await updateWorkspaceMemberRole(selectedWorkspace.tenantId, member.userId, role);
-      setMembers((current) => current.map((item) => item.userId === updated.userId ? updated : item));
+      client.setQueryData<WorkspaceMember[]>(membersKey,
+        (current) => current?.map((item) => item.userId === updated.userId ? updated : item));
+      await refreshWorkspaces();
     });
   }
 

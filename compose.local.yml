@@ -11,6 +11,8 @@ services:
       APP_JWT_AUDIENCE: enterprise-insight-api
       MEDIA_INGEST_SERVICE_TOKEN: ${LOCAL_MEDIA_SERVICE_TOKEN:-local-media-agent-token}
       AGENT_DATABASE_PATH: /app/data/knowledge_base.sqlite3
+      AGENT_WORKERS: ${LOCAL_AGENT_WORKERS:-1}
+      AGENT_THREAD_POOL_SIZE: ${LOCAL_AGENT_THREAD_POOL_SIZE:-40}
       DEFAULT_ANSWER_MODE: local
       RETRIEVER_MODE: keyword
       EMBEDDING_MODEL: ""
@@ -41,7 +43,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/media;MODE=MySQL
       SPRING_DATASOURCE_USERNAME: sa
       SPRING_DATASOURCE_PASSWORD: ""
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      MEDIA_FLYWAY_BASELINE_ON_MIGRATE: ${MEDIA_FLYWAY_BASELINE_ON_MIGRATE:-false}
     volumes:
       - ./runtime/media/db:/app/data
       - ./runtime/media/storage:/app/storage

@@ -4,31 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from app import database
+from app.config import get_settings
+from app.conversation_store import init_conversation_store, purge_expired_conversations
 from app.graph_store import rebuild_graph_scope
 
 logger = logging.getLogger(__name__)
 
 
 def retention_enabled() -> bool:
-    return os.getenv("RETENTION_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+    return get_settings().retention_enabled
 
 
 def validate_retention_configuration() -> None:
-    if not retention_enabled():
-        return
-    for name, default in (
-        ("RETENTION_TRANSCRIPT_DAYS", 180),
-        ("RETENTION_AUDIT_DAYS", 365),
-        ("RETENTION_BATCH_SIZE", 200),
-        ("RETENTION_SCAN_INTERVAL_SECONDS", 3600),
-    ):
-        if _positive_int(name, default) <= 0:
-            raise RuntimeError(f"{name} must be positive.")
+    errors = [error for error in get_settings().errors if error.startswith("RETENTION_")]
+    if retention_enabled() and errors:
+        raise RuntimeError("; ".join(errors))
 
 
 def run_retention_once(now: datetime | None = None) -> dict[str, int]:
@@ -36,14 +30,15 @@ def run_retention_once(now: datetime | None = None) -> dict[str, int]:
     if not retention_enabled():
         return {"video_documents": 0, "audit_records": 0}
     current = now or datetime.now(UTC)
-    transcript_cutoff = (current - timedelta(days=_positive_int("RETENTION_TRANSCRIPT_DAYS", 180))).isoformat(
+    transcript_cutoff = (current - timedelta(days=get_settings().retention_transcript_days)).isoformat(
         timespec="seconds"
     )
-    audit_cutoff = (current - timedelta(days=_positive_int("RETENTION_AUDIT_DAYS", 365))).isoformat(
+    audit_cutoff = (current - timedelta(days=get_settings().retention_audit_days)).isoformat(
         timespec="seconds"
     )
-    batch_size = min(1000, _positive_int("RETENTION_BATCH_SIZE", 200))
+    batch_size = min(1000, get_settings().retention_batch_size)
     audit_deleted = 0
+    init_conversation_store()
 
     with database.connect() as conn:
         documents = conn.execute(
@@ -75,6 +70,7 @@ def run_retention_once(now: datetime | None = None) -> dict[str, int]:
             conn, "analysis_audit_events", "event_id", "created_at", audit_cutoff, batch_size
         )
         audit_deleted += _delete_final_actions(conn, audit_cutoff, batch_size)
+        audit_deleted += purge_expired_conversations(conn, audit_cutoff, batch_size, current.timestamp())
 
     result = {"video_documents": len(document_ids), "audit_records": audit_deleted}
     if document_ids or audit_deleted:
@@ -83,7 +79,7 @@ def run_retention_once(now: datetime | None = None) -> dict[str, int]:
 
 
 async def retention_loop() -> None:
-    interval = _positive_int("RETENTION_SCAN_INTERVAL_SECONDS", 3600)
+    interval = get_settings().retention_scan_interval_seconds
     while True:
         try:
             await asyncio.to_thread(run_retention_once)
@@ -131,10 +127,3 @@ def _delete_final_actions(conn, cutoff: str, limit: int) -> int:
     placeholders = ",".join("?" for _ in ids)
     conn.execute(f"delete from pending_actions where action_id in ({placeholders})", ids)
     return len(ids)
-
-
-def _positive_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except ValueError as exc:
-        raise RuntimeError(f"{name} must be an integer.") from exc

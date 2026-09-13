@@ -1,10 +1,14 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useActiveWorkspace } from "../workspaceContext";
+import { workspaceKey } from "../queryClient";
+import "../styles/graph-monitor.css";
 import {
   Coins, Database, Gauge, Layers3, Loader2, RefreshCw, ScrollText, ThumbsDown,
   ThumbsUp, Workflow,
 } from "lucide-react";
 import {
-  type ActorRole, type CacheMetric, type ChatLog, type ChatLogDetail, type ChatMetricsSummary,
+  type ActorRole, type CacheMetric, type ChatMetricsSummary,
   type EmbeddingStatus, type TraceStep,
   getChatLogDetail, isPermissionError, listChatLogs,
 } from "../api";
@@ -25,50 +29,27 @@ export function MonitorView({ metricsSummary, embeddingStatus, onRefresh, actorR
   onRefresh: () => void | Promise<void>;
   actorRole: ActorRole;
 }) {
-  const [logs, setLogs] = React.useState<ChatLog[]>([]);
+  const session = useActiveWorkspace();
+  const key = workspaceKey(session, "monitor");
   const [outcomeFilter, setOutcomeFilter] = React.useState("");
   const [expandedId, setExpandedId] = React.useState<number | null>(null);
-  const [expandedDetail, setExpandedDetail] = React.useState<ChatLogDetail | null>(null);
-  const [isLoadingLogs, setIsLoadingLogs] = React.useState(false);
-  const [logsPermissionHint, setLogsPermissionHint] = React.useState<string | null>(null);
-
-  const refreshLogs = React.useCallback(async () => {
-    setIsLoadingLogs(true);
-    try {
-      setLogs(await listChatLogs(outcomeFilter, 50, actorRole));
-      setLogsPermissionHint(null);
-    } catch (caught) {
-      // viewer 角色无权读取请求日志时提示切换角色；其余错误静默（服务可能未启动）
-      setLogsPermissionHint(
-        isPermissionError(caught) ? "当前角色（viewer）无权查看请求日志，请在右上角切换为 operator 或 admin。" : null,
-      );
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  }, [outcomeFilter, actorRole]);
-
-  React.useEffect(() => {
-    void refreshLogs();
-  }, [refreshLogs]);
-
-  async function toggleExpand(logId: number) {
-    if (expandedId === logId) {
-      setExpandedId(null);
-      setExpandedDetail(null);
-      return;
-    }
-    setExpandedId(logId);
-    setExpandedDetail(null);
-    try {
-      setExpandedDetail(await getChatLogDetail(logId, actorRole));
-    } catch {
-      setExpandedDetail(null);
-    }
-  }
+  const logsQuery = useQuery({ queryKey: [...key, "logs", outcomeFilter], enabled: actorRole !== "viewer",
+    queryFn: ({ signal }) => listChatLogs(outcomeFilter, 50, actorRole, signal) });
+  const detailQuery = useQuery({ queryKey: [...key, "detail", expandedId], enabled: expandedId !== null && actorRole !== "viewer",
+    queryFn: ({ signal }) => getChatLogDetail(expandedId!, actorRole, signal) });
+  const logs = logsQuery.data ?? [];
+  const expandedDetail = detailQuery.data ?? null;
+  const isLoadingLogs = logsQuery.isFetching;
+  const logsPermissionHint = actorRole === "viewer" || isPermissionError(logsQuery.error)
+    ? "当前工作区角色无权查看请求日志，需要成员或管理员权限。"
+    : logsQuery.error?.message ?? detailQuery.error?.message ?? null;
+  const refreshLogs = () => logsQuery.refetch();
+  function toggleExpand(logId: number) { setExpandedId((current) => current === logId ? null : logId); }
 
   const summary = metricsSummary;
   const vectorCache = embeddingStatus?.cache.embedding_vectors;
   const chunkCache = embeddingStatus?.cache.chunk_snapshots;
+
   return (
     <div className="monitor-container">
       <section className="v3-metrics-band">

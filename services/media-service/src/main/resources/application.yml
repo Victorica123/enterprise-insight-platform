@@ -39,10 +39,15 @@ spring:
     username: ${MYSQL_USERNAME:}
     password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    locations: classpath:db/migration/{vendor}
+    baseline-on-migrate: ${MEDIA_FLYWAY_BASELINE_ON_MIGRATE:false}
+    baseline-version: 1
+    clean-disabled: true
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -128,6 +133,9 @@ app:
       max-attempts: ${APP_AGENT_DISPATCH_MAX_ATTEMPTS:10}
       # 每个 outbox dispatcher 实例独占一条事件的时间；超时后允许其他实例接管。
       claim-lease-duration-ms: ${APP_AGENT_CLAIM_LEASE_DURATION_MS:30000}
+      circuit-failure-threshold: ${APP_AGENT_CIRCUIT_FAILURE_THRESHOLD:3}
+      circuit-open-ms: ${APP_AGENT_CIRCUIT_OPEN_MS:30000}
+      circuit-max-open-ms: ${APP_AGENT_CIRCUIT_MAX_OPEN_MS:300000}
   storage:
     base-path: ${APP_STORAGE_BASE_PATH:./storage}
     type: ${APP_STORAGE_TYPE:local}
@@ -207,7 +215,7 @@ spring:
     driver-class-name: org.h2.Driver
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect

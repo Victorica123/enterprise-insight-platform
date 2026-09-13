@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 from app import database
-from app.embeddings import embedding_from_json
 from app.text import extract_search_terms
+from app.vector_codec import decode_vector
 
 
 @dataclass
@@ -43,6 +43,7 @@ class Chunk:
     knowledge_version_number: int | None = None
     knowledge_lifecycle_status: str | None = None
     superseded_by_document_id: str | None = None
+    parent_key: str = ""
     # Precomputed once per snapshot; empty means "compute lazily" for ad-hoc chunks.
     terms: frozenset[str] = field(default_factory=frozenset, repr=False, compare=False)
 
@@ -140,8 +141,12 @@ def _row_to_chunk(row) -> Chunk:
         filename=row["filename"],
         chunk_index=row["chunk_index"],
         content=content,
-        embedding=embedding_from_json(row["embedding"]),
-        embedding_v2=embedding_from_json(row["embedding_v2"]) if "embedding_v2" in keys else None,
+        embedding=decode_vector(row["embedding_blob"] if "embedding_blob" in keys else None, row["embedding"]),
+        embedding_v2=decode_vector(
+            row["embedding_v2_blob"] if "embedding_v2_blob" in keys else None,
+            row["embedding_v2"] if "embedding_v2" in keys else None,
+        ),
+        parent_key=row["parent_key"] if "parent_key" in keys else "",
         title=title or "",
         tenant_id=row["tenant_id"] if "tenant_id" in keys else "legacy",
         owner_id=row["owner_id"] if "owner_id" in keys else "legacy",

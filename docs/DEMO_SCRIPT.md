@@ -105,7 +105,7 @@ python scripts/local_acceptance.py
 python scripts/local_acceptance.py
 ```
 
-按输出解释 33 项检查中的七组：
+按输出解释 42 项检查中的七组：
 
 1. 身份与个人/团队隔离；
 2. 视频、outbox、Agent 摄取和时间戳证据；

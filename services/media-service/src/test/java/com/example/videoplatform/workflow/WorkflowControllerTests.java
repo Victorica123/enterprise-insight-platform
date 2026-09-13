@@ -28,6 +28,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 @WebMvcTest(WorkflowController.class)
 @Import(SecurityConfig.class)
 class WorkflowControllerTests {
+	@org.springframework.boot.test.mock.mockito.MockBean
+	private TaskStageLogService stageLogs;
 
 	@Autowired MockMvc mockMvc;
 	@MockBean VideoTaskService videoTaskService;

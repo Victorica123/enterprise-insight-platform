@@ -1,4 +1,4 @@
-import { agentRequest } from "./api";
+import { agentRequest } from "./apiClient";
 
 export type AnalysisEvidence = {
   source_type: "document" | "video";
@@ -172,12 +172,12 @@ export type PublicationDeliverables = {
   action_items: ActionItemDraft[];
 };
 
-export function listAnalysisSessions(): Promise<AnalysisSession[]> {
-  return agentRequest<AnalysisSession[]>("/analysis/sessions");
+export function listAnalysisSessions(signal?: AbortSignal): Promise<AnalysisSession[]> {
+  return agentRequest<AnalysisSession[]>("/analysis/sessions", { signal });
 }
 
-export function listPublicationQueue(): Promise<AnalysisSession[]> {
-  return agentRequest<AnalysisSession[]>("/analysis/publication-queue");
+export function listPublicationQueue(signal?: AbortSignal): Promise<AnalysisSession[]> {
+  return agentRequest<AnalysisSession[]>("/analysis/publication-queue", { signal });
 }
 
 export function createAnalysisSession(objective: string, assetIds: string[]): Promise<AnalysisSession> {
@@ -213,12 +213,12 @@ export function approvePrdPublication(
   });
 }
 
-export function listAnalysisAudit(sessionId: string): Promise<AnalysisAuditEvent[]> {
-  return agentRequest<AnalysisAuditEvent[]>(`/analysis/sessions/${sessionId}/audit`);
+export function listAnalysisAudit(sessionId: string, signal?: AbortSignal): Promise<AnalysisAuditEvent[]> {
+  return agentRequest<AnalysisAuditEvent[]>(`/analysis/sessions/${sessionId}/audit`, { signal });
 }
 
-export function getPublicationDeliverables(sessionId: string): Promise<PublicationDeliverables> {
-  return agentRequest<PublicationDeliverables>(`/analysis/sessions/${sessionId}/deliverables`);
+export function getPublicationDeliverables(sessionId: string, signal?: AbortSignal): Promise<PublicationDeliverables> {
+  return agentRequest<PublicationDeliverables>(`/analysis/sessions/${sessionId}/deliverables`, { signal });
 }
 
 export function decideKnowledgeCandidate(

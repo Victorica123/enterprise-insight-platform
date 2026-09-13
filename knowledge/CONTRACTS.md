@@ -38,7 +38,7 @@ Agent 对外返回的通用证据结构区分 `document` 与 `video`。视频引
 
 批准知识为了兼容既有客户端，对外仍使用 `source_type=document`，同时增加 `origin_type=approved_knowledge`，并可返回 `knowledge_candidate_id`、`prd_version_id`、`content_sha256`、知识版本和当前生命周期状态。历史回放还可返回 `superseded_by_document_id`。这些可选 provenance 字段由 `contracts/http/evidence-source-v1.schema.json` 约束；普通上传文档使用 `origin_type=uploaded_document`，视频使用 `origin_type=media_transcript`。
 
-统一访问令牌 V1 声明由 `contracts/identity/jwt-claims-v1.schema.json` 定义；V2 契约 `contracts/identity/jwt-claims-v2.schema.json` 新增必填 `workspace_type` 与 `identity_version=2`。Agent 的生产模式校验 HS256 算法、签名、issuer、audience、时间窗口、`token_use=access`、tenant、subject、role 与 jti；开发兼容身份头不会在 production 模式启动。兼容 V1 令牌读取时缺失 `workspace_type` 按 team 处理，使自批权限失败关闭。
+统一访问令牌 V1 声明由 `contracts/identity/jwt-claims-v1.schema.json` 定义；V2 契约 `contracts/identity/jwt-claims-v2.schema.json` 新增必填 `workspace_type` 与 `identity_version=2`。Agent 校验配置选定的算法（轻量 HS256 或生产试点 RS256/JWKS）、签名、issuer、audience、时间窗口、`token_use=access`、tenant、subject、role 与 jti；开发兼容身份头不会在 production 模式启动。兼容 V1 令牌读取时缺失 `workspace_type` 按 team 处理，使自批权限失败关闭。
 
 统一前端只保存注册/登录返回的 access token；调用两个后端都使用 Bearer JWT。前端的视频筛选通过 `/chat` 的 `asset_ids` 收窄范围，不能扩大 JWT 已限定的 tenant/owner 范围。
 
@@ -75,6 +75,17 @@ PRD 发布契约：
 
 知识批准采用另一条原子边界：候选 CAS、托管知识 document/chunk、图索引和 provenance 在同一数据库事务提交。通用文档删除接口拒绝删除 `source_type=knowledge` 的托管记录，避免绕过治理接口破坏已批准事实。
 
+## 会话问答与 SSE V1
+
+`contracts/http/chat-conversation-v1.schema.json` 定义 `/chat` 与 `/chat/stream` 的兼容新增字段和事件信封：
+
+- `conversation_id` 可空；`memory_mode=none|window|summary` 默认 `none`，不传会话字段的旧客户端仍为无状态问答。携带会话 ID 即使选择 `none` 仍会记录该会话，但不用历史补全。
+- `ChatResponse` 新增可空 `conversation_id`、`exchange_id` 与 `follow_up`，原 answer/sources/trace 等字段保留。
+- `POST /chat` 返回 JSON；`POST /chat/stream` 接受同样请求，以 Bearer JWT 鉴权，发送 `text/event-stream`。`GET /conversations/{conversation_id}` 返回授权会话的 revision 与最近最多 50 个已完成轮次。
+- SSE 事件为 `plan`、`stage`、`delta`、`sources`、`follow_up`、`done`、`error`，共同包含 type/content/timestamp/conversation_id/exchange_id。15 秒空闲心跳是注释帧。`delta.content.text` 是待核验文本，`done.content` 才是最终审核后的 `ChatResponse`；客户端不得把断流前的片段当作完整回答。
+- 个人会话绑定 tenant + owner，团队会话绑定 tenant；ID 本身不授予权限。未知或越权会话返回 404，领取冲突在响应头之前返回 409；SSE 已开始后的失败发送脱敏 `error`。停止通过取消 fetch 完成，没有独立停止或自动重放端点。
+- 文档来源可新增 `parent_key` 与 `chunk_indices`，锚点 `chunk_index` 保留；只扩展同文档同章节的授权相邻块，并遵循问题主题和字符预算。视频片段不合并，原时间戳身份不变。机器约束见 `evidence-source-v1.schema.json`。
+
 ## 缓存可观测性
 
 已鉴权的 `GET /embeddings/status` 以 `contracts/http/cache-observability-v1.schema.json` 为响应契约，在原 Embedding 覆盖率字段之外返回 `cache`：
@@ -88,6 +99,12 @@ PRD 发布契约：
 ## 媒体运行能力可见性
 
 已鉴权的 `GET /api/workflow/runtime` 由 `contracts/http/media-runtime-v1.schema.json` 约束。除调度、并发配额和存储类型外，响应必须明确给出 `transcriptMode=mock|whisper-api` 与 `summaryMode=mock|llm-api`。Web 必须据此标记“验证模式”或“真实处理模式”，不得仅凭任务成功就把 mock 转写包装成真实 AI 能力。
+
+## 媒体阶段记录
+
+`GET /api/workflow/tasks/{taskId}/stages?after=0&limit=50` 沿用任务 JWT/tenant/owner 范围，team 成员含 viewer 可读，跨 scope 返回不存在。数据部分由 `contracts/http/media-task-stages-v1.schema.json` 约束：`items`、`nextCursor`、`hasMore`，limit 为 1–100，after 是排他 ID 游标。
+
+阶段只包含实际执行的 STORAGE_RESOLVE、AUDIO_EXTRACTION、TRANSCRIPTION、SUMMARY、RESULT_REUSE、RESULT_COMMIT、DELIVERY；记录独立 runId、时间和耗时，状态为 RUNNING/SUCCEEDED/FAILED/ABANDONED。失败仅返回枚举错误码，不包含正文、存储路径、凭证或 lease token。旧任务不补造历史，mock 不虚构抽音频。处理任务 lease 恢复会将旧处理阶段标为 ABANDONED，独立 DELIVERY 的硬崩溃残留 RUNNING 暂不自动关联关闭。
 
 ## 版本策略
 

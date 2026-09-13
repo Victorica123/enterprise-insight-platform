@@ -447,15 +447,6 @@
 /* --------------------------------------------------------- responsive */
 
 @media (max-width: 1040px) {
-  .two-column {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    position: static;
-  }
-  .metrics-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
   .v3-metrics-band {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -468,31 +459,12 @@
 }
 
 @media (max-width: 720px) {
-  header {
-    gap: var(--space-md);
-  }
-  header p {
-    padding-left: 0;
-  }
-  .agent-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .v3-metrics-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .select-group {
-    grid-template-columns: 1fr;
-  }
-  .chat-input-row {
-    flex-direction: column;
   }
 }
 
 @media (max-width: 460px) {
-  .metrics-grid,
   .v3-metrics-band {
     grid-template-columns: 1fr;
   }

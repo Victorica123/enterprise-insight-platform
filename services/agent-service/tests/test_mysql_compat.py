@@ -3,10 +3,60 @@ import unittest
 from unittest.mock import patch
 
 from app.database import validate_database_configuration
-from app.db_compat import CompatRow, translate_mysql_sql
+from app.db_compat import CompatRow, MySqlConnectionCompat, translate_mysql_sql
+from app.schema import m008_mysql_text_fields
 
 
 class MySqlCompatibilityTests(unittest.TestCase):
+    def test_metrics_group_alias_quotes_mysql_reserved_key(self):
+        sql, parameters, _ = translate_mysql_sql(
+            "select answer_mode as key, sum(total_tokens) as value "
+            "from chat_metrics where tenant_id = ? group by answer_mode", ("tenant-a",),
+        )
+        self.assertIn("answer_mode as `key`", sql)
+        self.assertIn("group by answer_mode", sql)
+        self.assertEqual(parameters, ("tenant-a",))
+
+    def test_evidence_arrays_and_governance_text_do_not_use_identifier_length(self):
+        for name in ("asset_ids_json", "source_document_ids", "replacement_evidence_json",
+                     "replacement_statement", "reason", "invalidation_reason", "lifecycle_reason"):
+            with self.subTest(column=name):
+                sql, _, _ = translate_mysql_sql(f"create table sample (\n{name} text not null default '[]'\n)")
+                self.assertIn(f"{name} longtext not null default ('[]')", sql)
+                sql, _, _ = translate_mysql_sql(f"alter table sample add column {name} text")
+                self.assertIn(f"{name} longtext", sql)
+
+    def test_mysql_text_upgrade_resumes_after_committed_ddl_and_is_idempotent(self):
+        class InterruptedConnection(MySqlConnectionCompat):
+            def __init__(self):
+                self.types = {}
+                self.alters = []
+                self.fail_once = True
+
+            def execute(self, sql, parameters=()):
+                if sql.startswith("select"):
+                    self.current = parameters
+                    return self
+                if len(self.alters) == 1 and self.fail_once:
+                    self.fail_once = False
+                    raise RuntimeError("interrupted after first DDL commit")
+                self.types[self.current] = "longtext"
+                self.alters.append(sql)
+                return self
+
+            def fetchone(self):
+                return CompatRow(["DATA_TYPE"], [self.types.get(self.current, "varchar")])
+
+        conn = InterruptedConnection()
+        with self.assertRaisesRegex(RuntimeError, "interrupted"):
+            m008_mysql_text_fields.migrate(conn)
+        m008_mysql_text_fields.migrate(conn)
+        completed = conn.alters.copy()
+        m008_mysql_text_fields.migrate(conn)
+        self.assertEqual(conn.alters, completed)
+        self.assertEqual(len(conn.alters), 7)
+        self.assertEqual(len(set(conn.alters)), 7)
+
     def test_translates_placeholders_and_upsert(self):
         sql, parameters, begin = translate_mysql_sql(
             """

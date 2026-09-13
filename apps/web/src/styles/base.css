@@ -644,6 +644,8 @@ input[type="file"]::file-selector-button:hover {
 
 .tab-nav {
   display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: var(--space-xs);
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-xl);
@@ -651,6 +653,8 @@ input[type="file"]::file-selector-button:hover {
 
 .tab-button {
   display: flex;
+  flex-shrink: 0;
+  white-space: nowrap;
   align-items: center;
   gap: var(--space-sm);
   padding: 12px var(--space-lg);
@@ -712,3 +716,9 @@ input[type="file"]::file-selector-button:hover {
 .card > h2 svg {
   color: var(--primary);
 }
+
+@media (max-width: 720px) {
+  header { gap: var(--space-md); }
+  header p { padding-left: 0; }
+}
+.tab-nav a.tab-button { text-decoration: none; }

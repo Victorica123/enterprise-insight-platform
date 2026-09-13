@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.architecture.retrieval import find_paths, get_graph_overview, list_entities, list_relations, rebuild_graph
 from app.auth import (
     ActorPrincipal,
     current_principal,
     require_write_role,
 )
-from app.graph_store import find_paths, get_graph_overview, list_entities, list_relations, rebuild_graph
 from app.models import (
     GraphEntityResponse,
     GraphOverviewResponse,

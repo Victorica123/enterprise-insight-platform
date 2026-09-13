@@ -7,11 +7,14 @@ import {
   type MediaRuntime, type MediaTask, createPlayback, deleteMediaTask, retryMediaTask, uploadVideo,
 } from "../mediaApi";
 import { formatDate, getErrorMessage } from "./common";
+import { MediaTaskStages } from "./MediaTaskStages";
+import type { WorkspaceSession } from "../session";
 import "../styles/media.css";
 
 export type VideoEvidenceRequest = { taskId: string; fileName: string; startMs: number };
 
 export function MediaWorkspace(props: {
+  session: WorkspaceSession;
   tasks: MediaTask[];
   runtime: MediaRuntime | null;
   loading: boolean;
@@ -23,10 +26,11 @@ export function MediaWorkspace(props: {
 }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const canWrite = props.session.role !== "viewer";
 
   async function upload(event: React.FormEvent) {
     event.preventDefault();
-    if (!file) return;
+    if (!canWrite || !file) return;
     setBusy(true);
     try {
       await uploadVideo(file);
@@ -40,6 +44,7 @@ export function MediaWorkspace(props: {
   }
 
   async function mutate(task: MediaTask, action: "retry" | "delete") {
+    if (!canWrite) return;
     if (action === "delete" && !window.confirm(`删除视频任务「${task.fileName}」？`)) return;
     try {
       if (action === "retry") await retryMediaTask(task.taskId);
@@ -73,8 +78,9 @@ export function MediaWorkspace(props: {
           </div> : null}
         </div>
         <form onSubmit={upload} className="video-upload">
-          <input type="file" accept="video/*,.mp4,.mov,.mkv,.webm" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          <button className="button" disabled={!file || busy}>{busy ? <Loader2 size={15} className="spin" /> : <Upload size={15} />}{busy ? "上传中" : "上传视频"}</button>
+          <input type="file" accept="video/*,.mp4,.mov,.mkv,.webm" disabled={!canWrite || busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          <button className="button" disabled={!canWrite || !file || busy}>{busy ? <Loader2 size={15} className="spin" /> : <Upload size={15} />}{busy ? "上传中" : "上传视频"}</button>
+          {!canWrite ? <span>当前角色为只读，可浏览和播放授权视频。</span> : null}
         </form>
       </section>
       <section className="media-toolbar">
@@ -82,7 +88,7 @@ export function MediaWorkspace(props: {
         <button className="icon-button subtle" onClick={() => void props.onRefresh()} title="刷新"><RefreshCw size={16} /></button>
       </section>
       {props.loading ? <div className="card empty-state"><Loader2 size={18} className="spin" /> 正在加载视频任务…</div>
-        : props.tasks.length === 0 ? <div className="card empty-state"><FileVideo2 size={30} /><p>还没有视频。上传一个视频，完整链路会在本机自动运行。</p></div>
+        : props.tasks.length === 0 ? <div className="card empty-state"><FileVideo2 size={30} /><p>{canWrite ? "还没有视频。上传一个视频，完整链路会在本机自动运行。" : "当前工作区还没有视频。"}</p></div>
         : <div className="media-grid">{props.tasks.map((task) => {
           const selected = props.selectedAssetIds.includes(task.videoId);
           const selectionLabel = selected ? "移出 Agent 分析范围" : "纳入 Agent 分析范围";
@@ -104,9 +110,10 @@ export function MediaWorkspace(props: {
             <div className="media-meta"><span><Clock3 size={14} />{formatDuration(task.transcriptDurationMs)}</span><span>v{task.transcriptVersion}</span><span>{task.transcriptSegments.length} 段证据</span></div>
             <div className="media-actions">
               <button className="button secondary" disabled={task.status !== "COMPLETED" || !task.mediaRetained} onClick={() => props.onPlay({ taskId: task.taskId, fileName: task.fileName, startMs: 0 })}><Play size={14} />{task.mediaRetained ? "播放" : "媒体已过保留期"}</button>
-              {task.status === "FAILED" ? <button className="icon-button subtle" onClick={() => void mutate(task, "retry")} title="重试"><RotateCcw size={15} /></button> : null}
-              <button className="icon-button danger" onClick={() => void mutate(task, "delete")} title="删除"><Trash2 size={15} /></button>
+              {task.status === "FAILED" ? <button className="icon-button subtle" disabled={!canWrite} onClick={() => void mutate(task, "retry")} title="重试"><RotateCcw size={15} /></button> : null}
+              <button className="icon-button danger" disabled={!canWrite} onClick={() => void mutate(task, "delete")} title="删除"><Trash2 size={15} /></button>
             </div>
+            <MediaTaskStages task={task} session={props.session} />
           </article>;
         })}</div>}
     </div>
@@ -120,7 +127,11 @@ export function EvidencePlayer({ request, onClose }: { request: VideoEvidenceReq
   React.useEffect(() => {
     setUrl(null); setError(null);
     if (!request) return;
-    void createPlayback(request.taskId).then((playback) => setUrl(playback.url)).catch((caught) => setError(getErrorMessage(caught)));
+    const controller = new AbortController();
+    void createPlayback(request.taskId, controller.signal)
+      .then((playback) => { if (!controller.signal.aborted) setUrl(playback.url); })
+      .catch((caught) => { if (!controller.signal.aborted) setError(getErrorMessage(caught)); });
+    return () => controller.abort();
   }, [request]);
   if (!request) return null;
   return <div className="player-backdrop" role="dialog" aria-modal="true" onClick={onClose}>

@@ -98,6 +98,19 @@ class RealJwtUploadFlowTests {
 		assertThat(completed.get().path("tenantId").asText()).isEqualTo(tenantId);
 		assertThat(completed.get().path("status").asText()).isEqualTo("COMPLETED");
 		assertThat(completed.get().path("transcript").asText()).isNotBlank();
+		MvcResult stages = mockMvc.perform(get("/api/workflow/tasks/" + taskId + "/stages")
+				.header("Authorization", "Bearer " + token))
+				.andExpect(status().isOk()).andReturn();
+		JsonNode records = objectMapper.readTree(stages.getResponse().getContentAsString()).path("data").path("items");
+		assertThat(records).hasSize(4);
+		assertThat(records.findValuesAsText("stage")).containsExactly("STORAGE_RESOLVE", "TRANSCRIPTION", "SUMMARY", "RESULT_COMMIT");
+		assertThat(stages.getResponse().getContentAsString()).doesNotContain("storagePath", "processingLeaseId", "serviceToken");
+		String otherToken = registerAndReturn("stage-outsider").path("token").asText();
+		mockMvc.perform(get("/api/workflow/tasks/" + taskId + "/stages").header("Authorization", "Bearer " + otherToken))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/workflow/tasks/" + taskId + "/stages?limit=101").header("Authorization", "Bearer " + token))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/workflow/tasks/" + taskId + "/stages")).andExpect(status().isForbidden());
 	}
 
 	@Test

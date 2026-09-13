@@ -1,20 +1,20 @@
 import hmac
-import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
-from app.media_ingestion import (
+from app.architecture.knowledge import (
     IngestionConflictError,
     TranscriptIngestionResponse,
     TranscriptReadyEvent,
     ingest_transcript_event,
 )
+from app.config import get_settings
 
 router = APIRouter(prefix="/internal/v1/media", tags=["internal-media"])
 
 
 def require_media_service(authorization: str | None = Header(default=None)) -> None:
-    expected = os.getenv("MEDIA_INGEST_SERVICE_TOKEN", "").strip()
+    expected = get_settings().media_ingest_service_token
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

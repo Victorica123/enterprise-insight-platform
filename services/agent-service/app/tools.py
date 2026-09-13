@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
 
 from app.auth import OPERATOR_ROLES, WRITE_ROLES
 from app.call_limits import current_call_limits
+from app.config import get_settings
 from app.publication_artifacts import settle_action_ticket
 from app.ticket_store import (
     PendingAction,
@@ -324,7 +324,7 @@ def execute_tool(
 
 def _approval_sod_enforced() -> bool:
     """职责分离开关：默认开启；演示单人流可设 APPROVAL_SOD_ENFORCED=0。"""
-    return os.getenv("APPROVAL_SOD_ENFORCED", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return get_settings().approval_sod_enforced
 
 
 def resolve_tool_action(

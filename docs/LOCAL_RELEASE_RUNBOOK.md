@@ -16,15 +16,23 @@ Run from the repository root:
 Run the Agent suite inside `services/agent-service`:
 
 ```powershell
+$env:LLM_ROUTER_ENABLED = '0'
 python -m unittest discover -s tests -q
 ```
 
 Then run from the repository root:
 
 ```powershell
+uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality
 python quality/agent-evals/evaluate_v6.py
+python quality/agent-evals/evaluate_prd.py
+python quality/agent-evals/evaluate_knowledge_lifecycle.py
+python quality/agent-evals/evaluate_conversation.py
+python quality/agent-evals/evaluate_v5.py
 cd apps/web
 npm ci
+npm run lint
+npm test
 npm run build
 cd ../..
 python scripts/local_acceptance.py
@@ -33,6 +41,20 @@ python scripts/update_knowledge.py --check
 ```
 
 Media Service must additionally pass `mvn -q test` on JDK 17/18. A failure caused only by running Mockito/ByteBuddy on unsupported JDK 25 is not a valid product regression result and is not a pass.
+
+Use hash embeddings and `LLM_ROUTER_ENABLED=0` for the evaluation gates. `quality/agent-evals/context-harness.ps1 -Mode verify` runs the Agent, Web and maintenance gates with those overrides, prefers the repository virtualenv, and restores environment variables on exit. Media tests, localhost acceptance and backup/restore remain separate platform gates.
+
+The Agent container starts with `python -m app.serve`, defaults to one worker, and validates typed settings before startup. `LOCAL_AGENT_WORKERS` and `LOCAL_AGENT_THREAD_POOL_SIZE` configure the light Compose; each worker owns its model/cache memory. Eight append-only migrations and a ledger serialize SQLite/MySQL initialization; m008 widens seven MySQL evidence/lifecycle columns to LONGTEXT. MySQL 8.4 new/legacy databases, concurrent Agent startup and database restore passed in an isolated lab on 2026-09-13. Repeat the drill with a copy of the target data before upgrading; vector JSON compatibility does not guarantee whole-schema downgrades. See ADR-0017/0018 and `knowledge/QUALITY.md`.
+
+## Media schema upgrade
+
+Media now uses Flyway V1/V2 for H2 and MySQL; Hibernate only validates the resulting schema. Empty databases migrate automatically. For a legacy database without Flyway history:
+
+1. Stop writers, create and verify a backup, then rehearse against an isolated copy with the matching application configuration.
+2. Set `MEDIA_FLYWAY_BASELINE_ON_MIGRATE=true` only for that verified legacy upgrade. Both Compose files pass this variable to Media. The application checks the frozen V1 tables, columns, primary keys and unique constraints before registering V1 and applying V2.
+3. Verify history, retained business rows and restart behavior, then return the variable to false. Repeat the approved procedure for the target deployment with its own backup.
+
+Do not use `ddl-auto=update`, clean, manual history edits or automatic repair to bypass a failure. Unknown future versions prevent startup. Task-stage logging follows the existing audit retention period; hard-crashed DELIVERY log rows may remain RUNNING even after the outbox is recovered, so inspect both records during incident diagnosis.
 
 ## Persistent localhost workspace
 
@@ -65,6 +87,8 @@ python scripts/local_data.py restore backups/local-YYYYMMDD-HHMMSS.zip --force
 ```
 
 Restore verifies every SHA-256 checksum and SQLite `quick_check`. If existing runtime data is replaced, an automatic `backups/pre-restore-*.zip` is created first.
+
+`local_data.py` covers the light runtime files, not MySQL/MinIO named volumes. The 2026-09-13 isolated lab separately stopped its application writers, dumped both MySQL business databases, verified a ZIP/SHA-256 manifest, restored into new schemas and compared every table's row count and content digest: 33 tables / 518 rows matched. Evidence and the local archive path are in `knowledge/QUALITY.md`. This does not establish MinIO, Keycloak or cross-host recovery.
 
 ## Functional acceptance checklist
 
@@ -103,7 +127,16 @@ The automated localhost runner verifies:
 31. a historical chat replay preserves its original citation and reports the current lifecycle status;
 32. lifecycle requests require a separate explicit decision;
 33. a team lifecycle requester cannot approve the same request, while another write member can.
+34. SSE ends with a verified response retaining video time evidence;
+35. completed conversations persist within the authorized Workspace;
+36. a follow-up reuses topic hints while retrieving evidence again.
+37. stage records satisfy the contract and reflect only executed processing and delivery;
+38. exclusive stage cursors paginate without duplication;
+39. anonymous and cross-owner stage access is rejected;
+40. authorized teammates can read shared task stages;
+41. VIEWER can read stages while media writes remain forbidden;
+42. populated chat metrics aggregate successfully on both SQLite and MySQL.
 
 ## Rollback
 
-Application rollback means checking out the previously accepted Git revision and rebuilding. Data rollback means stopping the local stack and restoring a verified backup. Never overwrite a running H2 database or copy SQLite `-wal` files as a database backup.
+Application rollback requires a schema version supported by that application. When the old application rejects a newer migration ledger, stop writers and restore the matching verified pre-upgrade backup into a recoverable target before switching. Keep the current data available for recovery and review any writes since the backup. Never overwrite a running H2 database or copy SQLite `-wal` files as a database backup.

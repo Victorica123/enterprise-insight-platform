@@ -52,3 +52,14 @@
 .player-dialog header span { color: var(--muted); font-size: 12px; }
 .player-dialog video { display: block; width: 100%; max-height: 72vh; background: #000; }
 @media (max-width: 760px) { .media-hero { align-items: stretch; flex-direction: column; } .video-upload { justify-content: stretch; } }
+.media-stages { margin-top: 12px; border-top: 1px solid var(--border-color, #dce3ec); padding-top: 10px; }
+.media-stages summary { cursor: pointer; font-weight: 600; }
+.media-stages ol { list-style: none; padding: 0; display: grid; gap: 10px; }
+.media-stages li { border-left: 2px solid #b8c8de; padding-left: 10px; overflow-wrap: anywhere; }
+.media-stages li > div { display: flex; justify-content: space-between; gap: 8px; }
+.media-stages small { color: #64748b; }
+.media-stages p { font-size: 13px; margin: 4px 0; }
+.stage-outcome { font-size: 12px; }
+.stage-succeeded { color: #15803d; }
+.stage-failed { color: #b91c1c; }
+.stage-abandoned { color: #8a5a13; }

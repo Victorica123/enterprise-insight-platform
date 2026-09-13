@@ -9,13 +9,14 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 _LONG_TEXT_COLUMNS = {
-    "answer_preview", "confirmations_json", "content", "description",
+    "answer", "rewritten_question", "embedding", "embedding_v2",
+    "answer_preview", "asset_ids_json", "confirmations_json", "content", "description",
     "details_json", "document_ids", "error_message", "evidence",
     "evidence_json", "evidence_snapshot_json", "input_json", "last_error",
-    "feedback_note", "filename", "metadata_json", "objective",
+    "feedback_note", "filename", "invalidation_reason", "lifecycle_reason", "metadata_json", "objective",
     "open_questions_json", "payload",
-    "prd_json", "publication_json", "question", "result", "result_json",
-    "sources_json", "stages_json", "statement", "summary", "trace_json",
+    "prd_json", "publication_json", "question", "reason", "replacement_evidence_json", "replacement_statement", "result", "result_json",
+    "source_document_ids", "sources_json", "stages_json", "statement", "summary", "trace_json",
     "transcript", "transcript_segments_json", "chunk_title",
 }
 
@@ -289,6 +290,7 @@ def _normalize_parameters(sql: str, parameters: tuple[Any, ...]) -> tuple[Any, .
 
 
 def _quote_reserved_key(sql: str) -> str:
+    sql = re.sub(r"\bas\s+key\b", "as `key`", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\bkey\s*=", "`key` =", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\((\s*)key(\s*[,\)])", r"(\1`key`\2", sql, flags=re.IGNORECASE)
     sql = re.sub(r",(\s*)key(\s*[,\)])", r",\1`key`\2", sql, flags=re.IGNORECASE)

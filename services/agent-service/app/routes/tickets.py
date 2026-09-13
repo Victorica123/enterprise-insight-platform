@@ -1,6 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.architecture.execution import execute_tool, resolve_tool_action
+from app.architecture.governance import (
+    create_ticket,
+    delete_ticket,
+    get_pending_action,
+    get_ticket,
+    get_ticket_summary,
+    list_pending_actions,
+    list_tickets,
+)
 from app.auth import (
     ActorPrincipal,
     current_principal,
@@ -15,15 +24,6 @@ from app.models import (
     TicketListResponse,
     TicketResponse,
     TicketStatusDraftRequest,
-)
-from app.ticket_store import (
-    create_ticket,
-    delete_ticket,
-    get_pending_action,
-    get_ticket,
-    get_ticket_summary,
-    list_pending_actions,
-    list_tickets,
 )
 
 router = APIRouter(tags=["tickets"])

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/media-task-stages-v1.schema.json",
+  "title": "Authorized media task stage page v1",
+  "description": "GET /api/workflow/tasks/{taskId}/stages?after=0&limit=50. Uses the same JWT Workspace scope as the task. Cursor is exclusive; limit is 1-100. Only executed stages are recorded. Task lease recovery marks interrupted processing stages ABANDONED; independent DELIVERY records left RUNNING by a hard crash are not automatically closed. No media content, storage path, credentials or lease tokens are exposed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "nextCursor", "hasMore"],
+  "properties": {
+    "items": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "runId", "stage", "status", "startedAt", "finishedAt", "durationMs", "errorCode"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 1},
+          "runId": {"type": "string", "format": "uuid"},
+          "stage": {"enum": ["STORAGE_RESOLVE", "AUDIO_EXTRACTION", "TRANSCRIPTION", "SUMMARY", "RESULT_REUSE", "RESULT_COMMIT", "DELIVERY"]},
+          "status": {"enum": ["RUNNING", "SUCCEEDED", "FAILED", "ABANDONED"]},
+          "startedAt": {"type": "string", "format": "date-time"},
+          "finishedAt": {"type": ["string", "null"], "format": "date-time"},
+          "durationMs": {"type": ["integer", "null"], "minimum": 0},
+          "errorCode": {"enum": [null, "STAGE_FAILED", "LEASE_RECOVERED", "DELIVERY_REJECTED", "DELIVERY_RETRY", "LEASE_LOST"]}
+        }
+      }
+    },
+    "nextCursor": {"type": "integer", "minimum": 0},
+    "hasMore": {"type": "boolean"}
+  }
+}

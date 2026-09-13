@@ -56,6 +56,7 @@ class RetrievalResult:
     # "disabled": no reranker configured; "applied": head re-ordered;
     # "unavailable": configured but inference failed -> fused order kept, made visible in trace.
     rerank_status: str = "disabled"
+    embedding_status: str = "not_used"
 
 
 # RRF 的平滑常数，取检索文献常用的 60：排名靠前的差异被放大，长尾被压平。
@@ -155,33 +156,28 @@ class EmbeddingRetriever:
         return self.search_chunks(query_texts, list(load_chunk_index(scope).chunks))
 
     def search_chunks(self, query_texts: list[str], chunks: list[Chunk]) -> RetrievalResult:
-        # A3: 真实语义 embedding 优先（query 与缺失 chunk 向量各批量推理一次）；
-        # 模型不可用或推理失败时整体回退哈希 n-gram 版。
+        # Never infer a corpus of missing vectors on a user request. A partial
+        # v2 index uses one consistent hash space until background backfill finishes.
         if is_real_embedding_available():
-            real_hits = self._search_real(query_texts, chunks)
-            if real_hits is not None:
-                return real_hits
-
-        return self._search_hash(query_texts, chunks)
+            if all(chunk.embedding_v2 for chunk in chunks):
+                real_hits = self._search_real(query_texts, chunks)
+                if real_hits is not None:
+                    real_hits.embedding_status = "semantic"
+                    return real_hits
+                status = "hash_query_failed"
+            else:
+                status = "hash_backfill_pending"
+        else:
+            status = "hash_model_unavailable"
+        result = self._search_hash(query_texts, chunks)
+        result.embedding_status = status
+        return result
 
     def _search_real(self, query_texts: list[str], chunks: list[Chunk]) -> RetrievalResult | None:
         query_vectors = embed_real(query_texts)
         if query_vectors is None:
             return None
-        chunk_vectors: list[list[float] | None] = []
-        missing_indexes: list[int] = []
-        for index, chunk in enumerate(chunks):
-            if chunk.embedding_v2:
-                chunk_vectors.append(chunk.embedding_v2)
-            else:
-                chunk_vectors.append(None)
-                missing_indexes.append(index)
-        if missing_indexes:
-            generated = embed_real([chunks[i].content for i in missing_indexes])
-            if generated is None:
-                return None
-            for offset, index in enumerate(missing_indexes):
-                chunk_vectors[index] = generated[offset]
+        chunk_vectors = [chunk.embedding_v2 for chunk in chunks]
 
         hits: list[RetrievalHit] = []
         for index, chunk in enumerate(chunks):
@@ -330,6 +326,7 @@ class HybridRetriever:
             hits=ranked_hits,
             scanned_count=max(keyword_result.scanned_count, embedding_result.scanned_count),
             rerank_status=rerank_status,
+            embedding_status=embedding_result.embedding_status,
         )
 
     def _rerank_head(

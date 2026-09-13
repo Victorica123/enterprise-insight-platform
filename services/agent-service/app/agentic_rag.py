@@ -21,6 +21,7 @@ from app.architecture.planning import (
 from app.citation_review import review_citations
 from app.config import get_llm_pricing
 from app.evidence_budget import apply_evidence_budget
+from app.evidence_sources import expand_parent_sources, filter_topic_hits
 from app.graph_rag import lookup_graph
 from app.llm_router import (
     llm_plan_queries,
@@ -679,7 +680,7 @@ def retrieve_until_sufficient(state: AgenticRagState) -> None:
         merge_hits(state.hits, result.hits)
         state.sources = hits_to_sources(state.hits, state.question)
         # 阶段 0.5：证据字符预算作用于按分数选出的来源；每轮从完整 chunk 重新裁剪，不会叠加
-        budgeted = apply_evidence_budget(state.sources)
+        budgeted = apply_evidence_budget(expand_parent_sources(state.sources, state.retrieval_scope, question=state.question))
         state.sources = budgeted.sources
         useful_count = sum(1 for hit in result.hits if hit.score > 0)
         top_score = state.sources[0].score if state.sources else 0
@@ -745,7 +746,7 @@ def hits_to_sources(
     question: str = "",
 ) -> list[Source]:
     ranked = sorted(
-        hits.values(),
+        filter_topic_hits(question, hits.values()),
         key=lambda item: item.score + title_term_boost(question, item.chunk.title),
         reverse=True,
     )[:MAX_SOURCES]
@@ -759,6 +760,8 @@ def hits_to_sources(
             document_id=hit.chunk.document_id,
             filename=hit.chunk.filename,
             chunk_index=hit.chunk.chunk_index,
+            parent_key=hit.chunk.parent_key,
+            chunk_indices=[hit.chunk.chunk_index],
             score=hit.score,
             content=hit.chunk.content,
             title=hit.chunk.title,

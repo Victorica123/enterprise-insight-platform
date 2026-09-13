@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from contextvars import ContextVar, Token
+
+from app.config import get_settings
 
 _TENANT: ContextVar[str | None] = ContextVar("model_egress_tenant", default=None)
 
@@ -23,16 +24,9 @@ def reset_model_egress_tenant(token: Token[str | None]) -> None:
 def is_model_egress_allowed(tenant_id: str | None = None) -> bool:
     tenant = (tenant_id if tenant_id is not None else _TENANT.get()) or ""
     tenant = tenant.strip()
-    environment = os.getenv("APP_ENV", "development").strip().lower()
-    policy = os.getenv(
-        "MODEL_EGRESS_POLICY",
-        "allowlist" if environment in {"production", "prod"} else "allow",
-    ).strip().lower()
-    allowed = {
-        value.strip()
-        for value in os.getenv("MODEL_EGRESS_ALLOWED_TENANTS", "").split(",")
-        if value.strip()
-    }
+    environment = get_settings().environment
+    policy = get_settings().model_egress_policy
+    allowed = get_settings().model_egress_allowed_tenants
     # Production never accepts a global allow switch: each workspace must be named.
     if environment in {"production", "prod"}:
         return bool(tenant) and tenant in allowed

@@ -1,193 +1,37 @@
 """V3 persistence: tickets, approval state, and tool-call audit logs."""
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from app import database
-
-TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
-TICKET_PRIORITIES = {"low", "medium", "high", "critical"}
-FINAL_ACTION_STATUSES = {"succeeded", "failed", "rejected", "expired"}
-_INITIALIZED_DB_PATH: str | None = None
-
-
-@dataclass
-class Ticket:
-    ticket_id: str
-    title: str
-    description: str
-    status: str
-    priority: str
-    assignee: str
-    tenant_id: str = "legacy"
-    owner_id: str = "legacy"
-    source_document_ids: list[str] = field(default_factory=list)
-    risk_level: str = ""
-    created_at: str = ""
-    updated_at: str = ""
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "ticket_id": self.ticket_id,
-            "title": self.title,
-            "description": self.description,
-            "status": self.status,
-            "priority": self.priority,
-            "assignee": self.assignee,
-            "tenant_id": self.tenant_id,
-            "owner_id": self.owner_id,
-            "source_document_ids": self.source_document_ids,
-            "risk_level": self.risk_level,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
-
-
-@dataclass
-class PendingAction:
-    action_id: str
-    action_type: str
-    payload: dict
-    status: str
-    tenant_id: str = "legacy"
-    owner_id: str = "legacy"
-    workspace_type: str = "personal"
-    requested_by: str = "operator"
-    requested_by_user: str = "anonymous"
-    resolved_by: str = ""
-    tool_call_id: str = ""
-    idempotency_key: str = ""
-    result: dict = field(default_factory=dict)
-    error_message: str = ""
-    duration_ms: float = 0.0
-    execution_count: int = 0
-    created_at: str = ""
-    expires_at: str = ""
-    resolved_at: str = ""
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "action_id": self.action_id,
-            "action_type": self.action_type,
-            "payload": self.payload,
-            "status": self.status,
-            "tenant_id": self.tenant_id,
-            "owner_id": self.owner_id,
-            "workspace_type": self.workspace_type,
-            "requested_by": self.requested_by,
-            "requested_by_user": self.requested_by_user,
-            "resolved_by": self.resolved_by,
-            "result": self.result,
-            "error_message": self.error_message,
-            "duration_ms": self.duration_ms,
-            "execution_count": self.execution_count,
-            "created_at": self.created_at,
-            "expires_at": self.expires_at,
-            "resolved_at": self.resolved_at,
-        }
+from app.ticket_domain import (
+    FINAL_ACTION_STATUSES as FINAL_ACTION_STATUSES,
+)
+from app.ticket_domain import (
+    TICKET_PRIORITIES as TICKET_PRIORITIES,
+)
+from app.ticket_domain import (
+    TICKET_STATUSES as TICKET_STATUSES,
+)
+from app.ticket_domain import (
+    PendingAction as PendingAction,
+)
+from app.ticket_domain import (
+    Ticket as Ticket,
+)
+from app.ticket_domain import (
+    _is_expired as _is_expired,
+)
+from app.ticket_domain import (
+    build_idempotency_key as build_idempotency_key,
+)
 
 
 def init_ticket_store() -> None:
-    global _INITIALIZED_DB_PATH
-    current_path = database.database_identity()
-    if database.initialization_marker_is_current(_INITIALIZED_DB_PATH):
-        return
-    database.prepare_database_storage()
-    with database.connect() as conn:
-        conn.execute(
-            """
-            create table if not exists tickets (
-                ticket_id text primary key,
-                title text not null,
-                description text not null,
-                status text not null default 'open',
-                priority text not null default 'medium',
-                assignee text not null default '',
-                source_document_ids text not null default '[]',
-                risk_level text not null default '',
-                created_at text not null,
-                updated_at text not null
-            )
-            """
-        )
-        database.ensure_column(conn, "tickets", "tenant_id", "text not null default 'legacy'")
-        database.ensure_column(conn, "tickets", "owner_id", "text not null default 'legacy'")
-        conn.execute("create index if not exists idx_tickets_status on tickets(status)")
-        conn.execute(
-            "create index if not exists idx_tickets_scope on tickets(tenant_id, owner_id, created_at)"
-        )
-        conn.execute(
-            """
-            create table if not exists pending_actions (
-                action_id text primary key,
-                action_type text not null,
-                payload text not null default '{}',
-                status text not null default 'pending',
-                created_at text not null,
-                resolved_at text
-            )
-            """
-        )
-        pending_columns = {
-            "tenant_id": "text not null default 'legacy'",
-            "owner_id": "text not null default 'legacy'",
-            "workspace_type": "text not null default 'personal'",
-            "requested_by": "text not null default 'operator'",
-            "requested_by_user": "text not null default 'anonymous'",
-            "resolved_by": "text not null default ''",
-            "tool_call_id": "text not null default ''",
-            "idempotency_key": "text not null default ''",
-            "result": "text not null default '{}'",
-            "error_message": "text not null default ''",
-            "duration_ms": "real not null default 0",
-            "execution_count": "integer not null default 0",
-            "expires_at": "text not null default ''",
-        }
-        for column, definition in pending_columns.items():
-            database.ensure_column(conn, "pending_actions", column, definition)
-        conn.execute("create index if not exists idx_pending_actions_status on pending_actions(status)")
-        conn.execute("create index if not exists idx_pending_actions_key on pending_actions(idempotency_key)")
-        conn.execute(
-            "create index if not exists idx_pending_actions_scope "
-            "on pending_actions(tenant_id, status, created_at)"
-        )
-        conn.execute(
-            """
-            create table if not exists tool_call_logs (
-                call_id text primary key,
-                tool_name text not null,
-                action_id text not null default '',
-                operation text not null,
-                requires_approval integer not null,
-                status text not null,
-                actor_role text not null,
-                input_json text not null default '{}',
-                result_json text not null default '{}',
-                error_message text not null default '',
-                duration_ms real not null default 0,
-                created_at text not null,
-                updated_at text not null
-            )
-            """
-        )
-        conn.execute("create index if not exists idx_tool_logs_created on tool_call_logs(created_at)")
-        conn.execute("create index if not exists idx_tool_logs_status on tool_call_logs(status)")
-        for column, definition in {
-            "tenant_id": "text not null default 'legacy'",
-            "owner_id": "text not null default 'legacy'",
-            "actor_user": "text not null default 'anonymous'",
-        }.items():
-            database.ensure_column(conn, "tool_call_logs", column, definition)
-        conn.execute(
-            "create index if not exists idx_tool_logs_scope "
-            "on tool_call_logs(tenant_id, created_at)"
-        )
-    _INITIALIZED_DB_PATH = current_path
+    database.init_db()
 
 
 def utc_now() -> datetime:
@@ -355,14 +199,7 @@ def delete_ticket(
         ).rowcount == 1
 
 
-def build_idempotency_key(
-    action_type: str, payload: dict, tenant_id: str = "legacy", owner_id: str = "legacy",
-) -> str:
-    raw = json.dumps(
-        {"tenant_id": tenant_id, "owner_id": owner_id, "action_type": action_type, "payload": payload},
-        ensure_ascii=False, sort_keys=True,
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
 
 
 def create_pending_action(
@@ -688,12 +525,3 @@ def _load_json(raw: str | None, fallback: object | None = None):
         return json.loads(raw or "{}")
     except (json.JSONDecodeError, TypeError):
         return {} if fallback is None else fallback
-
-
-def _is_expired(raw: str, now: datetime) -> bool:
-    if not raw:
-        return False
-    try:
-        return datetime.fromisoformat(raw) <= now
-    except ValueError:
-        return False

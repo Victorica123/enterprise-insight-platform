@@ -41,6 +41,8 @@ For six-stage analysis, objective retrieval, evidence snapshots or resume behavi
 
 For approved-knowledge materialization, supersede/revoke, historical citation state, or managed-document visibility, run `tests.test_analysis_workflow` and `quality/agent-evals/evaluate_knowledge_lifecycle.py`. Run V6 when active-document filtering or shared retrieval changes.
 
+For conversation memory, topic routing, SSE, leases or cumulative budgets, run `tests.test_conversation_stream` and `quality/agent-evals/evaluate_conversation.py`; run V6 when shared evidence selection changes. Browser checks cover follow-up, new conversation, cancellation and Workspace changes; provider-stream unit tests are separate from real external-model acceptance.
+
 ### Platform
 
 Use for cross-service contracts, unified authentication, end-to-end workflow, deployment or release work. Run:

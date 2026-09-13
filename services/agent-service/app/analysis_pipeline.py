@@ -11,6 +11,7 @@ from app.analysis_models import (
     PrdDraft,
     PrdRequirement,
 )
+from app.config import get_settings
 from app.retrievers import Chunk
 
 
@@ -45,7 +46,7 @@ _SPECIALIST_CONFIGS = (
     _SpecialistConfig("rules", "规则与合规", r"规则|合规|法律|审批|必须|禁止|优先|P[0-3]|权限"),
 )
 _CONFLICT_PATTERN = re.compile(r"冲突|矛盾|不一致|两种口径|不同意见|口径未统一", re.I)
-_SPECIALIST_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis-domain")
+_SPECIALIST_EXECUTOR = ThreadPoolExecutor(max_workers=get_settings().specialist_workers, thread_name_prefix="analysis-domain")
 
 
 def run_six_stage_analysis(

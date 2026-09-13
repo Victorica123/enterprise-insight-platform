@@ -11,10 +11,11 @@ silently sending a half-filled prompt.
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from string import Template
+
+from app.config import get_settings
 
 PROMPT_DIR = Path(__file__).resolve().parent
 PROMPT_SUFFIX = ".txt"
@@ -31,11 +32,13 @@ PROMPT_CATALOG: dict[str, frozenset[str]] = {
     "planner_user": frozenset({"question", "intent"}),
     "tool_selector_system": frozenset({"tools_json"}),
     "tool_selector_user": frozenset({"question"}),
+    "memory_summary_system": frozenset(),
+    "memory_summary_user": frozenset({"previous_summary", "turns"}),
 }
 
 
 def _candidate_paths(name: str) -> list[Path]:
-    override_dir = os.getenv("AGENT_PROMPT_DIR", "").strip()
+    override_dir = get_settings().prompt_dir
     candidates = [Path(override_dir) / f"{name}{PROMPT_SUFFIX}"] if override_dir else []
     candidates.append(PROMPT_DIR / f"{name}{PROMPT_SUFFIX}")
     return candidates

@@ -12,7 +12,7 @@ instead of retrieved, a direct ticket operation skips retrieval).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from app.agentic_rag import CLASSIFY_STEP, PLAN_QUERIES_STEP, answer_agentic_question
@@ -21,12 +21,15 @@ from app.architecture.planning import (
     DEFAULT_CLARIFY_QUESTION,
     ExecutionPlan,
     PreparationChain,
+    is_tool_only_question,
 )
-from app.call_limits import request_call_limits
+from app.call_limits import current_call_limits, request_call_limits
+from app.chat_events import check_chat_cancelled, emit_chat_event
 from app.config import CallLimits
 from app.models import AgentSummary, ChatResponse, TraceStep
 from app.rag import answer_question, deduplicate_preserve_order
 from app.retrievers import RetrievalScope
+from app.topic_routing import route_authorized_topics
 
 # Explicit standard requests keep the cheap single-round path: no router model
 # call, no multi-query planning.  Only the mode decision (clarify gate) runs.
@@ -192,12 +195,23 @@ class ConversationOrchestrator:
 
     def plan(self, request: ConversationInput) -> ExecutionPlan:
         skip = STANDARD_SKIPPED_STEPS if request.workflow_mode != "agentic" else ()
-        return self._chain.run(request.question, request.workflow_mode, skip=skip)
+        decision = None if is_tool_only_question(request.question) else route_authorized_topics(
+            request.question, request.retrieval_scope,
+        )
+        if decision and decision.question:
+            plan = self._chain.run(request.question, request.workflow_mode, skip=STANDARD_SKIPPED_STEPS)
+            return replace(plan, mode="clarify", mode_reason=decision.reason,
+                           clarify_question=decision.question, shadow_mode="clarify", shadow_reason=decision.reason,
+                           trace=(*plan.trace, decision.trace_step()))
+        plan = self._chain.run(request.question, request.workflow_mode, skip=skip)
+        return replace(plan, trace=(*plan.trace, decision.trace_step())) if decision and decision.candidates else plan
 
     def run(self, request: ConversationInput) -> tuple[ChatResponse, ExecutionPlan]:
         """Plan and execute under one per-request call budget; return the plan for metrics."""
-        with request_call_limits(limits=self._call_limits) as counter:
+        with request_call_limits(current_call_limits(), limits=self._call_limits) as counter:
             plan = self.plan(request)
+            emit_chat_event("plan", plan.to_dict())
+            check_chat_cancelled()
             response = self._registry.get(plan.mode).execute(request, plan)
         if counter.attempted:
             response.trace.append(counter.trace_step())

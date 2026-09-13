@@ -1,13 +1,12 @@
 import React from "react";
 import { AlertCircle, BookCheck, CheckCircle2, FileCheck2, ListTodo, Loader2, Play, Send, ShieldCheck, Sparkles } from "lucide-react";
 import {
-  type AnalysisAuditEvent, type AnalysisSession, type PublicationDeliverables,
+  type AnalysisSession,
   approvePrdPublication, confirmAnalysisSession, createActionTicketDraft,
   createAnalysisSession, decideKnowledgeCandidate, decideKnowledgeLifecycle,
-  getPublicationDeliverables, requestKnowledgeLifecycle,
-  listAnalysisAudit, listAnalysisSessions, listPublicationQueue, requestPrdPublication,
+  requestKnowledgeLifecycle, requestPrdPublication,
 } from "../analysisApi";
-import { loadSession } from "../session";
+import { useAnalysisData } from "../hooks/useAnalysisData";
 import { formatTimestamp } from "./MediaWorkspace";
 import { formatDate, getErrorMessage } from "./common";
 import "../styles/analysis.css";
@@ -22,42 +21,18 @@ export function AnalysisWorkspace(props: {
   onPlayEvidence: (assetId: string, startMs: number) => void;
   onError: (message: string) => void;
 }) {
+  const { viewer, sessions, setSessions, active, setActive, audit, deliverables, setDeliverables,
+    refreshAudit, refreshRelated, refreshDeliverables } = useAnalysisData(props.onError);
   const [objective, setObjective] = React.useState("基于选定访谈，生成可评审的产品需求文档");
-  const [sessions, setSessions] = React.useState<AnalysisSession[]>([]);
-  const [active, setActive] = React.useState<AnalysisSession | null>(null);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
-  const [audit, setAudit] = React.useState<AnalysisAuditEvent[]>([]);
-  const [deliverables, setDeliverables] = React.useState<PublicationDeliverables | null>(null);
   const [lifecycleDrafts, setLifecycleDrafts] = React.useState<Record<string, { reason: string; statement: string }>>({});
   const [busy, setBusy] = React.useState(false);
-  const viewer = loadSession();
-
-  const refresh = React.useCallback(async () => {
-    try {
-      const own = await listAnalysisSessions();
-      const queue = viewer?.role === "viewer" ? [] : await listPublicationQueue();
-      const next = [...own, ...queue.filter((candidate) => !own.some((item) => item.session_id === candidate.session_id))];
-      setSessions(next);
-      setActive((current) => current ? next.find((item) => item.session_id === current.session_id) ?? current : next[0] ?? null);
-    } catch (caught) { props.onError(getErrorMessage(caught)); }
-  }, [props.onError, viewer?.role]);
-
-  React.useEffect(() => { void refresh(); }, [refresh]);
-
-  React.useEffect(() => {
-    if (!active || active.owner_id !== viewer?.userId) { setAudit([]); return; }
-    void listAnalysisAudit(active.session_id).then(setAudit).catch((caught) => props.onError(getErrorMessage(caught)));
-  }, [active?.session_id, active?.owner_id, props.onError, viewer?.userId]);
-
-  React.useEffect(() => {
-    if (!active || active.status !== "PUBLISHED") { setDeliverables(null); return; }
-    void getPublicationDeliverables(active.session_id)
-      .then(setDeliverables)
-      .catch((caught) => props.onError(getErrorMessage(caught)));
-  }, [active?.session_id, active?.status, props.onError]);
+  const canWrite = viewer.role !== "viewer";
 
   async function create(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true);
+    event.preventDefault();
+    if (!canWrite) return;
+    setBusy(true);
     try {
       const created = await createAnalysisSession(objective.trim(), props.selectedAssetIds);
       setActive(created); setSessions((current) => [created, ...current]); setAnswers({});
@@ -67,7 +42,7 @@ export function AnalysisWorkspace(props: {
 
   async function confirm(event: React.FormEvent) {
     event.preventDefault();
-    if (!active?.resume_token) return;
+    if (!canWrite || !active?.resume_token) return;
     setBusy(true);
     try {
       const updated = await confirmAnalysisSession(active.session_id, active.resume_token, answers);
@@ -81,12 +56,12 @@ export function AnalysisWorkspace(props: {
     setActive(updated);
     setSessions((current) => current.map((item) => item.session_id === updated.session_id ? updated : item));
     if (updated.owner_id === viewer?.userId) {
-      void listAnalysisAudit(updated.session_id).then(setAudit).catch((caught) => props.onError(getErrorMessage(caught)));
+      void refreshAudit();
     }
   }
 
   async function requestPublication() {
-    if (!active) return;
+    if (!canWrite || !active) return;
     setBusy(true);
     try { replaceSession(await requestPrdPublication(active.session_id)); }
     catch (caught) { props.onError(getErrorMessage(caught)); }
@@ -94,7 +69,7 @@ export function AnalysisWorkspace(props: {
   }
 
   async function approvePublication() {
-    if (!active?.publication?.approval_token) return;
+    if (!canWrite || !active?.publication?.approval_token) return;
     setBusy(true);
     try {
       replaceSession(await approvePrdPublication(
@@ -105,7 +80,7 @@ export function AnalysisWorkspace(props: {
   }
 
   async function decideCandidate(candidateId: string, approved: boolean) {
-    if (!active) return;
+    if (!canWrite || !active) return;
     setBusy(true);
     try {
       const updated = await decideKnowledgeCandidate(active.session_id, candidateId, approved);
@@ -114,12 +89,13 @@ export function AnalysisWorkspace(props: {
         knowledge_candidates: current.knowledge_candidates.map((item) =>
           item.candidate_id === updated.candidate_id ? updated : item),
       } : current);
+      void refreshRelated();
     } catch (caught) { props.onError(getErrorMessage(caught)); }
     finally { setBusy(false); }
   }
 
   async function requestLifecycle(candidateId: string, action: "REVOKE" | "SUPERSEDE") {
-    if (!active || !deliverables) return;
+    if (!canWrite || !active || !deliverables) return;
     const candidate = deliverables.knowledge_candidates.find((item) => item.candidate_id === candidateId);
     const draft = lifecycleDrafts[candidateId] ?? { reason: "", statement: "" };
     if (!candidate || draft.reason.trim().length < 3) {
@@ -136,24 +112,26 @@ export function AnalysisWorkspace(props: {
         replacement_statement: action === "SUPERSEDE" ? draft.statement.trim() : undefined,
         replacement_evidence: action === "SUPERSEDE" ? candidate.evidence : undefined,
       });
-      setDeliverables(await getPublicationDeliverables(active.session_id));
+      await refreshDeliverables();
+      void refreshRelated();
       setLifecycleDrafts((current) => ({ ...current, [candidateId]: { reason: "", statement: "" } }));
     } catch (caught) { props.onError(getErrorMessage(caught)); }
     finally { setBusy(false); }
   }
 
   async function reviewLifecycle(candidateId: string, requestId: string, approved: boolean) {
-    if (!active) return;
+    if (!canWrite || !active) return;
     setBusy(true);
     try {
       await decideKnowledgeLifecycle(active.session_id, candidateId, requestId, approved);
-      setDeliverables(await getPublicationDeliverables(active.session_id));
+      await refreshDeliverables();
+      void refreshRelated();
     } catch (caught) { props.onError(getErrorMessage(caught)); }
     finally { setBusy(false); }
   }
 
   async function draftActionTicket(actionItemId: string) {
-    if (!active) return;
+    if (!canWrite || !active) return;
     setBusy(true);
     try {
       const updated = await createActionTicketDraft(active.session_id, actionItemId);
@@ -162,6 +140,7 @@ export function AnalysisWorkspace(props: {
         action_items: current.action_items.map((item) =>
           item.action_item_id === updated.action_item.action_item_id ? updated.action_item : item),
       } : current);
+      void refreshRelated();
     } catch (caught) { props.onError(getErrorMessage(caught)); }
     finally { setBusy(false); }
   }
@@ -172,9 +151,10 @@ export function AnalysisWorkspace(props: {
         <span className="eyebrow">EVIDENCE-FIRST DELIVERY</span>
         <h2><Sparkles size={20} />六阶段需求分析</h2>
         <form className="analysis-create" onSubmit={create}>
-          <textarea value={objective} onChange={(event) => setObjective(event.target.value)} rows={4} maxLength={1000} />
+          <textarea disabled={!canWrite} value={objective} onChange={(event) => setObjective(event.target.value)} rows={4} maxLength={1000} />
           <div className="analysis-scope">范围：{props.selectedAssetIds.length ? `${props.selectedAssetIds.length} 个已选视频` : "当前用户全部授权证据"}</div>
-          <button className="button" disabled={busy || objective.trim().length < 3}>{busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />}开始分析</button>
+          <button className="button" disabled={!canWrite || busy || objective.trim().length < 3}>{busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />}开始分析</button>
+          {!canWrite ? <p>当前角色为只读，可查看已有分析与发布结果。</p> : null}
         </form>
       </section>
       <section className="card analysis-history"><h3>分析记录</h3>{sessions.length ? sessions.map((session) =>
@@ -183,7 +163,7 @@ export function AnalysisWorkspace(props: {
         </button>) : <div className="empty-state">暂无分析记录</div>}</section>
     </aside>
     <section className="analysis-main">
-      {!active ? <div className="card empty-state"><FileCheck2 size={34} /><p>选择证据并启动分析。系统会在事实不足时停下来向你确认。</p></div> : <>
+      {!active ? <div className="card empty-state"><FileCheck2 size={34} /><p>{canWrite ? "选择证据并启动分析。系统会在事实不足时停下来向你确认。" : "当前工作区还没有可查看的分析记录。"}</p></div> : <>
         <section className="card analysis-header"><div><span className="eyebrow">{active.status}</span><h2>{active.objective}</h2></div><div className="analysis-provenance"><span>阶段 {active.current_stage}/6 · 检查点 v{active.checkpoint_version}</span><code title={active.evidence_snapshot_sha256}>hybrid · rev {active.evidence_revision} · {active.evidence_snapshot_sha256.slice(0, 12)}</code></div></section>
         <div className="stage-grid">{active.stages.map((stage) => <article className={`card stage-card ${stage.status === "WAITING_CONFIRMATION" ? "waiting" : ""}`} key={stage.stage}>
           <header>{stage.status === "COMPLETED" ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}<strong>{STAGE_NAMES[stage.stage]}</strong></header>
@@ -196,12 +176,12 @@ export function AnalysisWorkspace(props: {
         </article>)}</div>
         {active.status === "WAITING_CONFIRMATION" ? <form className="card confirmation-card" onSubmit={confirm}>
           <h3>需要你的业务判断</h3><p>这些信息会作为“已确认事实”写入本次会话，然后从收敛检查继续，不会重跑历史步骤。</p>
-          {active.open_questions.map((question) => <label key={question.question_id}><strong>{question.question}</strong><span>{question.reason}</span><textarea required value={answers[question.question_id] ?? ""} onChange={(event) => setAnswers({ ...answers, [question.question_id]: event.target.value })} /></label>)}
-          <button className="button" disabled={busy || active.open_questions.some((question) => !(answers[question.question_id] ?? "").trim())}>{busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />}确认并继续</button>
+          {active.open_questions.map((question) => <label key={question.question_id}><strong>{question.question}</strong><span>{question.reason}</span><textarea disabled={!canWrite} required value={answers[question.question_id] ?? ""} onChange={(event) => setAnswers({ ...answers, [question.question_id]: event.target.value })} /></label>)}
+          <button className="button" disabled={!canWrite || busy || active.open_questions.some((question) => !(answers[question.question_id] ?? "").trim())}>{busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />}确认并继续</button>
         </form> : null}
         {active.prd ? <section className="card prd-draft"><header><div><span className="eyebrow">证据化 PRD</span><h2>{active.prd.title}</h2></div><span className="task-status">{active.prd.publication_status}</span></header><p>{active.prd.executive_summary}</p>
           <h3>需求与验收</h3>{active.prd.requirements.map((requirement) => <article key={requirement.requirement_id}><strong>{requirement.requirement_id} · {requirement.title}</strong><p>{requirement.description}</p><ul>{requirement.acceptance_criteria.map((item) => <li key={item}>验收：{item}</li>)}{requirement.assumptions.map((item) => <li className="assumption" key={item}>假设：{item}</li>)}</ul></article>)}
-          <PublicationControls active={active} viewerId={viewer?.userId ?? ""} busy={busy} onRequest={requestPublication} onApprove={approvePublication} />
+          <PublicationControls active={active} viewerId={viewer.userId} canWrite={canWrite} busy={busy} onRequest={requestPublication} onApprove={approvePublication} />
           {audit.length ? <div className="publication-audit"><strong><ShieldCheck size={14} />发布审计</strong>{audit.map((event) => <span key={event.event_id}>{event.action === "PUBLICATION_REQUESTED" ? "申请发布" : "批准发布"} · {event.actor_id} · {formatDate(event.created_at)}</span>)}</div> : null}
         </section> : null}
         {deliverables ? <section className="card publication-deliverables">
@@ -229,7 +209,7 @@ export function AnalysisWorkspace(props: {
                 {canDecide ? <div className="delivery-actions"><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, true)}>批准并沉淀</button><button disabled={busy} onClick={() => void decideCandidate(candidate.candidate_id, false)}>拒绝</button></div> : null}
               </article>;
             })}</div>
-            <div><h3><ListTodo size={16} />行动项草稿</h3>{deliverables.action_items.map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><p>{item.description}</p><span className="task-status">{item.status}</span>{item.ticket_id ? <p className="mono">工单 {item.ticket_id}</p> : null}{item.status === "DRAFT" && item.owner_id === viewer?.userId ? <div className="delivery-actions"><button disabled={busy} onClick={() => void draftActionTicket(item.action_item_id)}>进入工单审批</button></div> : null}</article>)}</div>
+            <div><h3><ListTodo size={16} />行动项草稿</h3>{deliverables.action_items.map((item) => <article key={item.action_item_id}><strong>{item.title}</strong><p>{item.description}</p><span className="task-status">{item.status}</span>{item.ticket_id ? <p className="mono">工单 {item.ticket_id}</p> : null}{item.status === "DRAFT" && canWrite && item.owner_id === viewer?.userId ? <div className="delivery-actions"><button disabled={busy} onClick={() => void draftActionTicket(item.action_item_id)}>进入工单审批</button></div> : null}</article>)}</div>
           </div>
         </section> : null}
       </>}
@@ -244,19 +224,20 @@ function statusName(status: AnalysisSession["status"]): string {
 function PublicationControls(props: {
   active: AnalysisSession;
   viewerId: string;
+  canWrite: boolean;
   busy: boolean;
   onRequest: () => void;
   onApprove: () => void;
 }) {
   if (props.active.status === "DRAFT_READY") return <div className="publication-note">
     <span>发布不会自动发生。个人空间需要再次确认；团队空间需要另一位成员审批。</span>
-    <button className="button" disabled={props.busy} onClick={props.onRequest}>申请正式发布</button>
+    <button className="button" disabled={!props.canWrite || props.busy} onClick={props.onRequest}>申请正式发布</button>
   </div>;
   if (props.active.status === "PUBLISH_PENDING" && props.active.publication) {
     const personal = props.active.publication.policy === "OWNER_RECONFIRMATION";
-    const canApprove = personal
+    const canApprove = props.canWrite && (personal
       ? props.active.owner_id === props.viewerId
-      : props.active.publication.requested_by !== props.viewerId;
+      : props.active.publication.requested_by !== props.viewerId);
     return <div className="publication-note">
       <span>{personal ? "这是第二次独立确认。确认后 PRD 将进入正式发布态并记录审计。" : canApprove ? "团队四眼审批：你不是提交者，可以完成审批。" : "已提交，等待另一位团队成员审批。"}</span>
       {canApprove ? <button className="button" disabled={props.busy} onClick={props.onApprove}>确认正式发布</button> : null}

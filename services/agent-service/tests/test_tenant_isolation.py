@@ -87,7 +87,7 @@ class LegacyStoreTenantIsolationTests(unittest.TestCase):
         self.assertEqual(get_graph_overview(tenant_id="tenant-a", owner_id=None)["document_count"], 2)
 
     def test_legacy_global_graph_is_migrated_to_isolated_legacy_scope(self) -> None:
-        database.init_db()
+        database.prepare_database_storage()
         with database.connect() as conn:
             conn.execute(
                 """

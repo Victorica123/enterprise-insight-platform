@@ -4,7 +4,7 @@
 
 ## 一分钟项目介绍
 
-> 我做的是一个面向客户访谈和需求评审的企业多模态洞察平台。用户上传会议视频后，Media Service 可靠处理并通过事务 outbox 把时间戳证据幂等送入 Agent Service。复杂需求先在 tenant/owner 范围内按 objective 做 hybrid 检索并冻结证据，四类有界 specialist 并行提取领域事实；信息不足时进入持久化检查点，人工补充后保留前四阶段并由数据库 CAS 一次性恢复。PRD、知识和行动项分别人工审批，批准知识才能进入未来 RAG，错误知识还能经四眼治理被替代或撤回。整条链路可用 33 项 localhost 自动验收复现，不依赖服务器、域名或外部模型。
+> 我做的是一个面向客户访谈和需求评审的企业多模态洞察平台。用户上传会议视频后，Media Service 可靠处理并通过事务 outbox 把时间戳证据幂等送入 Agent Service。复杂需求先在 tenant/owner 范围内按 objective 做 hybrid 检索并冻结证据，四类有界 specialist 并行提取领域事实；信息不足时进入持久化检查点，人工补充后保留前四阶段并由数据库 CAS 一次性恢复。PRD、知识和行动项分别人工审批，批准知识才能进入未来 RAG，错误知识还能经四眼治理被替代或撤回。整条链路可用 42 项 localhost 自动验收复现，不依赖服务器、域名或外部模型。
 
 ## 为什么这是一个产品而不是两个项目
 
@@ -85,9 +85,9 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 
 ### 如何证明不是 happy path Demo
 
-- Agent Service 199 个测试；Media Service 135 个测试。
+- Agent Service 244 个测试；Media Service 150 个测试。
 - keyword / embedding / hybrid 三路黄金集门禁。
-- 33 项双用户 localhost 纵向验收。
+- 42 项双用户 localhost 纵向验收。
 - PRD V1 12 个手工场景十项质量门禁，以及 Knowledge Lifecycle V1 三类纵向黄金场景；当前质量项均为 100%，但都不代表真实客户接受率或生产容量。
 - tenant/owner 负向用例、四眼审批、事务回滚、重复事件与冲突用例。
 - Web 类型与生产构建、知识漂移检查和 CI 分故障域 job。
@@ -98,7 +98,7 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 
 ### 正式上线前还缺什么
 
-正式 IdP 与即时撤权、数据/媒体保留期限、外部模型数据策略、版本化数据库迁移、统一平台真实中间件 smoke、Prometheus/OTel 聚合告警、备份恢复演练和基于真实流量批准的 SLO。
+本机真实中间件、MySQL 迁移和两库恢复已验收；正式上线还需目标部署的 Keycloak/RS256 与撤权、外部模型、长时间容量、多实例故障、对象存储灾备、Prometheus/OTel 聚合告警和真实流量 SLO。
 
 ## 面试缺漏自查
 
@@ -108,9 +108,9 @@ Workspace 类型和角色来自 Media Service 根据成员表重新签发的 JWT
 | 你个人做了什么 | 契约、两后端整合、统一前端、授权 RAG、Agent 状态机、验收和知识维护 | 区分原媒体能力、迁移整合与本轮新增能力，不把团队或模型产出全部说成手写 |
 | 最难的工程问题 | 检索前授权、outbox 双幂等、等待恢复、四眼审批、知识原子物化 | 选择一到两个展开，不罗列所有技术名词 |
 | 为什么这样选型 | 两类状态机保留两个服务；当前规模用 SQLite/BGE 基线；副作用用确定性事务治理 | 说明替代方案与触发迁移的条件，不说“这是最佳实践所以用了” |
-| 如何证明正确 | 199 Agent、135 Media、V6 RAG + PRD V1 + Knowledge Lifecycle V1、33 项 localhost、浏览器截图与负向用例 | mock/local 证明链路，不证明真实模型质量和生产吞吐 |
+| 如何证明正确 | 244 Agent、150 Media、V6 RAG + PRD V1 + Knowledge Lifecycle V1 + Conversation V1、42 项 localhost、浏览器截图与负向用例 | mock/local 证明链路，不证明真实模型质量和生产吞吐 |
 | 出过什么问题 | sticky header 造成 fixed 弹窗越界；知识批准曾只有状态没有未来召回；缓存需把授权 scope 纳入 key | 讲发现方式、根因、修复和回归测试，形成真实工程故事 |
-| 如何上线和排障 | trace、状态机、outbox、监控、备份恢复手册和分故障域 CI | 正式 IdP、迁移、告警、灾备与真实中间件统一 smoke 仍是上线缺口 |
+| 如何上线和排障 | trace、状态机、outbox、监控、备份恢复手册和分故障域 CI | 正式身份、目标库升级/回退、外部模型、容量、告警和完整灾备仍是上线缺口 |
 | 和实习经历有什么关系 | 方法论延续：六阶段、等待恢复、知识治理、可观测和人机边界 | 不宣称复刻公司内部 AppServer/WebSocket 或使用了公司代码 |
 
 面试前至少准备三个可复述故事：一个业务闭环、一个失败/修复、一个取舍/边界。每个故事都按“背景 → 约束 → 选择 → 验证 → 仍未解决”讲，避免只背架构名词。

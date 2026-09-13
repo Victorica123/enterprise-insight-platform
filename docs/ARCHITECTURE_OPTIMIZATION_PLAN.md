@@ -1,11 +1,17 @@
 # 架构与工作逻辑优化：方案、功能拆分与前后对比（对标 Nexus Agent）
 
-> 日期：2026-09-11 立项，2026-09-12 三批落地后补充第九、十节  
+> 日期：2026-09-11 立项，2026-09-12 三批落地，2026-09-13 完成接手范围与验证
 > 性质：第一至七节是架构评审与分阶段计划；第八节是落地记录；第九节是项目功能拆分（优化动了哪一块）；第十节是优化前后的量化对比与如何取舍 Nexus 做法  
 > 参照物：Nexus Agent 公开文档（javaup.chat/super-agent，概览 7 页全文可读，25 页细节被付费墙截断，仅能读到设计意图与参数，读不到完整源码）  
 > 评审对象：当前仓库 `services/agent-service`、`services/media-service`、`apps/web`
 
-## 一、结论
+## 当前状态（2026-09-13）
+
+阶段 0–4 已按批准的项目边界完成并验证。阶段 4 补齐 Media 职责与配置拆分、Flyway、真实阶段日志、Agent 投递熔断，以及 Web 路由、查询缓存、请求取消和 feature 状态下沉。Agent **244/244**、Web **21/21**、Media **150/150**；H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 纵向验收均为 **42/42**。Conversation V1 **9/9**，其余门禁、MySQL 迁移/备份恢复、断连恢复和有限 k6 证据见第十一节与 `knowledge/QUALITY.md`。未提交或部署现有服务。
+
+第一至四节保留 **2026-09-11 原始评审快照**，“现状/缺少”指立项时；第十节保留 **2026-09-12 历史提交对比**，不代表本轮新增改造的性能收益。当前完成项看第五、八、九、十一节。
+
+## 一、结论（立项时）
 
 功能闭环已经成立，问题集中在三处：
 
@@ -123,7 +129,7 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 
 ## 五、分阶段改造计划
 
-每个阶段都以现有门禁为退出条件：Agent 全量 pytest、V6 / PRD / Knowledge Lifecycle 评测、`update_knowledge.py --check`。阶段内不改 HTTP 契约字段的删除，只做新增。
+每个阶段以 Agent 全量 unittest、V6 / PRD / Knowledge Lifecycle / Conversation 相关评测、共享 lint 和知识漂移检查为退出条件；跨平台改动另跑 Media、Web 与 localhost 验收。阶段内不改 HTTP 契约字段的删除，只做新增。
 
 ### 阶段 0：工作逻辑显式化（优先级最高，约 1–2 周）
 
@@ -132,9 +138,9 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 | 0.1（已落地 2026-09-12） | 新增 `ExecutionPlan` 与 `PreparationChain`，把 `route_question`、`plan_retrieval`、`_is_tool_only_question` 改写成链上的步骤 | 新增 `app/architecture/planning.py`；改 `orchestration.py` | `test_architecture_boundaries.py` 增加"计划可序列化、步骤可单独跳过"用例 |
 | 0.2（已落地 2026-09-12） | 新增 `ExecutorRegistry` 与 `ClarificationExecutor`；`workflow_mode` 保留为向后兼容输入，服务端最终以 `plan.mode` 为准 | `orchestration.py`、`models.py`（`AgentSummary` 增加 `execution_mode`、`clarify_question`） | 现有 158 个用例不变；新增澄清用例 |
 | 0.3（已落地 2026-09-12） | `TraceStep` 增加 `duration_ms`，每个阶段用 `perf_counter` 计时；`chat_logs.trace_json` 自然携带 | `models.py`、各执行器 | V5 观测评测保持 8/8 |
-| 0.4（已落地 2026-09-12） | 每请求调用上限：`RequestContext` 增加 `LimitCounter`（模型调用 ≤ 8、工具调用 ≤ 6），超限写 trace 并降级 | `context.py`、`llm_client.py`、`tools.py` | 新增超限用例 |
+| 0.4（已落地） | `call_limits.py` 以 ContextVar 绑定每请求模型 8 / 工具 6 上限；会话模式另有累计预留与退还 | `call_limits.py`、`chat_service.py`、`llm_client.py`、`tools.py` | 请求与会话预算回归 |
 | 0.5（已落地 2026-09-12） | 证据字符预算：单来源 ≤ 2200、总量 ≤ 5200，先按分数取，再按预算裁 | `rag.py` 抽出 `evidence_budget.py` | V6 三种模式 decision / recall@3 / fact 不下降 |
-| 0.6 | 澄清判定：借用 Nexus 的五条件与相对置信度公式，输入为路由意图分数与主题锚点命中数；rerank 不可用时写 `rerank_skipped` trace（trace 部分已落地 2026-09-12） | `planning.py`、`retrievers.py` | 新增澄清 / 降级可见用例 |
+| 0.6（已落地 2026-09-13） | 已授权客户/项目候选相对置信度与澄清；明确主题/比较不误拦，无候选走原拒答；精排降级可见 | `topic_routing.py`、`planning.py`、`retrievers.py` | 授权候选、指代歧义及降级回归 |
 | 0.7（已落地 2026-09-12） | Prompt 外置到 `app/prompts/*.txt`（或 Jinja 模板）并缓存，`llm.py`、`llm_router.py` 只做变量填充 | `llm.py`、`llm_router.py`、新增 `app/prompts/` | 现有 LLM 路由用例不变 |
 | 0.8（已落地 2026-09-12） | 影子路由：用户显式传 `workflow_mode` 时，后台仍跑 `decide_mode` 并把"系统会选什么 / 用户选了什么 / 是否一致"写入 `chat_metrics` | `orchestration.py`、`chat_observability_store.py` | 监控面板新增一致率 |
 
@@ -144,36 +150,38 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 | --- | --- | --- |
 | 1.1（已落地 2026-09-12） | 索引时预计算 chunk 词项集并随缓存对象存放（`Chunk.terms: frozenset`），关键词检索不再每请求重新分词 | 关键词路径从 O(N·L) 降到 O(N·|q|) |
 | 1.2（已落地 2026-09-12） | 在缓存项内附带按词项的倒排 `dict[str, list[int]]`，查询只碰命中 posting | 大语料下接近 O(命中数) |
-| 1.3 | 向量改为二进制存储（`array('f')` / `struct`），解析成本降一个数量级；`embedding`（哈希）与 `embedding_v2` 分列保持 | 缓存重建更快 |
-| 1.4（已落地 2026-09-12） | `HybridRetriever` 两路共用一次 `load_chunks()`，并用线程池并行 | 混合模式延迟约减半 |
-| 1.5 | 缺失 `embedding_v2` 的 chunk 不在请求路径推理，改为后台补齐（`embedding_admin` 已有重建入口） | 首请求不再承担整批推理 |
+| 1.3（已落地 2026-09-13） | 带版本头的 float32 blob，旧 JSON 双写/读取回退 | 已验证兼容与损坏回退；新性能收益未测 |
+| 1.4（已落地 2026-09-12） | Hybrid 两路共用授权快照并行检索 | 历史基准见 10.3，不外推固定倍数 |
+| 1.5（已落地 2026-09-13） | 默认 64 条后台补齐，推理不持写事务；请求缺向量时整批 hash 降级 | 首请求不补算文档向量 |
 | 1.6（已落地 2026-09-12） | 缓存失效粒度改为按 tenant 的 revision（`system_meta` 增加 `content_revision:<tenant>`），一个租户写入不再清空所有租户缓存 | 多租户下缓存命中率 |
-| 1.7 | Parent-Child：`chunks` 增加 `parent_key`（标题链哈希），回答阶段把同 parent 的相邻 child 合并到预算上限 | 上下文完整性 |
+| 1.7（已落地 2026-09-13） | 同文档同标题链的授权相邻块在预算内合并；主题过滤贯穿扩展，视频不合并 | 保留 parent_key / chunk_indices 与时间证据 |
 
 ### 阶段 2：会话与流式（约 1–2 周）
 
 | # | 改动 |
 | --- | --- |
-| 2.1 | `ChatRequest` 增加 `conversation_id`；新增 `conversation_turns` 表（tenant / owner / conversation / turn / question / answer / sources_json）；`MemoryStrategy` Protocol 实现 `none` / `window(n=4)`；`summary` 策略在 LLM 可用时增量摘要（每次最多推进 6 轮，摘要上限 1400 字符） |
-| 2.2 | `rewrite_question` 接受历史，做指代补全；LLM 路由可用时走结构化输出，否则规则 |
-| 2.3 | `POST /chat/stream`：`StreamingResponse(text/event-stream)`，事件 `plan`、`stage`、`delta`、`sources`、`follow_up`、`done`、`error`；执行器改为生成器，JSON 端点复用同一生成器收集结果 |
-| 2.4 | LLM 客户端增加 `AsyncOpenAI` 流式通道；`/chat/stream` 用 `async def`，非流式阶段用 `run_in_threadpool` |
-| 2.5 | Web：`QAView` 用 `fetch` + `ReadableStream` 消费 SSE，逐段渲染，结束时补引用与追问 |
+| 2.1（已落地） | 会话/轮次持久化，none/window/summary；最近四轮 2200 字符、摘要 1400 字符、单次最多推进六轮；累计预算 40/30 与可续租 CAS |
+| 2.2（已落地，受限规则） | 从已授权用户问题补全客户/项目字面标识；模型仅用于受约束摘要，历史答案不是证据，比较后的歧义不绑定最后一个主题 |
+| 2.3（已落地） | `/chat/stream` 发送 plan/stage/delta/sources/follow_up/done/error；事件 sink 连接成熟执行器，JSON/SSE 共用 chat_service，最终 done 经过引用审核 |
+| 2.4（已落地） | AsyncOpenAI 答案流、64 项队列、15 秒心跳、整体时限和取消；同步阶段共用 anyio 线程池，本地模板完成后分片 |
+| 2.5（已落地） | Web fetch/ReadableStream，连续追问、停止、新建、最终引用与建议；Workspace 切换/登出清理，generation 阻止迟到回写 |
 
 ### 阶段 3：结构收敛（可与前两阶段并行）
 
 | # | 改动 |
 | --- | --- |
-| 3.1 | `config.py` 扩为单一 `Settings`（pydantic-settings 或 dataclass），启动时一次校验；47 处 `os.getenv` 收口 |
-| 3.2 | DDL 收口到 `app/schema/` 下按序号编号的迁移列表，`init_db` 只跑一次；保留 `ensure_column` 兼容旧库；MySQL 路径准备 Alembic |
-| 3.3 | 路由只导入 `app.architecture.*`；在 `test_architecture_boundaries.py` 增加静态检查（扫描 `routes/` 的 import） |
-| 3.4 | `deduplicate_preserve_order`、n-gram、停用词合并到 `app/text.py` |
-| 3.5 | `graph_store.py`、`ticket_store.py` 按"存储 / 算法"拆分，与 ADR-0015 的 façade 对齐 |
-| 3.6 | 部署：Dockerfile 增加 `--workers`（按 CPU），并明确 anyio 线程池大小；进程内缓存靠 revision 键跨 worker 失效，已可用 |
+| 3.1（已落地） | 不可变 Settings、类型解析、启动校验和环境快照缓存；仅 config.py 读取业务环境变量，保留旧 getter |
+| 3.2（已落地） | schema 编号迁移与 ledger、统一 init_db；SQLite 写事务/进程锁、MySQL advisory lock/可重试步骤，拒绝未知版本；未引入 Alembic，真实 MySQL 待验证 |
+| 3.3（已落地） | routes 业务依赖只经 architecture；auth/models/analysis_models/config 为基础例外；静态回归检查边界 |
+| 3.4（已落地） | 分词、n-gram、停用词、顺序去重统一在 text.py，保留旧导入兼容 |
+| 3.5（已落地） | graph_algorithms 与 ticket_domain 分离纯算法/规则，各 store 保留事务与兼容导出 |
+| 3.6（已落地） | app.serve 默认一个 worker，可显式配置；anyio 默认 40、specialist 默认 4；缓存按 revision 失效，扩进程前量测内存与负载 |
 
-### 阶段 4：Media 与 Web（按需）
+### 阶段 4：Media 与 Web（2026-09-13 已完成）
 
-- Media：`VideoTaskService` 拆为 `TaskQuotaService` / `TaskLeaseService` / `TaskCompletionService`；`AppProperties` 按功能拆 `@ConfigurationProperties`；引入 Flyway 替代 `ddl-auto: update`；增加任务阶段日志表（Nexus 的分步任务日志），让"转码 / 抽音频 / 转写 / 摘要 / 投递"每一步可查；Agent 客户端加熔断与退避。
+Media 已拆分 quota/lease/completion 和 12 个配置组，加入 H2/MySQL Flyway V1/V2、冻结 V1 的旧库接管校验、可查询阶段记录和 Agent 投递熔断。Web 使用 HashRouter 和 TanStack Query，按身份/Workspace/角色隔离缓存、贯穿 AbortSignal，main 状态下沉至 feature controller。真实 MySQL 验收修复 ENUM 元数据、Agent 长文本列和监控 SQL 别名问题；新增 Agent 第八项迁移，既有迁移不重写。前端 viewer 写入口补齐禁用，四眼审批保持原语义。决策见 [ADR-0018](../knowledge/decisions/0018-media-migrations-stages-and-web-queries.md)。
+
+- Media：`VideoTaskService` 拆为 `TaskQuotaService` / `TaskLeaseService` / `TaskCompletionService`；`AppProperties` 保留兼容聚合，12 组 `@ConfigurationProperties` 独立绑定；Flyway 管理迁移，Hibernate 仅 validate。阶段表只记录实际执行的读取、抽音频、转写、摘要、复用、提交和投递；mock 不记录未执行的抽音频，不虚构转码。客户端单次 HTTP 发送，outbox 持久退避，熔断期间不消耗 attempt。
 - Web：引入 `react-router` 与 `@tanstack/react-query`（轮询带退避与 `AbortController`），把 `main.tsx` 的 29 个状态下沉到各 feature；`QAView` 拆成 `QuestionForm` / `AnswerStream` / `SourceList` / `TracePanel`。
 
 ## 六、明确不做的事
@@ -189,74 +197,58 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 
 ## 八、落地记录
 
+- 2026-09-13（阶段 4 最终收尾）：Media **150/150**、Agent **244/244**、Web **21/21**，lint 零 error、Web 构建通过。两种环境各 **42/42** 验收；真实 MySQL 迁移专项 6 项、分片/对象存储 4 项、Agent 断连恢复 3 项、备份恢复 3 项通过。浏览器验证六路由、宽窄屏、QA 会话保留与停止、Workspace/角色清理和只读入口；k6 3 VUs/150 请求零失败，限于本机小样本。现有用户服务保持原状，原迁移来源未改动。最新口径见第十一节。
+- 2026-09-13（接手收尾）：阶段 2 会话/SSE 与阶段 3 配置、编号迁移、领域边界和运行并发配置完成，QA 组件拆分完成。新增 ADR-0016/0017，修正 AGENTS 的失效 Skill 路径与读取归档的启动 harness。最终 Agent **241/241**、Web **13/13**、Media **135/135**、localhost **36/36**；V6、PRD、Knowledge Lifecycle、V5 通过，Conversation V1 **9/9**。浏览器验证真实 JWT 注册/文档上传、连续追问、新建、宽窄屏和 Workspace 清理；临时 SQLite 备份校验及恢复通过。详情见第十一节。
+- 收尾回归发现并修复：显式换客户时来源混入、比较后指代错误、模型摘要虚构主题、相邻块重新引入已排除客户、租约失效误报 500，以及问答页面样式依赖其他懒加载页面。失败样例已纳入回归；未切换模型、未改两服务边界。
+
+
+- 2026-09-13（Codex 接手）：从 Claude 原始会话及项目记忆恢复授权范围，以干净工作树 `40c2093` 和实跑 Agent **199/199** 为起点。第一批补齐 1.3 的可回退二进制向量双写/读取、1.5 的有界后台补齐、1.7 的同文档同章节相邻块合并；0.6 使用已授权客户/项目候选的相对置信度，明确主题和跨主题比较不误拦，空知识库仍走原拒答路径。新增 10 个回归后 Agent **209/209**；V6 hybrid 98%/97%/97%、PRD 12/12、Knowledge Lifecycle、V5 均通过。当时继续阶段 2 会话记忆与 SSE；不修改模型选择，不引入额外中间件。原有三批和对比数字仍按历史基线保留。
+
 - 2026-09-12：阶段 1 的 1.1、1.2、1.4、1.6 与 0.6 中“精排降级可见”部分落地。新增 `app/text.py`（唯一分词器与 CJK 窗口 / 锚点函数）和 `app/chunk_index.py`（授权 chunk 快照、预计算词项、词项倒排、按租户 revision 缓存）；`retrievers.py` 只保留检索通道与融合逻辑，并向后兼容地重导出 `Chunk`、`RetrievalScope`、`load_chunks` 等符号，测试与评测脚本无需改动。`embeddings.py`、`rag.py`、`agentic_rag.py` 的重复文本函数收敛到 `app/text.py`。关键词路径的结果顺序与旧的逐块打分实现完全一致，由 `tests/test_chunk_index.py` 用暴力算法逐 query 对照。验证：Agent 170/170、ruff 0 告警、V6 / PRD / Knowledge Lifecycle / V5 四个门禁通过，数字见 `knowledge/QUALITY.md` 的 2026-09-12 条目。实际顺序与第七节建议不同：先做了阶段 1 的低风险效率项，阶段 0 的执行计划 / 执行器注册表 / 阶段耗时（0.1–0.3）是下一步。
 - 2026-09-12（同日第二批）：阶段 0 的 0.1、0.2、0.3 落地。新增 `app/architecture/planning.py`（`PlanDraft`、`ExecutionPlan`、`PreparationChain`、`StageTimer`、规则版澄清门与工单直达判定）；`agentic_rag.py` 把 `route_question` / `plan_retrieval` 改写为作用于 `PlanDraft` 的 `classify_intent` / `plan_queries` 两个链步骤，state 版本只是薄包装；`orchestration.py` 改为“链生成计划 → `ExecutorRegistry` 按 `plan.mode` 选执行器”，注册 `RetrievalExecutor`、`AgenticExecutor`、`ToolOnlyExecutor`、`ClarificationExecutor`。`workflow_mode` 保留为输入：standard 请求跳过分类与规划步骤，agentic 请求把计划传给处理器复用，不重复调用路由模型。`TraceStep.duration_ms` 由链和各执行器计时；`AgentSummary` 新增 `execution_mode`、`clarify_question`；`execution_plan` 作为 trace 步骤写入，`chat_logs.trace_json` 自然携带。澄清门当前只拦“无内容锚点”的问题（如“为什么？”），0.6 的相对置信度公式仍待做。验证：Agent 176/176、ruff 0 告警、四个门禁通过，黄金集 42 个问题无一被澄清门或工单门误拦。
 - 2026-09-12（同日第三批）：阶段 0 的 0.4、0.5、0.7、0.8 落地。新增 `app/call_limits.py`（`LimitCounter` 以 ContextVar 绑定到请求，模型 8 / 工具 6，`ConversationOrchestrator.run` 在一个预算内完成计划与执行并追加 `call_limits` trace；`llm_client.create_chat_completion` 只在真正出网时消耗预算，`llm_router` 超限退回规则，`rag.build_answer` 超限退回模板，`tools.execute_tool` 超限不执行并记 `limited` 审计）；新增 `app/evidence_budget.py`（单来源 2200 / 总量 5200 字符，先按分数选再按预算裁，句末优先、省略号标记、尾部不足 120 字符即丢弃；单轮与多轮路径都在证据检查前应用，trace 写 `evidence_budget`）；新增 `app/prompts/`（10 个 `.txt` 模板 + `string.Template` 渲染 + 进程内缓存 + `AGENT_PROMPT_DIR` 覆盖，`llm.py` / `llm_router.py` 不再含提示词字面量）；影子路由（`planning.shadow_decision` 规则版，`ExecutionPlan.shadow_mode / shadow_reason / mode_agreement`，`chat_metrics` 三个新列，`/metrics/summary` 五个新字段，监控面板新增“路由一致率”与不一致配对）。`_question_needs_tools` 及其触发词搬到 `planning.py`，旧名字保留。`.env.example` 新增五个变量。`orchestration.answer_chat` 保留，`run_chat` 额外返回计划供指标落库。验证：Agent 199/199（新增 `tests/test_request_budgets.py` 23 个用例）、ruff 0 告警、四个门禁通过（V6 hybrid 98/97/97、PRD 12/12、Knowledge Lifecycle、V5）、Web lint 0 error / 18 warning（与改动前相同）、`npm test` 7/7、生产构建通过。
-- 尚未做：1.3 二进制向量、1.5 后台补齐 `embedding_v2`、1.7 Parent-Child；0.6 的相对置信度公式；阶段 2 至 4 全部。
+- 2026-09-12 当时未做的 0.6、1.3/1.5/1.7、阶段 2/3 已在 2026-09-13 补齐；用户继续授权后的阶段 4 也已完成，以上日期记录保留各批次当时的验证数字。
 - 2026-09-12（对比基准）：新增 `quality/agent-evals/bench_retrieval.py` 合成语料检索基准，对 `7195dad` 与 `9410ef3` 两棵源码树各跑 2,000 与 5,000 chunk，结果见第十节 10.3；同时用 `git grep` 统计两个提交的结构指标（10.2）。
 
 ## 九、项目功能拆分（优化对象的全貌）
 
-本节回答"这个项目到底由哪些功能组成，优化动了哪一块"。功能按服务与入口拆分，最后一列标出三批优化触及的位置；没有标注的功能本轮未改动。
+本节回答"这个项目到底由哪些功能组成，优化动了哪一块"。功能按服务与入口拆分，最后一列反映截至 2026-09-13 的完成状态。Media 实现保持原有边界；文件与接口数量以生成快照为准。
 
-### 9.1 Media Service（Java 17 / Spring Boot 3.3，92 个生产类，135 个测试）
+### 9.1 Media Service（Java 17 / Spring Boot 3.3，150 个测试）
 
 | 功能域 | 包 | 职责 | 关键机制 | 本轮优化 |
 | --- | --- | --- | --- | --- |
 | 身份与工作区 | `auth/` | 登录、JWT 签发与校验、OIDC 身份核验、登录限流、令牌黑名单、Workspace 创建 / 邀请 / 成员角色 | 本地与 Redis 两套限流和黑名单实现，`WorkspacePrincipal` 携带 tenant / owner / role | 未改 |
 | 媒体上传与存储 | `media/` | 单文件、分片、直传三种上传，文件校验，本地 / S3 存储，播放授权，分片清理 | 分片会话在 Redis，播放走签名 URL | 未改 |
-| 媒体任务工作流 | `workflow/` | 任务状态机、租约、分布式锁、活跃任务配额、超时回收 | lease + fencing，CAS 完成，线程池 core 2 / max 4 | 未改 |
-| 转写与摘要 | `transcript/`、`summary/` | 抽音频、Whisper 转写、LLM 摘要，均有 mock 实现 | OpenAI 兼容客户端，mock 用于本地验收 | 未改 |
-| 跨服务投递 | `integration/` | 转写完成事件写 outbox，调度器投递到 Agent Service | outbox claim lease，2 秒调度，3 秒连接 / 15 秒请求超时 | 未改 |
-| 配置与横切 | `config/`、`common/` | `AppProperties` 单点配置、异步线程池、安全链、指标、trace id、统一异常 | 6 个 `@Scheduled` 调度器 | 未改（阶段 4 拆 `AppProperties`） |
+| 媒体任务工作流 | `workflow/` | 任务状态机、租约、分布式锁、活跃任务配额、超时回收 | lease + fencing、CAS 完成、实际阶段日志 | quota/lease/completion 拆分，阶段分页/权限回归 |
+| 转写与摘要 | `transcript/`、`summary/` | 抽音频、Whisper 转写、LLM 摘要，均有 mock 实现 | OpenAI 兼容客户端，mock 用于本地验收 | 只对实际执行阶段计时与记录，保留模式边界 |
+| 跨服务投递 | `integration/` | 转写完成事件写 outbox，调度器投递到 Agent Service | claim lease、持久退避、下游双幂等 | 单次 HTTP、熔断/半开、逐条领取、DELIVERY 日志 |
+| 配置与横切 | `config/`、`common/`、`db/migration/` | 独立配置绑定、异步线程池、安全链、指标、trace id、统一异常 | 十二组配置、Flyway V1/V2、Hibernate validate | 兼容聚合、冻结旧库校验、真实 H2/MySQL 升级验证 |
 
-### 9.2 Agent Service（Python / FastAPI，64 个应用文件，199 个测试）
+### 9.2 Agent Service（Python / FastAPI）
 
-按 HTTP 入口拆分，每个入口后面是它调用的实现模块。
-
-| 入口（路由） | 功能 | 实现模块 | 本轮优化 |
-| --- | --- | --- | --- |
-| `POST /chat` | 证据问答：standard 单轮 / agentic 多轮，local / api 回答，keyword / embedding / hybrid 检索，可限定 `asset_ids` | `architecture/orchestration.py`、`architecture/planning.py`、`rag.py`、`agentic_rag.py`、`retrievers.py`、`chunk_index.py`、`text.py`、`graph_rag.py`、`tools.py`、`citation_review.py`、`llm.py`、`llm_router.py`、`call_limits.py`、`evidence_budget.py`、`prompts/` | **三批全部落在这里**：执行计划与注册表、倒排与并行检索、调用上限、证据预算、提示词外置、影子路由 |
-| `POST/GET/DELETE /documents` | 文档摄取（切块、哈希向量、可选 BGE 向量、图谱抽取）、列表、删除 | `rag.ingest_document`、`database.py`、`embeddings.py`、`graph_extraction.py`、`graph_store.py` | 写入后按租户提升 `content_revision:<tenant>`（1.6） |
-| `POST /internal/v1/media/...` | 接收 Media Service 投递的转写片段，作为视频来源入库 | `routes/internal_media.py`、`media_ingestion.py` | 同上（租户 revision） |
-| `/analysis/sessions/*` | 六阶段分析：冻结证据快照、并行 specialist、等待确认、CAS 恢复、PRD 发布申请与审批、审计 | `analysis_evidence.py`、`analysis_pipeline.py`、`analysis_store.py`、`publication_service.py`、`publication_artifacts.py` | 未改 |
-| `/analysis/sessions/{id}/knowledge-candidates/*`、`.../deliverables`、`.../action-items/*/ticket-draft` | 知识候选审批、批准知识物化、替代 / 撤回生命周期申请、交付物投影、行动项转工单草稿 | `knowledge_lifecycle_store.py`、`publication_artifacts.py` | 未改 |
-| `/graph/*` | 实体 / 关系 / 路径查询、重建 | `graph_store.py`、`graph_rag.py` | 未改（阶段 3.5 拆存储与算法） |
-| `/tickets/*`、`/pending-actions/*` | 工单 CRUD、状态变更草稿、待审批动作审批（四眼、职责分离） | `ticket_store.py`、`tools.py` | 工具执行增加每请求上限门（0.4） |
-| `/metrics/*`、`/chat-logs/*`、`/tool-calls` | 问答指标、工具指标、请求日志与 trace 回放、反馈 | `chat_observability_store.py`、`tool_observability_store.py` | `chat_metrics` 新增影子路由三列，汇总新增五个字段（0.8） |
-| `/embeddings/*` | 向量状态与重建 | `embedding_admin.py`、`embeddings.py` | 未改（1.5 后台补齐待做） |
-| 横切 | 统一鉴权、租户隔离、模型出网策略、数据保留、本地备份、MySQL 兼容 | `auth.py`、`model_egress.py`、`retention.py`、`db_compat.py` | 未改 |
-
-`/chat` 内部再拆一层，这是优化的主战场：
-
-| 子功能 | 优化前 | 优化后 |
+| 入口/领域 | 当前实现模块 | 本轮完成内容 |
 | --- | --- | --- |
-| 模式决定 | 前端传 `workflow_mode`，`orchestration.py` 二选一 | `PreparationChain` 产出 `ExecutionPlan`，`ExecutorRegistry` 按 `plan.mode` 分发（clarify / tool_only / retrieval / agentic） |
-| 意图与规划 | `agentic_rag.py` 内顺序调用 `route_question` → `plan_retrieval` | 两个可跳过的链步骤 `classify_intent` / `plan_queries`，standard 请求跳过 |
-| 澄清 | 无 | 无内容锚点即澄清，不检索不调模型 |
-| 关键词检索 | 每请求对每个 chunk 重新分词 | 索引时预计算词项与倒排，只碰命中 posting |
-| 混合检索 | keyword → embedding 串行，各自加载 chunk | 共用一次快照，两线程并行 |
-| 缓存失效 | 全局 revision，任一租户写入清空所有租户 | 按租户 revision |
-| 精排失败 | 静默沿用融合榜 | `rerank_status` + `rerank_skipped` trace |
-| 证据选择 | `MAX_SOURCES=4` 按条数 | 按条数选后再按 2200 / 5200 字符裁 |
-| 模型 / 工具调用 | 无上限 | 每请求 8 / 6，超限降级并写 trace |
-| 提示词 | 内联在 `llm.py`、`llm_router.py` | `app/prompts/*.txt`，可按部署覆盖 |
-| 观测 | trace 只有名称 / 状态 / 详情 | 每步 `duration_ms`，`execution_plan` 可回放，影子路由一致率 |
+| `/chat`、`/chat/stream`、`/conversations/{id}` | `architecture/conversation.py`、`chat_service.py`、`chat_events.py`、`conversation_*` | JSON/SSE 共用流水线、受限主题记忆、续租与预算、最终引用与取消 |
+| 执行计划与分发 | `architecture/orchestration.py`、`planning.py`、`topic_routing.py`、`call_limits.py` | 计划链、四模式注册表、授权澄清、请求与会话上限 |
+| 授权检索 | `retrievers.py`、`chunk_index.py`、`text.py`、`evidence_sources.py`、`evidence_budget.py` | 词项倒排、并行 hybrid、租户 revision、主题过滤与相邻块预算 |
+| 文档/媒体摄取、向量维护 | `database.py`、`rag.py`、`media_ingestion.py`、`vector_codec.py`、`embedding_maintenance.py` | 二进制与 JSON 兼容、有界后台补齐，请求只计算 query 向量 |
+| 六阶段分析/发布/知识治理 | `analysis_*`、`publication_*`、`knowledge_lifecycle_store.py` | 业务规则保持，路由 façade、DDL 与 specialist 配置收口 |
+| 图谱 | `graph_store.py`、`graph_algorithms.py`、`graph_rag.py` | 授权数据的纯算法与存储分离 |
+| 工单、审批与工具 | `ticket_store.py`、`ticket_domain.py`、`tools.py` | 纯规则/存储分离，审批与审计保持 |
+| 指标与日志 | `chat_metrics.py`、`chat_observability_store.py`、`tool_observability_store.py` | JSON/SSE 共用计量，原 trace/反馈/影子路由继续可读 |
+| 配置、迁移与启动 | `config.py`、`schema/`、`database.py`、`serve.py`、`main.py` | 单一 Settings、八项编号迁移与 ledger、默认单 worker、显式线程额度；m008 修复 MySQL 长文本 |
 
-### 9.3 React Web（28 个源文件）
+### 9.3 React Web
 
-| 功能页 | 文件 | 调用的 API 模块 | 本轮优化 |
-| --- | --- | --- | --- |
-| 登录与会话 | `features/AuthGate.tsx`、`session.ts` | `apiClient.ts` | 未改 |
-| 工作区切换 | `features/WorkspaceSwitcher.tsx` | `api.ts` | 未改 |
-| 媒体工作台 | `features/MediaWorkspace.tsx`、`hooks/useMediaWorkspace.ts` | `mediaApi.ts` | 未改（阶段 4 换 react-query 轮询） |
-| 证据问答 | `features/QAView.tsx` | `api.ts` | 未改（阶段 2.5 接 SSE） |
-| 六阶段分析 | `features/AnalysisWorkspace.tsx` | `analysisApi.ts` | 未改 |
-| 图谱 | `features/GraphView.tsx` | `graphApi.ts` | 未改 |
-| 工单与审批 | `features/TicketsView.tsx` | `ticketApi.ts` | 未改 |
-| 监控 | `features/MonitorView.tsx` | `observabilityApi.ts` | 新增"路由一致率"与不一致配对（0.8） |
+| 功能页 | 当前入口 | 本轮完成内容 |
+| --- | --- | --- |
+| 登录与 Workspace | `AuthGate.tsx`、`WorkspaceSwitcher.tsx`、`useWorkspaceSession.ts`、`App.tsx` | 沿用 JWT，按身份/Workspace/角色重建 QueryClient 与会话；目录/成员 GET 可取消 |
+| 证据问答 | `features/QAView.tsx`、`features/qa/`、`hooks/useConversation.ts`、`chatApi.ts` | 四组件、SSE、追问、停止、新建，手机布局与长 trace 换行 |
+| 媒体、分析、图谱、工单 | 对应 `features/`、领域 API 与 feature hooks | HashRouter、TanStack Query、退避轮询/AbortSignal、viewer 写入口禁用 |
+| 监控 | `MonitorView.tsx`、`observabilityApi.ts` | 保留上一批新增的路由一致率与不一致配对 |
 
-## 十、优化前后对比（2026-09-12，基线 `7195dad` 对比 `9410ef3`）
+## 十、历史优化前后对比（2026-09-12，`7195dad` 对比 `9410ef3`）
 
 ### 10.1 学习 Nexus 的方式：借什么、改什么、不借什么
 
@@ -330,9 +322,43 @@ memory.append_turn + record_chat_metric（含阶段耗时）
 
 一句话总结：**行为一致性有黄金集和暴力对照证明，效率收益有合成基准证明，结构收益有行数与模块划分证明；证据预算、调用上限、影子路由三项目前只有"机制存在且测试覆盖"的证据，还没有真实流量下的收益证据。**
 
-### 10.5 尚未兑现的承诺
+### 10.5 当时尚未兑现的承诺（历史，当前状态见十一节）
 
 - 证据预算在 600 字符切块下永远不触发，要等长媒体转写片段或 1.7 Parent-Child。
 - 影子路由的"系统会选什么"是一套未经验证的规则，需要真实请求积累一致率后再决定是否开启自动模式。
 - 调用上限 8 / 6 是照抄的默认值，本项目单次请求最多 4 次模型调用，它现在是兜底不是成本控制。
 - 阶段 3 的配置、DDL、façade 收口三项体检指标完全没动，阶段 2 的会话记忆与流式输出是用户能直接看到的差异，建议作为下一批。
+
+
+## 十一、2026-09-13 接手结果与交接
+
+本轮基线为 `40c2093`，接手时 Agent 199 个用例；当前仍在 `main`，本轮改动未提交。原迁移来源保持只读，保留模型选择、两后端/统一前端、JWT scope、证据、审批和审计。
+
+| 项目 | 接手前 | 当前工作树与证据 |
+| --- | --- | --- |
+| Agent 回归 | 199/199 | 244/244，新增/扩展会话、向量、配置、迁移与 MySQL 兼容回归 |
+| 会话/流式 | 无 | window/summary、两种传输、续租、预算与取消；Conversation V1 9/9 |
+| 业务环境读取 | 13 个文件 | 仅 config.py；旧 API 兼容，启动类型校验 |
+| DDL | 分布在 7 个领域文件 | schema 包统一八项编号迁移与 ledger；SQLite 与真实 MySQL 旧库/双进程启动、长文本保存通过 |
+| routes 依赖 | 业务实现直接导入 | architecture 入口；基础类型例外显式列出，静态门禁 |
+| Web / localhost | 7 个 Web 用例 / 33 项验收 | 21/21；H2/SQLite 与真实中间件各 42/42；路由、Query、会话与 viewer UI 通过 |
+| Media | 135 个用例 | JDK 17.0.18 下 150/150；职责/配置拆分、Flyway V1/V2、阶段日志、熔断通过 |
+| 检索/分析质量 | V6 hybrid 98/97/97，PRD 12/12 | V6 hybrid 98/97/97（p95 16.1ms），PRD 12/12 十项 100%；Lifecycle、V5 通过；本机耗时不作提速声明 |
+| 数据与恢复 | 轻量环境证据 | MySQL 8.4 迁移 6 项；两库 33 表/518 行备份恢复摘要一致；Agent 断连后 4 事件全部 SENT |
+
+按 `git show 40c2093:<path>` 与当前工作树的相同非空行口径，入口职责收敛如下。原业务代码移到对应服务/配置/controller 中；这些数字衡量阅读入口的规模，性能证据仍看实际评测。
+
+| 入口 | 接手前非空行 | 当前非空行 | 职责去向 |
+| --- | --- | --- | --- |
+| `VideoTaskService.java` | 415 | 210 | quota/lease/completion 服务 |
+| `AppProperties.java` | 490 | 70 | 十二个独立配置绑定组 |
+| `apps/web/src/main.tsx` | 488 | 8 | App、Router、feature hooks |
+| `features/QAView.tsx` | 463 | 311 | 四个 QA 子组件与会话/controller |
+
+验证命令：Agent `python -m unittest discover -s tests -q`；根目录 ruff、V6/PRD/Lifecycle/Conversation/V5、维护单测；Web lint/test/build；Media `mvn -q test`；`scripts/local_acceptance.py`；`scripts/update_knowledge.py` 与 `--check`。评测使用 hash embedding、`LLM_ROUTER_ENABLED=0`；最新日志与运行范围见 `knowledge/QUALITY.md`。
+
+采用受约束的字面指代补全、同一应用流水线加事件 sink、Agent 自有编号迁移和默认单 worker，是本轮对初始方案的具体化；Media 使用 Flyway，Web 使用 Router/Query，详见 ADR-0016/0017/0018。真实中间件沿用已批准的 MySQL、Redis、RocketMQ 和 MinIO，没有引入新的基础设施类别。未进行二进制向量/新增 worker 的大语料或吞吐基准；第十节的速度变化只属于当时两个提交。
+
+当前授权的架构优化已完成。新增配置与迁移见 `knowledge/OPERATIONS.md`，逐项验收日志和备份位置见 `knowledge/QUALITY.md`。下一次如进入部署阶段，先在目标库副本演练备份/升级，并按正式 Keycloak/RS256、外部 AI、长时间容量、多实例与对象存储灾备补证；本轮未升级或部署既有用户服务。处理任务恢复仅自动关闭旧处理阶段，DELIVERY 的硬崩溃 RUNNING 关联恢复仍是观测边界，不影响 outbox lease 到期后重投。
+
+交接位置：`main@40c2093` 的未提交工作树；新增 ADR-0016/0017/0018 与阶段契约均在本仓库。知识生成/漂移、语义路由和 diff check 已通过。本轮 `codex-stage4-f4819d11` 测试容器/卷及应用/浏览器已清理，保留 `runtime/codex-stage4-*` 日志、MySQL 归档和 `output/playwright/stage4-*.png`。原三容器应用与 `erp-mssql` 保持运行。后续维护先运行 harness brief，核对本节与 `QUALITY.md` 最新条目，勿重跑一次性改造脚本或直接覆盖现有运行数据。

@@ -6,10 +6,10 @@
 
 import asyncio
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
 
+import anyio.to_thread
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,12 +20,16 @@ from app.config import (
     get_default_answer_mode,
     get_llm_settings,
     get_retriever_mode,
+    get_settings,
     load_local_env,
 )
+from app.conversation_store import init_conversation_store
 from app.database import get_embedding_stats, init_db
+from app.embedding_maintenance import embedding_backfill_loop
 from app.embeddings import warm_up_embeddings
 from app.graph_store import init_graph_store
 from app.llm import is_llm_configured
+from app.llm_client import close_async_llm_clients
 from app.logging_config import setup_logging
 from app.models import SystemStatus
 from app.publication_artifacts import init_publication_artifact_store
@@ -57,6 +61,8 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    get_settings().validate()
+    anyio.to_thread.current_default_thread_limiter().total_tokens = get_settings().thread_pool_size
     validate_auth_configuration()
     validate_retention_configuration()
     init_db()
@@ -64,16 +70,20 @@ async def lifespan(_: FastAPI):
     init_graph_store()
     init_analysis_store()
     init_publication_artifact_store()
+    init_conversation_store()
     # A3: 启动时预加载真实 embedding 模型（不可用时为空操作），
     # 避免第一个 /chat 请求承担秒级模型加载延迟。
     warm_up_embeddings()
     _STATE["started_at"] = time.monotonic()
     logger.info("api_started")
     retention_task = asyncio.create_task(retention_loop()) if retention_enabled() else None
+    embedding_task = asyncio.create_task(embedding_backfill_loop())
     try:
         yield
     finally:
         await stop_retention_task(retention_task)
+        await stop_retention_task(embedding_task)
+        await close_async_llm_clients()
 
 
 TAG_METADATA = [
@@ -183,10 +193,10 @@ def get_system_status() -> SystemStatus:
         default_retriever_mode=get_retriever_mode(),
         embedding=embedding,
         database_backend="mysql" if database.uses_mysql() else "sqlite",
-        jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256").strip().upper(),
-        model_egress_policy=os.getenv("MODEL_EGRESS_POLICY", "allow"),
-        model_egress_allowlist_configured=bool(os.getenv("MODEL_EGRESS_ALLOWED_TENANTS", "").strip()),
+        jwt_algorithm=get_settings().jwt_algorithm,
+        model_egress_policy=get_settings().model_egress_policy,
+        model_egress_allowlist_configured=bool(get_settings().model_egress_allowed_tenants),
         retention_enabled=retention_enabled(),
-        transcript_retention_days=int(os.getenv("RETENTION_TRANSCRIPT_DAYS", "180")),
-        audit_retention_days=int(os.getenv("RETENTION_AUDIT_DAYS", "365")),
+        transcript_retention_days=get_settings().retention_transcript_days,
+        audit_retention_days=get_settings().retention_audit_days,
     )

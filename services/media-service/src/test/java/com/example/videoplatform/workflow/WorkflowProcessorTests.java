@@ -23,6 +23,12 @@ import org.mockito.InOrder;
 import org.slf4j.LoggerFactory;
 
 class WorkflowProcessorTests {
+	@org.junit.jupiter.api.BeforeEach
+	void useInstrumentedTranscriptDefaultMethod() {
+		org.mockito.Mockito.doCallRealMethod().when(transcriptService).extract(
+				anyString(), anyString(), org.mockito.ArgumentMatchers.any(TaskStageObserver.class));
+	}
+
 
 	private final VideoTaskService videoTaskService = org.mockito.Mockito.mock(VideoTaskService.class);
 	private final MediaAssetService mediaAssetService = org.mockito.Mockito.mock(MediaAssetService.class);
@@ -35,7 +41,7 @@ class WorkflowProcessorTests {
 	private final WorkflowMetrics workflowMetrics = new WorkflowMetrics(meterRegistry);
 	private final WorkflowProcessor processor = new WorkflowProcessor(
 			videoTaskService, mediaAssetService, lockService, transcriptService, summaryService, workflowMetrics,
-			mediaStorageService, modelEgressPolicy);
+			mediaStorageService, modelEgressPolicy, org.mockito.Mockito.mock(TaskStageLogService.class));
 	private static final String RESOLVED_STORAGE_PATH = Path.of("storage", "demo.mp4").toString();
 	private static final TranscriptResult TRANSCRIPT = TranscriptResult.fromPlainText("transcript");
 

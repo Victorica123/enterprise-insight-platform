@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from app.call_limits import CallLimitExceeded
-from app.config import get_llm_settings
+from app.config import get_llm_settings, get_settings
 from app.llm import is_llm_configured
 from app.llm_client import create_chat_completion
 from app.prompts import load_prompt, render_prompt
@@ -74,12 +73,7 @@ _TOOL_CALL_SCHEMA: dict[str, Any] = {
 
 def _llm_router_enabled() -> bool:
     """LLM 路由开关：离线门禁与测试设 LLM_ROUTER_ENABLED=0，保证确定性且不消耗 API 额度。"""
-    return os.getenv("LLM_ROUTER_ENABLED", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
+    return get_settings().llm_router_enabled
 
 
 @dataclass(frozen=True)
@@ -115,7 +109,7 @@ def _response_format(schema_name: str, schema: dict[str, Any]) -> dict[str, Any]
     ``LLM_RESPONSE_FORMAT=off`` is an explicit escape hatch for compatible
     gateways that reject the ``response_format`` parameter.
     """
-    mode = os.getenv("LLM_RESPONSE_FORMAT", "auto").strip().lower()
+    mode = get_settings().llm_response_format
     if mode in {"off", "none", "disabled"}:
         return None
     if mode == "json_object" or (

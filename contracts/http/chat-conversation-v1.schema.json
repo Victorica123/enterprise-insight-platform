@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://enterprise-insight.local/contracts/http/chat-conversation-v1.schema.json",
+  "title": "ChatConversationV1",
+  "description": "Additive /chat and /chat/stream request fields; omitted memory_mode preserves stateless clients. Scope comes exclusively from the authenticated Workspace principal.",
+  "type": "object",
+  "required": ["question"],
+  "properties": {
+    "question": {"type": "string", "minLength": 1},
+    "conversation_id": {"type": ["string", "null"], "format": "uuid"},
+    "memory_mode": {"enum": ["none", "window", "summary"], "default": "none"},
+    "workflow_mode": {"enum": ["standard", "agentic"]},
+    "answer_mode": {"enum": ["auto", "local", "api"]},
+    "retriever_mode": {"enum": ["keyword", "embedding", "hybrid"]},
+    "asset_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 50}
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "content", "timestamp", "conversation_id", "exchange_id"],
+      "properties": {
+        "type": {"enum": ["plan", "stage", "delta", "sources", "follow_up", "done", "error"]},
+        "content": {},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "conversation_id": {"type": ["string", "null"]},
+        "exchange_id": {"type": "string", "format": "uuid"}
+      }
+    }
+  },
+  "x-behavior": [
+    "Personal conversations require tenant plus owner; team conversations share within the authorized tenant.",
+    "Concurrent turns detected before streaming return HTTP 409. A renewable server-side lease and CAS fence stale workers; failures after SSE headers use an error event.",
+    "Per-conversation call caps are 40 model and 30 tool calls; reservations are durable and unused calls are refunded on completion or handled cancellation.",
+    "Memory is bounded to four recent turns / 2200 characters, with optional 1400-character summary advancing at most six older turns. It supplies topic hints only; evidence is reauthorized and retrieved on every turn.",
+    "SSE deltas are provisional. Only done carries the final citation-reviewed ChatResponse; a disconnect cancels streaming and does not append an incomplete conversation turn. A turn already completed before cancellation was observed may remain stored.",
+    "JSON and SSE use the same planning, retrieval, governance, memory and metrics pipeline. API keys, raw provider errors and unapproved write effects never enter events."
+  ]
+}

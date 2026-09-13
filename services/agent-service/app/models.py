@@ -162,6 +162,8 @@ class ChatMetricsSummary(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1)
+    conversation_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    memory_mode: Literal["none", "window", "summary"] = "none"
     answer_mode: AnswerMode = Field(
         default="auto",
         description="回答模式：local=内部 RAG，api=调用模型 API，auto=自动选择。",
@@ -189,6 +191,8 @@ class Source(BaseModel):
     chunk_index: int
     score: int
     content: str
+    chunk_indices: list[int] = Field(default_factory=list)
+    parent_key: str = ""
     title: str = ""  # A4: 块标题，帮助模型理解来源上下文
     asset_id: str | None = None
     segment_id: str | None = None
@@ -231,6 +235,9 @@ class ChatResponse(BaseModel):
     pending_actions: list["PendingActionResponse"] = Field(default_factory=list)
     token_usage: TokenUsage | None = None
     log_id: int = 0
+    conversation_id: str | None = None
+    exchange_id: str | None = None
+    follow_up: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,10 @@
 import React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useActiveWorkspace } from "../workspaceContext";
+import { workspaceKey } from "../queryClient";
 import { Loader2, Network, RefreshCw, ScrollText, Search, X } from "lucide-react";
 import {
-  type ActorRole, type GraphEntity, type GraphOverview, type GraphPathQuery,
-  type GraphRelation, getGraphOverview, listGraphEntities, listGraphRelations,
+  type ActorRole, type GraphEntity, type GraphRelation, getGraphOverview, listGraphEntities, listGraphRelations,
   queryGraphPaths, rebuildGraph,
 } from "../api";
 import { MetricItem, formatDate, getErrorMessage } from "./common";
@@ -21,64 +23,41 @@ const GRAPH_TYPE_COLORS: Record<string, string> = {
 const RISK_RELATION_TYPES = new Set(["延期原因", "合同风险", "约定"]);
 
 export function GraphView({ actorRole, setError }: { actorRole: ActorRole; setError: (e: string | null) => void }) {
-  const [overview, setOverview] = React.useState<GraphOverview | null>(null);
-  const [entities, setEntities] = React.useState<GraphEntity[]>([]);
-  const [relations, setRelations] = React.useState<GraphRelation[]>([]);
+  const session = useActiveWorkspace();
+  const client = useQueryClient();
+  const key = workspaceKey(session, "graph");
   const [selectedEntity, setSelectedEntity] = React.useState("");
   const [pathSource, setPathSource] = React.useState("");
   const [pathTarget, setPathTarget] = React.useState("");
-  const [pathResult, setPathResult] = React.useState<GraphPathQuery | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isRebuilding, setIsRebuilding] = React.useState(false);
-  const [isQueryingPath, setIsQueryingPath] = React.useState(false);
+  const [pathRequest, setPathRequest] = React.useState({ source: "", target: "" });
+  const graph = useQuery({ queryKey: [...key, "overview"], queryFn: async ({ signal }) => {
+    const [overview, entities, relations] = await Promise.all([
+      getGraphOverview(signal), listGraphEntities("", "", signal), listGraphRelations("", signal),
+    ]);
+    return { overview, entities, relations };
+  } });
+  const path = useQuery({ queryKey: [...key, "path", pathRequest], enabled: Boolean(pathRequest.source && pathRequest.target),
+    queryFn: ({ signal }) => queryGraphPaths(pathRequest.source, pathRequest.target, 3, signal) });
+  const overview = graph.data?.overview ?? null;
+  const entities = graph.data?.entities ?? [];
+  const relations = graph.data?.relations ?? [];
+  const pathResult = path.data ?? null;
+  const isLoading = graph.isPending;
+  const isQueryingPath = path.isFetching;
+  const error = graph.error ?? path.error;
+  React.useEffect(() => { if (error) setError(getErrorMessage(error)); }, [error, setError]);
+  const refresh = async () => { await client.invalidateQueries({ queryKey: key }); };
+  const rebuild = useMutation({ mutationFn: () => rebuildGraph(actorRole), onSuccess: refresh,
+    onError: (caught) => setError(getErrorMessage(caught)) });
+  const isRebuilding = rebuild.isPending;
+  const handleRebuild = () => { setError(null); rebuild.mutate(); };
 
-  const refresh = React.useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [nextOverview, nextEntities, nextRelations] = await Promise.all([
-        getGraphOverview(),
-        listGraphEntities(),
-        listGraphRelations(),
-      ]);
-      setOverview(nextOverview);
-      setEntities(nextEntities);
-      setRelations(nextRelations);
-    } catch (caught) {
-      setError(getErrorMessage(caught));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [setError]);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  async function handleRebuild() {
-    setIsRebuilding(true);
-    setError(null);
-    try {
-      await rebuildGraph(actorRole);
-      await refresh();
-    } catch (caught) {
-      setError(getErrorMessage(caught));
-    } finally {
-      setIsRebuilding(false);
-    }
-  }
-
-  async function handlePathQuery(event: React.FormEvent<HTMLFormElement>) {
+  function handlePathQuery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!pathSource || !pathTarget) return;
-    setIsQueryingPath(true);
     setError(null);
-    try {
-      setPathResult(await queryGraphPaths(pathSource, pathTarget));
-    } catch (caught) {
-      setError(getErrorMessage(caught));
-    } finally {
-      setIsQueryingPath(false);
-    }
+    if (pathRequest.source === pathSource && pathRequest.target === pathTarget) void path.refetch();
+    else setPathRequest({ source: pathSource, target: pathTarget });
   }
 
   const filteredRelations = selectedEntity

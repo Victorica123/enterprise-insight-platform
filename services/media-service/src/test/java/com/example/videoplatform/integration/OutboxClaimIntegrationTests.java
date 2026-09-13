@@ -94,4 +94,20 @@ class OutboxClaimIntegrationTests {
 		String eventId = "test-outbox-" + UUID.randomUUID();
 		return new IntegrationEventOutbox(eventId, "test.event.v1", "aggregate-1", "{}");
 	}
+
+	@Test
+	void circuitDeferralKeepsRetryBudgetAndChecksLeaseOwnership() {
+		IntegrationEventOutbox event = newEvent();
+		repository.saveAndFlush(event);
+		var claimed = outboxService.claimBatch().stream()
+				.filter(candidate -> candidate.getEventId().equals(event.getEventId())).findFirst().orElseThrow();
+		Instant retryAt = Instant.now().plusSeconds(30);
+		assertThat(outboxService.defer(event.getEventId(), "stale-claim", retryAt)).isFalse();
+		assertThat(outboxService.defer(event.getEventId(), claimed.getClaimId(), retryAt)).isTrue();
+		var deferred = repository.findById(event.getEventId()).orElseThrow();
+		assertThat(deferred.getAttempts()).isZero();
+		assertThat(deferred.getStatus()).isEqualTo(IntegrationEventOutbox.DeliveryStatus.PENDING);
+		assertThat(deferred.getClaimId()).isNull();
+		assertThat(deferred.getNextAttemptAt()).isAfter(Instant.now());
+	}
 }

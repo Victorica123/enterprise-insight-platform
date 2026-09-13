@@ -1,23 +1,26 @@
 import json
-import os
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 
+from app.config import get_settings
 from app.db_compat import MySqlConnectionCompat, connect_mysql
 from app.embeddings import build_embedding, embed_real, embedding_to_json
+from app.schema import apply_migrations
+from app.schema.common import ensure_column as ensure_column
+from app.vector_codec import encode_vector
 
-DB_PATH = Path(os.getenv(
-    "AGENT_DATABASE_PATH",
-    str(Path(__file__).resolve().parents[1] / "data" / "knowledge_base.sqlite3"),
-))
+DB_PATH = get_settings().database_path
 
 _INITIALIZED_DB_PATH: str | Path | None = None
+_INITIALIZATION_LOCK = Lock()
 
 
 def mysql_database_url() -> str:
-    return os.getenv("AGENT_DATABASE_URL", "").strip()
+    return get_settings().database_url
 
 
 def uses_mysql() -> bool:
@@ -48,8 +51,8 @@ def prepare_database_storage() -> None:
 
 def validate_database_configuration() -> None:
     if (
-        os.getenv("APP_ENV", "development").strip().lower() == "production"
-        and os.getenv("AGENT_REQUIRE_MYSQL", "0").strip().lower() in {"1", "true", "yes", "on"}
+        get_settings().environment in {"production", "prod"}
+        and get_settings().require_mysql
         and not uses_mysql()
     ):
         raise RuntimeError(
@@ -59,216 +62,18 @@ def validate_database_configuration() -> None:
 
 
 def init_db() -> None:
-    """建库建表；按 DB_PATH 记忆化，避免每个请求重复执行 DDL（测试改路径自动失效）。"""
+    """Apply numbered migrations once per database identity, including CLI/test use."""
     global _INITIALIZED_DB_PATH
-    validate_database_configuration()
-    current_path = database_identity()
     if initialization_marker_is_current(_INITIALIZED_DB_PATH):
         return
-    prepare_database_storage()
-    with connect() as conn:
-        conn.execute(
-            """
-            create table if not exists documents (
-                id text primary key,
-                filename text not null,
-                tenant_id text not null default 'legacy',
-                owner_id text not null default 'legacy',
-                source_type text not null default 'document',
-                external_id text not null default '',
-                source_version integer not null default 1,
-                payload_sha256 text not null default '',
-                metadata_json text not null default '{}',
-                lifecycle_status text not null default 'ACTIVE',
-                supersedes_document_id text,
-                superseded_by_document_id text,
-                lifecycle_changed_by text,
-                lifecycle_changed_at text,
-                lifecycle_reason text,
-                created_at text not null default current_timestamp
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists chunks (
-                id text primary key,
-                document_id text not null,
-                filename text not null,
-                chunk_index integer not null,
-                content text not null,
-                tenant_id text not null default 'legacy',
-                owner_id text not null default 'legacy',
-                source_type text not null default 'document',
-                asset_id text,
-                segment_id text,
-                start_ms integer,
-                end_ms integer,
-                speaker text,
-                created_at text not null default current_timestamp,
-                foreign key (document_id) references documents(id)
-            )
-            """
-        )
-        conn.execute(
-            """
-            create index if not exists idx_chunks_document_id
-            on chunks(document_id)
-            """
-        )
-        ensure_column(conn, table="chunks", column="embedding", definition="text")
-        # A3: 真实语义 embedding（BGE 512 维），独立列 + 版本可重建；缺失时检索自动回退哈希版。
-        ensure_column(conn, table="chunks", column="embedding_v2", definition="text")
-        # A4: 结构感知切块的块标题（最近的 markdown 标题）
-        ensure_column(conn, table="chunks", column="chunk_title", definition="text not null default ''")
-        # 统一平台来源、租户与视频时间戳字段；旧文档迁移到 legacy 隔离域。
-        for column, definition in {
-            "tenant_id": "text not null default 'legacy'",
-            "owner_id": "text not null default 'legacy'",
-            "source_type": "text not null default 'document'",
-            "external_id": "text not null default ''",
-            "source_version": "integer not null default 1",
-            "payload_sha256": "text not null default ''",
-            "metadata_json": "text not null default '{}'",
-            "lifecycle_status": "text not null default 'ACTIVE'",
-            "supersedes_document_id": "text",
-            "superseded_by_document_id": "text",
-            "lifecycle_changed_by": "text",
-            "lifecycle_changed_at": "text",
-            "lifecycle_reason": "text",
-        }.items():
-            ensure_column(conn, table="documents", column=column, definition=definition)
-        for column, definition in {
-            "tenant_id": "text not null default 'legacy'",
-            "owner_id": "text not null default 'legacy'",
-            "source_type": "text not null default 'document'",
-            "asset_id": "text",
-            "segment_id": "text",
-            "start_ms": "integer",
-            "end_ms": "integer",
-            "speaker": "text",
-        }.items():
-            ensure_column(conn, table="chunks", column=column, definition=definition)
-        conn.execute(
-            """
-            create unique index if not exists uk_documents_external_version
-            on documents(tenant_id, source_type, external_id, source_version)
-            where external_id != ''
-            """
-        )
-        conn.execute(
-            """
-            create index if not exists idx_chunks_tenant_owner_source
-            on chunks(tenant_id, owner_id, source_type, asset_id)
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists ingestion_receipts (
-                event_id text primary key,
-                event_type text not null,
-                tenant_id text not null,
-                resource_id text not null,
-                resource_version integer not null,
-                payload_sha256 text not null,
-                document_id text not null,
-                trace_id text not null,
-                created_at text not null default current_timestamp,
-                foreign key (document_id) references documents(id)
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists chat_metrics (
-                id integer primary key autoincrement,
-                workflow_mode text not null,
-                answer_mode text not null,
-                retriever_mode text not null,
-                intent text not null,
-                complexity text not null,
-                retrieval_rounds integer not null,
-                query_count integer not null,
-                evidence_status text not null,
-                citation_status text not null,
-                source_count integer not null,
-                outcome text not null,
-                answer_status text not null,
-                latency_ms real not null,
-                answer_chars integer not null,
-                created_at text not null default current_timestamp
-            )
-            """
-        )
-        conn.execute(
-            """
-            create index if not exists idx_chat_metrics_created_at
-            on chat_metrics(created_at)
-            """
-        )
-        # V5: token 用量与成本列（老库自动迁移）
-        ensure_column(conn, table="chat_metrics", column="prompt_tokens", definition="integer not null default 0")
-        ensure_column(conn, table="chat_metrics", column="completion_tokens", definition="integer not null default 0")
-        ensure_column(conn, table="chat_metrics", column="total_tokens", definition="integer not null default 0")
-        ensure_column(conn, table="chat_metrics", column="estimated_cost_usd", definition="real not null default 0")
-        ensure_column(conn, table="chat_metrics", column="tenant_id", definition="text not null default 'legacy'")
-        ensure_column(conn, table="chat_metrics", column="owner_id", definition="text not null default 'legacy'")
-        # 阶段 0.8 影子路由：最终执行模式、系统自选模式、是否一致（-1 = 未评估的旧记录 / 错误请求）
-        ensure_column(conn, table="chat_metrics", column="execution_mode", definition="text not null default ''")
-        ensure_column(conn, table="chat_metrics", column="shadow_mode", definition="text not null default ''")
-        ensure_column(conn, table="chat_metrics", column="mode_agreement", definition="integer not null default -1")
-        conn.execute(
-            "create index if not exists idx_chat_metrics_scope on chat_metrics(tenant_id, owner_id, created_at)"
-        )
-        # V5: 请求日志（失败回放 + 用户反馈）；chat_metrics 保持不含问题原文
-        conn.execute(
-            """
-            create table if not exists chat_logs (
-                log_id integer primary key autoincrement,
-                question text not null,
-                workflow_mode text not null,
-                answer_mode text not null,
-                retriever_mode text not null,
-                intent text not null default 'general',
-                outcome text not null,
-                evidence_status text not null default '',
-                citation_status text not null default '',
-                source_count integer not null default 0,
-                latency_ms real not null default 0,
-                total_tokens integer not null default 0,
-                estimated_cost_usd real not null default 0,
-                answer_preview text not null default '',
-                trace_json text not null default '[]',
-                feedback integer not null default 0,
-                feedback_note text not null default '',
-                created_at text not null default current_timestamp
-            )
-            """
-        )
-        conn.execute(
-            """
-            create index if not exists idx_chat_logs_outcome
-            on chat_logs(outcome, created_at)
-            """
-        )
-        ensure_column(conn, table="chat_logs", column="tenant_id", definition="text not null default 'legacy'")
-        ensure_column(conn, table="chat_logs", column="owner_id", definition="text not null default 'legacy'")
-        ensure_column(conn, table="chat_logs", column="sources_json", definition="text not null default '[]'")
-        conn.execute(
-            "create index if not exists idx_chat_logs_scope on chat_logs(tenant_id, owner_id, created_at)"
-        )
-        conn.execute(
-            """
-            create table if not exists system_meta (
-                key text primary key,
-                value integer not null default 0
-            )
-            """
-        )
-        conn.execute(
-            "insert or ignore into system_meta (key, value) values ('content_revision', 0)"
-        )
-    _INITIALIZED_DB_PATH = current_path
+    with _INITIALIZATION_LOCK:
+        if initialization_marker_is_current(_INITIALIZED_DB_PATH):
+            return
+        validate_database_configuration()
+        prepare_database_storage()
+        with connect() as conn:
+            apply_migrations(conn, mysql=uses_mysql(), identity=database_identity())
+        _INITIALIZED_DB_PATH = database_identity()
 
 
 @contextmanager
@@ -286,7 +91,7 @@ def connect() -> Iterator[sqlite3.Connection | MySqlConnectionCompat]:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except BaseException:
             conn.rollback()
             raise
         finally:
@@ -304,28 +109,14 @@ def connect() -> Iterator[sqlite3.Connection | MySqlConnectionCompat]:
     try:
         yield conn
         conn.commit()
-    except Exception:
+    except BaseException:
         conn.rollback()
         raise
     finally:
         conn.close()
 
 
-def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    columns = conn.execute(f"pragma table_info({table})").fetchall()
-    if any(row["name"] == column for row in columns):
-        return
 
-    try:
-        conn.execute(f"alter table {table} add column {column} {definition}")
-    except sqlite3.OperationalError:
-        # Two request threads/processes may both observe an old schema before
-        # SQLite serializes ALTER TABLE. If the winner committed the same
-        # column while this statement waited, the migration is already done.
-        refreshed = conn.execute(f"pragma table_info({table})").fetchall()
-        if any(row["name"] == column for row in refreshed):
-            return
-        raise
 
 
 def insert_document(
@@ -352,6 +143,9 @@ def insert_document(
         raise ValueError("chunk_metadata length must match chunks length")
     for index, (title, content) in enumerate(chunk_rows):
         details = chunk_metadata[index] if chunk_metadata else {}
+        hash_vector = build_embedding(content)
+        real_vector = real_vectors[index] if real_vectors else None
+        parent_key = sha256(title.encode("utf-8")).hexdigest() if title and source_type != "video" else ""
         rows_to_insert.append(
             (
                 f"{document_id}:{details.get('segment_id') or index}",
@@ -359,8 +153,8 @@ def insert_document(
                 filename,
                 index,
                 content,
-                embedding_to_json(build_embedding(content)),
-                embedding_to_json(real_vectors[index]) if real_vectors else None,
+                embedding_to_json(hash_vector),
+                embedding_to_json(real_vector) if real_vector is not None else None,
                 title,
                 tenant_id,
                 owner_id,
@@ -370,6 +164,9 @@ def insert_document(
                 details.get("start_ms"),
                 details.get("end_ms"),
                 details.get("speaker"),
+                encode_vector(hash_vector),
+                encode_vector(real_vector),
+                parent_key,
             )
         )
 
@@ -444,8 +241,9 @@ def _insert_document_rows(
         """
         insert into chunks (
             id, document_id, filename, chunk_index, content, embedding, embedding_v2, chunk_title,
-            tenant_id, owner_id, source_type, asset_id, segment_id, start_ms, end_ms, speaker
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tenant_id, owner_id, source_type, asset_id, segment_id, start_ms, end_ms, speaker,
+            embedding_blob, embedding_v2_blob, parent_key
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
@@ -518,6 +316,7 @@ def list_chunk_rows(
             f"""
             select chunks.document_id, chunks.filename, chunks.chunk_index, chunks.content,
                    chunks.embedding, chunks.embedding_v2, chunks.chunk_title,
+                   chunks.embedding_blob, chunks.embedding_v2_blob, chunks.parent_key,
                    chunks.tenant_id, chunks.owner_id, chunks.source_type, chunks.asset_id,
                    chunks.segment_id, chunks.start_ms, chunks.end_ms, chunks.speaker,
                    documents.external_id, documents.payload_sha256, documents.metadata_json,
@@ -655,21 +454,22 @@ def rebuild_chunk_embeddings() -> dict[str, int]:
     """
     init_db()
     updated_count = 0
-    batch_size = max(1, _read_positive_int_env("EMBEDDING_REBUILD_BATCH_SIZE", 64))
+    batch_size = get_settings().embedding_rebuild_batch_size
     with connect() as conn:
         rows = conn.execute("select id, content from chunks order by id").fetchall()
         for start in range(0, len(rows), batch_size):
             batch = rows[start : start + batch_size]
             real_vectors = embed_real([row["content"] for row in batch])
             for index, row in enumerate(batch):
+                hash_vector = build_embedding(row["content"])
                 conn.execute(
-                    "update chunks set embedding = ? where id = ?",
-                    (embedding_to_json(build_embedding(row["content"])), row["id"]),
+                    "update chunks set embedding = ?, embedding_blob = ? where id = ?",
+                    (embedding_to_json(hash_vector), encode_vector(hash_vector), row["id"]),
                 )
                 if real_vectors is not None:
                     conn.execute(
-                        "update chunks set embedding_v2 = ? where id = ?",
-                        (embedding_to_json(real_vectors[index]), row["id"]),
+                        "update chunks set embedding_v2 = ?, embedding_v2_blob = ? where id = ?",
+                        (embedding_to_json(real_vectors[index]), encode_vector(real_vectors[index]), row["id"]),
                     )
                 updated_count += 1
         if updated_count:
@@ -682,11 +482,6 @@ def rebuild_chunk_embeddings() -> dict[str, int]:
     }
 
 
-def _read_positive_int_env(name: str, default: int) -> int:
-    try:
-        return max(1, int(os.getenv(name, str(default))))
-    except ValueError:
-        return default
 
 
 def _tenant_revision_key(tenant_id: str) -> str:

@@ -44,15 +44,18 @@ Do not pause for discoverable implementation details, reversible refactors, test
 
 - For a cross-service change, update or add the versioned contract before implementations.
 - Keep HTTP handlers thin and domain logic testable without external infrastructure.
-- Keep PRD delivery projection in `publication_artifacts.py`; keep governed knowledge schema, migration, materialization and lifecycle transactions in `knowledge_lifecycle_store.py` so Phase 2 does not grow back into a monolith.
+- Keep PRD delivery projection in `publication_artifacts.py`; keep governed knowledge materialization and lifecycle transactions in `knowledge_lifecycle_store.py`. Schema changes belong to append-only numbered migrations in `app/schema/`, initialized through `database.init_db()`.
 - Keep document/chunk persistence in `database.py` and chat metrics/log/replay behavior in `chat_observability_store.py`. Keep deterministic graph extraction in `graph_extraction.py` and SQLite graph persistence/query in `graph_store.py`.
-- Keep ticket and pending-action state in `ticket_store.py`; keep tool-call audit logs and aggregate tool metrics in `tool_observability_store.py`. Tool policy and execution orchestration remain in `tools.py`.
+- Keep ticket and pending-action state in `ticket_store.py`, deterministic ticket rules in `ticket_domain.py`, and authorized graph traversal in `graph_algorithms.py`; keep tool-call audit logs and aggregate tool metrics in `tool_observability_store.py`. Tool policy and execution orchestration remain in `tools.py`.
+- Route business dependencies through `app.architecture.*`; only auth, configuration and request/response types are foundation exceptions. Read environment configuration through `config.get_settings()`.
+- JSON and SSE chat share `chat_service.py`. Conversation memory supplies topic hints, never historical answers as new evidence; preserve fresh authorized retrieval, lease fencing, call-budget reservations and cancellation cleanup. Only the citation-reviewed `done` response is final.
 - Keep `apps/web/src/api.ts` as a compatibility barrel. Add requests to the matching `*Api.ts` domain module and shared transport only to `apiClient.ts`.
 - Prefer an end-to-end vertical slice over broad scaffolding with no user-visible path.
 - Preserve the light/mock modes, but label them honestly and keep real integration smoke tests separate. The localhost acceptance fixture must use bytes that pass the real media container check; do not weaken production validation to make a test fixture pass.
 - Add a regression test for a defect and an evaluation case for a changed Agent behavior.
 - Outbox changes must cover competing claimers, expired lease takeover, stale-worker fencing, retry backoff and DEAD transition; structured LLM changes must cover strict-schema/provider compatibility, malformed output and deterministic fallback.
 - Analysis/retrieval/checkpoint changes must run the focused workflow tests and `python quality/agent-evals/evaluate_prd.py`; general RAG changes also run V6.
+- Conversation, memory, topic-routing or streaming changes must run `test_conversation_stream` and `quality/agent-evals/evaluate_conversation.py`; Web streaming changes also run the browser/parser checks. Use `chatApi.ts` and `hooks/useConversation.ts` for the conversation UI.
 - Media outbox, upload or cross-service reliability changes must run the Media integration tests and the localhost acceptance; document whether the result used H2/SQLite/mock or real MySQL/Redis/RocketMQ/S3.
 - Approved-knowledge materialization or lifecycle changes must run the focused workflow tests and `python quality/agent-evals/evaluate_knowledge_lifecycle.py`; retrieval visibility changes also run V6.
 - Use an ADR for a material architectural decision; do not silently rewrite prior decisions.

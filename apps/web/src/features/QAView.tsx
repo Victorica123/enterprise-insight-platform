@@ -1,8 +1,12 @@
+import type { ConversationController } from "../hooks/useConversation";
+import { QuestionForm } from "./qa/QuestionForm";
+import { AnswerStream } from "./qa/AnswerStream";
+import { SourceList } from "./qa/SourceList";
+import { TracePanel } from "./qa/TracePanel";
 import React from "react";
 import {
-  Activity, AlertCircle, BarChart3, Bot, CheckCircle2, ClipboardList, Coins, Copy,
-  FileText, Gauge, Loader2, RefreshCw, Send, ThumbsDown, ThumbsUp, Trash2,
-  Upload, Video, Workflow, X,
+  Activity, AlertCircle, BarChart3, Bot, CheckCircle2, ClipboardList,
+  FileText, Gauge, Loader2, RefreshCw, ThumbsDown, ThumbsUp, Trash2, Upload,
 } from "lucide-react";
 import {
   type ActorRole, type AnswerMode, type ChatMetricsSummary, type ChatResponse,
@@ -13,10 +17,10 @@ import {
   MetricItem, StatusItem, UsageBars, formatCoverage, formatDate, formatDecimal,
   formatMilliseconds, formatPercent,
 } from "./common";
-import { formatTimestamp } from "./MediaWorkspace";
 import "../styles/qa.css";
 
-export function QAView(props: {
+export type QAViewProps = {
+  conversation: ConversationController;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   documents: Awaited<ReturnType<typeof listDocuments>>;
   selectedFile: File | null;
@@ -54,8 +58,11 @@ export function QAView(props: {
   handleAnswerFeedback: (rating: "up" | "down") => void;
   setChatResponse: (r: ChatResponse | null) => void;
   setError: (e: string | null) => void;
-}) {
+};
+
+export function QAView(props: QAViewProps) {
   const p = props;
+  const canWrite = p.actorRole !== "viewer";
   return (
     <div className="two-column">
       <section className="sidebar">
@@ -70,9 +77,9 @@ export function QAView(props: {
               type="file"
               accept=".txt,.md,.pdf"
               onChange={(event) => p.setSelectedFile(event.target.files?.[0] ?? null)}
-              disabled={p.isUploading}
+              disabled={!canWrite || p.isUploading}
             />
-            <button className="button" type="submit" disabled={p.isUploading || !p.selectedFile}>
+            <button className="button" type="submit" disabled={!canWrite || p.isUploading || !p.selectedFile}>
               {p.isUploading ? (
                 <>
                   <Loader2 size={14} />
@@ -86,12 +93,13 @@ export function QAView(props: {
               )}
             </button>
           </form>
+          {!canWrite ? <p>当前角色为只读，可查询授权文档。</p> : null}
           <div className="document-toolbar">
             <button
               className="icon-button subtle"
               type="button"
               onClick={() => { p.setError(null); p.handleRebuildEmbeddings(); }}
-              disabled={p.isRebuildingEmbeddings || (p.systemStatus?.document_count ?? 0) === 0}
+              disabled={!canWrite || p.isRebuildingEmbeddings || (p.systemStatus?.document_count ?? 0) === 0}
               title="一键重建所有 chunk 的本地 embedding"
             >
               <RefreshCw size={16} />
@@ -120,7 +128,8 @@ export function QAView(props: {
                   {document.managed ? <span className="token-pill">审批后沉淀</span> : <button
                     className="icon-button danger"
                     type="button"
-                    disabled={p.deletingDocumentId === document.document_id}
+                    disabled={!canWrite || p.deletingDocumentId === document.document_id}
+                    title="删除文档"
                     onClick={() => void p.handleDeleteDocument(document.document_id)}
                   >
                     {p.deletingDocumentId === document.document_id ? (
@@ -191,59 +200,7 @@ export function QAView(props: {
       </section>
 
       <section className="chat-area">
-        <div className="card">
-          <form className="chat-form" onSubmit={p.handleAsk}>
-			{p.selectedAssetCount > 0 ? <div className="video-scope-note"><Video size={15} />当前限定分析 {p.selectedAssetCount} 个视频；文档仍按当前工作区检索。</div> : null}
-            <div className="chat-controls">
-              <div className="select-group">
-                <label>
-                  工作流
-                  <select value={p.workflowMode} onChange={(e) => p.setWorkflowMode(e.target.value as WorkflowMode)}>
-                    <option value="agentic">Agentic</option>
-                    <option value="standard">Standard</option>
-                  </select>
-                </label>
-                <label>
-                  回答
-                  <select value={p.answerMode} onChange={(e) => p.setAnswerMode(e.target.value as AnswerMode)}>
-                    <option value="auto">auto</option>
-                    <option value="local">local</option>
-                    <option value="api">api</option>
-                  </select>
-                </label>
-                <label>
-                  检索
-                  <select value={p.retrieverMode} onChange={(e) => p.setRetrieverMode(e.target.value as RetrieverMode)}>
-                    <option value="keyword">keyword</option>
-                    <option value="embedding">embedding</option>
-                    <option value="hybrid">hybrid</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-            <div className="chat-input-row">
-              <input
-                placeholder="请输入企业知识库问题..."
-                value={p.question}
-                onChange={(event) => p.setQuestion(event.target.value)}
-                disabled={p.isAsking}
-              />
-              <button className="button" type="submit" disabled={p.isAsking || !p.question.trim()}>
-                {p.isAsking ? (
-                  <>
-                    <Loader2 size={15} />
-                    思考中...
-                  </>
-                ) : (
-                  <>
-                    <Send size={15} />
-                    提问
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+        <QuestionForm {...p} />
 
         {p.chatResponse?.agent_summary ? (
           <section className="agent-summary-box">
@@ -355,119 +312,11 @@ export function QAView(props: {
           </section>
         ) : null}
 
-        <div className="answer-box">
-          <div className="answer-title">
-            <div>
-              <Bot size={19} />
-              <h3>回答</h3>
-              {p.chatResponse?.token_usage ? (
-                <span className="token-pill" title={`prompt ${p.chatResponse.token_usage.prompt_tokens} + completion ${p.chatResponse.token_usage.completion_tokens}`}>
-                  <Coins size={13} />
-                  {p.chatResponse.token_usage.total_tokens} tokens
-                  {p.chatResponse.token_usage.estimated_cost_usd > 0
-                    ? ` · $${p.chatResponse.token_usage.estimated_cost_usd.toFixed(5)}`
-                    : ""}
-                </span>
-              ) : null}
-            </div>
-            <div className="answer-actions">
-              <button
-                className={"icon-button subtle feedback" + (p.answerFeedback === "up" ? " active-up" : "")}
-                type="button"
-                onClick={() => void p.handleAnswerFeedback("up")}
-                disabled={!p.chatResponse?.log_id || p.isSendingFeedback || p.answerFeedback !== null}
-                title={p.answerFeedback === "up" ? "已标记有帮助" : "答案有帮助"}
-              >
-                <ThumbsUp size={16} />
-              </button>
-              <button
-                className={"icon-button subtle feedback" + (p.answerFeedback === "down" ? " active-down" : "")}
-                type="button"
-                onClick={() => void p.handleAnswerFeedback("down")}
-                disabled={!p.chatResponse?.log_id || p.isSendingFeedback || p.answerFeedback !== null}
-                title={p.answerFeedback === "down" ? "已标记待改进" : "答案待改进"}
-              >
-                <ThumbsDown size={16} />
-              </button>
-              <button
-                className="icon-button subtle"
-                type="button"
-                onClick={() => void p.handleCopyAnswer()}
-                disabled={!p.chatResponse?.answer}
-                title="复制回答"
-              >
-                <Copy size={16} />
-              </button>
-              <button
-                className="icon-button subtle"
-                type="button"
-                onClick={() => p.setChatResponse(null)}
-                disabled={!p.chatResponse}
-                title="清空回答"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          <pre>{p.chatResponse?.answer ?? "回答会显示在这里。"}</pre>
-          {p.answerFeedback ? (
-            <div className="feedback-ack">
-              <CheckCircle2 size={14} />
-              反馈已记录，会体现在运行监控的满意度指标中。
-            </div>
-          ) : null}
-        </div>
+        <AnswerStream {...p} />
 
-        <div className="sources-box">
-          <div className="sources-title">
-            <h3>来源证据</h3>
-            <span>{p.chatResponse?.sources.length ?? 0} 条</span>
-          </div>
-          {!p.chatResponse || p.chatResponse.sources.length === 0 ? (
-            <div className="empty-source">暂无来源。上传文档并提问后，这里会显示命中的 chunk。</div>
-          ) : (
-            p.chatResponse.sources.map((source, index) => (
-              <article className="source-item" key={`${source.document_id}-${source.chunk_index}`}>
-                <header>
-                  <strong>来源 {index + 1}</strong>
-                  <span>
-					{source.source_type === "video" ? "视频证据" : source.origin_type === "approved_knowledge" ? "已批准知识" : "文档证据"} · {source.filename} · score {source.score}
-                  </span>
-                </header>
-                <p>{source.content}</p>
-				{source.source_type === "video" && source.asset_id && source.start_ms != null ? (
-					<button className="evidence-jump" type="button" onClick={() => p.handleOpenVideoEvidence(source.asset_id!, source.start_ms!)}>
-						<Video size={14} />播放 {formatTimestamp(source.start_ms)}–{formatTimestamp(source.end_ms ?? source.start_ms)}
-					</button>
-				) : null}
-              </article>
-            ))
-          )}
-        </div>
+        <SourceList {...p} />
 
-        <div className="trace-box">
-          <div className="answer-title">
-            <div>
-              <Workflow size={19} />
-              <h3>执行轨迹</h3>
-            </div>
-          </div>
-          {!p.chatResponse || p.chatResponse.trace.length === 0 ? (
-            <div className="empty-source">暂无轨迹。提问后，这里会显示检索和回答路径。</div>
-          ) : (
-            <ol className="trace-list">
-              {p.chatResponse.trace.map((step, index) => (
-                <li className="trace-item" key={`${step.name}-${index}`}>
-                  <div>
-                    <strong>{step.name}</strong>
-                    <span>{step.status}</span>
-                  </div>
-                  <p>{step.detail}</p>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
+        <TracePanel {...p} />
       </section>
     </div>
   );

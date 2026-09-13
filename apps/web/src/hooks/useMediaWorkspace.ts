@@ -1,49 +1,33 @@
-import React from "react";
-import { getMediaRuntime, listMediaTasks, type MediaRuntime, type MediaTask } from "../mediaApi";
+import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getMediaRuntime, listMediaTasks, type MediaTask } from "../mediaApi";
 import type { WorkspaceSession } from "../session";
 import { getErrorMessage } from "../features/common";
+import { mediaPollDelay, workspaceIdentity } from "../queryClient";
 
-export function useMediaWorkspace(
-  session: WorkspaceSession | null,
-  onError: (message: string) => void,
-) {
-  const [tasks, setTasks] = React.useState<MediaTask[]>([]);
-  const [runtime, setRuntime] = React.useState<MediaRuntime | null>(null);
-  const [loading, setLoading] = React.useState(false);
+const EMPTY_TASKS: MediaTask[] = [];
+
+export function useMediaWorkspace(session: WorkspaceSession, onError: (message: string) => void) {
+  const client = useQueryClient();
+  const identity = workspaceIdentity(session);
+  const key = ["workspace", identity, "media"];
   const [selectedAssetIds, setSelectedAssetIds] = React.useState<string[]>([]);
-
+  const tasksQuery = useQuery({ queryKey: [...key, "tasks"], queryFn: ({ signal }) => listMediaTasks(signal),
+    refetchInterval: (query) => mediaPollDelay(query.state.data, query.state.error,
+      query.state.fetchFailureCount || query.state.errorUpdateCount), refetchIntervalInBackground: false });
+  const runtimeQuery = useQuery({ queryKey: [...key, "runtime"], queryFn: ({ signal }) => getMediaRuntime(signal), staleTime: 60_000 });
+  const tasks = tasksQuery.data ?? EMPTY_TASKS;
+  const error = tasksQuery.error ?? runtimeQuery.error;
+  React.useEffect(() => { if (error) onError(getErrorMessage(error)); }, [error, onError]);
+  React.useEffect(() => {
+    setSelectedAssetIds((current) => {
+      const next = current.filter((id) => tasks.some((task) => task.videoId === id));
+      return next.length === current.length ? current : next;
+    });
+  }, [tasks]);
   const refresh = React.useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
-    try {
-      const [next, nextRuntime] = await Promise.all([listMediaTasks(), getMediaRuntime()]);
-      setTasks(next);
-      setRuntime(nextRuntime);
-      setSelectedAssetIds((current) => current.filter(
-        (assetId) => next.some((task) => task.videoId === assetId),
-      ));
-    } catch (caught) {
-      onError(getErrorMessage(caught));
-    } finally {
-      setLoading(false);
-    }
-  }, [session, onError]);
-
-  React.useEffect(() => {
-    if (!session) {
-      setTasks([]);
-      setRuntime(null);
-      setSelectedAssetIds([]);
-      return;
-    }
-    void refresh();
-  }, [session, refresh]);
-
-  React.useEffect(() => {
-    if (!session || !tasks.some((task) => !["COMPLETED", "FAILED"].includes(task.status))) return;
-    const timer = window.setInterval(() => void refresh(), 2000);
-    return () => window.clearInterval(timer);
-  }, [session, tasks, refresh]);
-
-  return { tasks, runtime, loading, selectedAssetIds, setSelectedAssetIds, refresh };
+    await client.invalidateQueries({ queryKey: ["workspace", identity, "media"] });
+  }, [client, identity]);
+  return { tasks, runtime: runtimeQuery.data ?? null, loading: tasksQuery.isPending,
+    selectedAssetIds, setSelectedAssetIds, refresh };
 }

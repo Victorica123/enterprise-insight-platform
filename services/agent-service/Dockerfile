@@ -19,4 +19,4 @@ USER nobody
 
 EXPOSE 8000
 # 默认零配置本地模式；LLM Key 等通过环境变量注入（见 .env.example）
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "app.serve"]

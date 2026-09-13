@@ -22,3 +22,5 @@ backups/
 *.sqlite3
 .venv/
 .pi/
+.playwright-cli/
+output/playwright/

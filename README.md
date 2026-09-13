@@ -26,7 +26,7 @@ flowchart LR
 
 1. 上传会议视频，查看可恢复的异步处理状态。
 2. 带时间段的转写通过事务 outbox 幂等进入 Agent Service。
-3. 用户跨视频/文档提问，答案引用可点击回放的证据。
+3. 用户跨视频/文档提问、连续追问，查看流式进度和核验后的答案；视频证据可点击回放，支持停止或新建会话。
 4. Agent 经过意图、干系人、领域、风险、收敛、PRD 六阶段分析。
 5. objective 驱动授权 hybrid 检索并冻结证据；信息不足时持久化等待，人工补充后保留阶段 1–4，仅重算收敛与 PRD，并以 CAS 一次性消费恢复 token。
 6. personal Workspace 使用 OWNER 二次确认发布；team Workspace 必须不同成员四眼审批。
@@ -38,15 +38,18 @@ flowchart LR
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 199 个自动化用例，覆盖目标证据快照、并行 specialist、阶段恢复、并发 CAS、检索、审批、隔离、工具与知识版本治理 |
-| Media Service | 受支持的 Temurin JDK 17/18 下 135 个自动化用例（CI 使用 JDK 17） |
-| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景三套独立门禁 |
-| 平台纵向链路 | 33 项 localhost-only 自动验收，不需要域名、服务器或外部模型 |
-| Web | ESLint 0 error + 7 个前端会话回归 + TypeScript project build + Vite production build |
+| Agent Service | 244 个自动化用例，覆盖会话/SSE、续租/预算、主题与证据、配置/迁移、MySQL 兼容、审批与知识治理 |
+| Media Service | Temurin JDK 17.0.18 下 150 个自动化用例，覆盖 Flyway、阶段日志、配额/租约/outbox 与熔断 |
+| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景 + Conversation V1 9 场景 |
+| 平台纵向链路 | H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 两套环境各 42 项验收，使用真实 JWT 与 mock/local AI |
+| Web | ESLint 0 error（10 warning）+ 21 个会话、查询隔离和只读权限回归 + TypeScript/Vite 构建 |
+| 可靠性实测 | MySQL 新旧库迁移与两库备份恢复、Redis 分片续传、MinIO Range 播放、Agent 断连恢复、有限 k6 冒烟 |
 | 静态检查 | ruff 0.16.6（E/F/I/UP/B）与 ESLint 10（TypeScript + React Hooks）0 error，本机与 CI 共用同一配置 |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 
 详细、可审计的测试口径见 [`knowledge/QUALITY.md`](knowledge/QUALITY.md)。
+
+2026-09-13 的架构优化已完成阶段 0–4，包括 Media 职责/配置拆分、Flyway、真实阶段日志与投递熔断，以及 Web Router/Query、会话状态下沉和 Workspace/角色切换隔离。完整进度、历史性能基准与交接见 [`docs/ARCHITECTURE_OPTIMIZATION_PLAN.md`](docs/ARCHITECTURE_OPTIMIZATION_PLAN.md)。会话记忆仍是受限主题提示，每轮重新检索证据；本轮未验证外部模型或生产容量。
 
 ## LLM 通道边界
 
@@ -118,4 +121,4 @@ python scripts/local_acceptance.py
 
 ## 真实边界
 
-当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或兑现 99.5% SLO。localhost 验收中的 mock AI 证明状态机、鉴权、证据、审批和恢复链路，不等同于真实模型质量或生产吞吐。生产试点基线已固定 Keycloak OIDC、RS256/JWKS、MySQL、30/180/365 天保留期和模型出境租户白名单；仍须在具备 Docker/k6 与获批供应商凭证的环境验证真实中间件、模型、迁移、告警和灾备后才能形成上线结论。
+当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或兑现 99.5% SLO。本轮已在隔离 Docker 环境验证 MySQL/Redis/RocketMQ/MinIO、迁移和恢复，但使用 HS256 与 mock/local AI；k6 仅为 3 VUs、150 请求的小样本。生产试点基线仍为 Keycloak OIDC、RS256/JWKS、MySQL、30/180/365 天保留期和模型出境租户白名单。正式身份集成、外部模型、长时间容量、多实例、聚合告警和目标部署灾备需要独立证据。

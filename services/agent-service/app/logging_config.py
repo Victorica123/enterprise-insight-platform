@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from datetime import UTC, datetime
+
+from app.config import get_settings
 
 
 class JsonFormatter(logging.Formatter):
@@ -30,12 +31,12 @@ def setup_logging() -> None:
     if getattr(root, "_app_logging_configured", False):
         return
     handler = logging.StreamHandler(sys.stdout)
-    if os.getenv("LOG_FORMAT_TEXT", "").strip().lower() in {"1", "true", "yes"}:
+    if get_settings().log_format_text:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     else:
         handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
-    root.setLevel(os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO")
+    root.setLevel(get_settings().log_level)
     # 第三方库降噪
     for noisy in ("httpx", "httpcore", "openai", "uvicorn.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

@@ -5,13 +5,15 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth import ActorPrincipal, current_principal, require_operator_role
-from app.chat_observability_store import (
+from app.architecture.observability import (
     get_chat_log,
     get_chat_metrics_summary,
+    get_tool_metrics_summary,
     list_chat_logs,
+    list_tool_call_logs,
     set_chat_log_feedback,
 )
+from app.auth import ActorPrincipal, current_principal, require_operator_role
 from app.models import (
     ChatLogDetailResponse,
     ChatLogResponse,
@@ -21,7 +23,6 @@ from app.models import (
     ToolCallLogResponse,
     ToolMetricsSummary,
 )
-from app.tool_observability_store import get_tool_metrics_summary, list_tool_call_logs
 
 router = APIRouter(tags=["observability"])
 

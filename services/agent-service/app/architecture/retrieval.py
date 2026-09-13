@@ -8,6 +8,7 @@ retriever/store modules remain the persistence adapters.
 from app.analysis_evidence import build_analysis_evidence_snapshot
 from app.evidence_provenance import EvidenceProvenanceError, validate_and_normalize_evidence
 from app.graph_rag import GraphLookup, lookup_graph, question_wants_graph
+from app.graph_store import find_paths, get_graph_overview, list_entities, list_relations, rebuild_graph
 from app.retrievers import (
     Chunk,
     EmbeddingRetriever,
@@ -33,6 +34,7 @@ class EvidenceRetrievalService:
 
 
 __all__ = [
+    'find_paths', 'get_graph_overview', 'list_entities', 'list_relations', 'rebuild_graph',
     "Chunk",
     "EmbeddingRetriever",
     "EvidenceProvenanceError",

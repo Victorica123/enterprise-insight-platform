@@ -14,6 +14,7 @@ Media Service
   └─ transcript.ready.v1 -> Agent Service ingestion
 
 Agent Service
+  ├─ bounded conversation memory / JSON and SSE chat / renewable turn lease
   ├─ evidence segments / indexes / retrieval
   ├─ analysis sessions / confirmation checkpoints
   ├─ PRD drafts / publication approvals / immutable versions
@@ -34,12 +35,13 @@ Agent Service
 - 拥有账号、个人/团队 Workspace、成员关系、一次性邀请与 active Workspace JWT 重签。
 - 生产试点验证 Keycloak OIDC access token，将 `(issuer, subject)` 映射为内部用户，再以 RS256 签发短期 Workspace JWT；JWKS 只暴露公钥。
 - 拥有媒体资产、上传会话、对象存储位置和处理任务。
-- 负责转码、抽音频、语音识别、重试、失败原因和媒体可用性。
+- 负责读取媒体、需要时抽音频、语音识别、摘要、重试、失败原因和媒体可用性；阶段日志只记录真正执行的步骤，不虚构转码。
 - 产出带稳定片段 ID、时间段、说话人和文本的转写版本。
 - 媒体任务与内容去重资产都持久化结构化转写片段；内容命中复用时不会丢失时间戳证据。
 - 内容去重资产按 `tenant_id + content_md5` 隔离，不能让一个租户复用或改变另一个租户的结果。
 - 长时间处理任务使用可续租的数据库 fencing lease；阶段完成和失败写入带 lease 条件，过期任务由条件更新安全重入队，避免看门狗误判时覆盖活跃结果。
 - 只向 Agent 发送必要业务字段，不泄露对象存储密钥或临时播放凭证。
+- `VideoTaskService` 保留接单与兼容入口，配额、lease 与完成事务由 `TaskQuotaService`、`TaskLeaseService`、`TaskCompletionService` 分担；十二组配置独立绑定，Flyway V1/V2 管理结构，Hibernate 仅 validate。
 
 ### Agent Service
 
@@ -58,6 +60,7 @@ Agent Service
 - 一个登录态、一个导航体系和一个任务工作台；提供创建/加入团队、成员管理与显式 Workspace 切换。
 - 不承担权限判定；只呈现服务端能力和可解释的失败状态。
 - 通过证据引用请求 Media Service 的授权播放地址并定位时间段。
+- HashRouter 管理六个页面地址，TanStack Query 管理服务器读取、去重、取消与失效。QueryClient 及会话按身份/Workspace/角色重建，QA 在同一身份范围内跨路由保留；viewer 写入口禁用，后端仍负责最终授权。
 
 ## 可靠性边界
 
@@ -70,12 +73,19 @@ Agent Service
 - Media 的任务创建、人工重试和 stale requeue 会在同一数据库事务写入/重置 `workflow_dispatch_outbox`。独立 dispatcher 以 claim lease 把持久意图投递到本地 executor 或 RocketMQ；瞬时拒绝只退避重试，不再让上传接口在任务已经落库后返回失败。Worker 仍以任务状态 CAS、processing lease 和内容单飞抵御重复投递。
 - Media 在任务完成事务内写入 `integration_event_outbox`；调度器先通过条件更新把可投递/过期记录领取为带 `claimId + claimExpiresAt` 的 `CLAIMED`，再通过 HTTP/1.1 投递。完成和失败写入继续校验 claim 持有者、lease 和 attempts；瞬时失败指数退避，契约冲突或重试耗尽进入 DEAD，Agent 端继续执行事件级与语义级双重幂等。该设计仍是 at-least-once，不声称 exactly-once。
 - 外部基础设施的 light/mock 模式仅用于开发；生产声明必须由真实集成 smoke 支撑。
+- Agent HTTP 单次发送、outbox 持久化退避；实例内熔断及半开探测暂停暂时失败的出站，跳过不消耗 attempt。逐条领取事件避免整批等网络时 lease 耗尽。`task_stage_log` 可分页查询实际处理/投递的开始、结束、耗时与脱敏错误；任务恢复只自动关闭旧处理阶段，DELIVERY 硬崩溃遗留记录需结合 outbox 判断。
 - 外部模型调用在生产中以签名 tenant 为白名单键，未批准 Workspace 即使配置了供应商 Key 也不能出境；Media/Agent 的保留期任务以有界批次清理媒体、视频转写和审计。
 
 ## 迁移原则
 
+Agent 配置由不可变 `Settings` 统一读取和启动校验；`schema_migrations` 与 `app/schema/` 的八项编号迁移负责旧库升级。SQLite 迁移使用写事务；MySQL 使用 advisory lock 和可重试 DDL，m008 升级七个长文本列。Media 独立使用 Flyway；旧库必须备份、显式 baseline 并通过冻结 V1 校验，未知版本拒绝启动。两套迁移已在 MySQL 8.4 新旧测试库验证，正式目标库仍需副本演练。所有业务路由依赖 architecture façade，图算法与工单纯规则分别位于 `graph_algorithms.py`、`ticket_domain.py`；见 [ADR-0017](decisions/0017-settings-schema-and-domain-boundaries.md) 和 [ADR-0018](decisions/0018-media-migrations-stages-and-web-queries.md)。
+
 原始 Video Platform 与 Agent Platform 仓库历史已导入本仓库；原仓库保持不动。整合通过纵向链路逐步替换旧入口，未迁移能力不会被无验证删除。
 
 ## Agent Service 内部全景边界
+
+`architecture.conversation` 将 JSON/SSE 送入同一 `chat_service`，与 `architecture.orchestration` 的执行计划和执行器组合。会话租约/预算由数据库 CAS 保持，异步答案流通过有界事件队列接入同步执行器；最终引用审核后才发送 `done`。最近问题和摘要仅用于主题补全，授权证据每轮重检索，细节见 [ADR-0016](decisions/0016-bounded-conversations-and-sse.md)。
+
+容器默认一个 worker，部署可显式调整 worker、anyio 线程池和 specialist 并发。缓存 revision 支持跨进程失效，不共享模型内存和缓存统计；多 worker 的内存、后台补齐与吞吐代价需要实测。
 
 架构图中的对话编排、检索与证据、三层执行器、知识底座、治理审批和工程护栏，分别由 `services/agent-service/app/architecture/` 下的六个 façade 暴露。façade 是应用入口和替换适配点，不拥有新的数据库表，也不改变 Media/Agent 两服务边界；旧实现模块继续保留以兼容既有测试和契约。详细映射、生产诚实边界与后续替换顺序见 [ARCHITECTURE_PANORAMA.md](../docs/ARCHITECTURE_PANORAMA.md)，决策见 [ADR-0015](decisions/0015-agent-service-bounded-context-facades.md)。

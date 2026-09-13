@@ -1,6 +1,7 @@
 package com.example.videoplatform.workflow;
 
 import com.example.videoplatform.media.MediaStorageService;
+import com.example.videoplatform.workflow.TaskStageLog.Stage;
 import com.example.videoplatform.summary.SummaryService;
 import com.example.videoplatform.transcript.TranscriptResult;
 import com.example.videoplatform.transcript.TranscriptService;
@@ -32,11 +33,12 @@ public class WorkflowProcessor {
 	private final WorkflowMetrics metrics;
 	private final MediaStorageService mediaStorageService;
 	private final ModelEgressPolicy modelEgressPolicy;
+	private final TaskStageLogService stageLogs;
 
 	public WorkflowProcessor(VideoTaskService videoTaskService, MediaAssetService mediaAssetService,
 			DistributedLockService lockService, TranscriptService transcriptService,
 			SummaryService summaryService, WorkflowMetrics metrics, MediaStorageService mediaStorageService,
-			ModelEgressPolicy modelEgressPolicy) {
+			ModelEgressPolicy modelEgressPolicy, TaskStageLogService stageLogs) {
 		this.videoTaskService = videoTaskService;
 		this.mediaAssetService = mediaAssetService;
 		this.lockService = lockService;
@@ -45,6 +47,7 @@ public class WorkflowProcessor {
 		this.metrics = metrics;
 		this.mediaStorageService = mediaStorageService;
 		this.modelEgressPolicy = modelEgressPolicy;
+		this.stageLogs = stageLogs;
 	}
 
 	/**
@@ -67,6 +70,7 @@ public class WorkflowProcessor {
 			return;
 		}
 
+		TaskStageObserver stages = new TaskStageObserver(stageLogs, taskId);
 		String tenantId = task.getTenantId();
 		String md5 = task.getContentMd5();
 
@@ -77,7 +81,10 @@ public class WorkflowProcessor {
 				log.info("Content {} already processed in tenant {}, reusing result for task {}",
 						md5, tenantId, taskId);
 				Timer.Sample sample = metrics.startProcessing();
-				videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
+				stages.run(Stage.RESULT_REUSE, () -> {
+					videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
+					return null;
+				});
 				metrics.stopProcessing(sample, "dedup", "completed");
 				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
@@ -94,15 +101,15 @@ public class WorkflowProcessor {
 		try (LeaseHeartbeat heartbeat = LeaseHeartbeat.start(
 				taskId, lease.get(), videoTaskService, videoTaskService.leaseHeartbeatIntervalMillis())) {
 			if (md5 == null || md5.isBlank()) {
-				processStandalone(taskId, task, heartbeat);
+				processStandalone(taskId, task, heartbeat, stages);
 				return;
 			}
-			processWithSingleFlight(taskId, task, tenantId, md5, heartbeat);
+			processWithSingleFlight(taskId, task, tenantId, md5, heartbeat, stages);
 		}
 	}
 
 	private void processWithSingleFlight(
-			String taskId, VideoTask task, String tenantId, String md5, LeaseHeartbeat heartbeat) {
+			String taskId, VideoTask task, String tenantId, String md5, LeaseHeartbeat heartbeat, TaskStageObserver stages) {
 		String lockKey = String.format(ASSET_LOCK_KEY, tenantId, md5);
 		if (!lockService.tryLockWithWatchdog(lockKey)) {
 			log.info("Content {} is being processed by another worker in tenant {}; task {} will be completed by the winner",
@@ -116,7 +123,10 @@ public class WorkflowProcessor {
 			Optional<MediaAsset> ready = readyAsset(tenantId, md5);
 			if (ready.isPresent()) {
 				heartbeat.ensureOwned();
-				videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
+				stages.run(Stage.RESULT_REUSE, () -> {
+					videoTaskService.completeFromAsset(taskId, ready.get().getTranscriptResult(), ready.get().getSummary());
+					return null;
+				});
 				metrics.stopProcessing(sample, "dedup", "completed");
 				metrics.recordEndToEnd(task.getCreatedAt(), "completed");
 				return;
@@ -127,19 +137,23 @@ public class WorkflowProcessor {
 
 			TranscriptResult transcript;
 			modelEgressPolicy.requireTranscriptAllowed(tenantId);
-			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
-				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
+			try (MediaStorageService.ResolvedMedia media = stages.run(Stage.STORAGE_RESOLVE,
+					() -> mediaStorageService.resolveForProcessing(task.getStoragePath()))) {
+				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName(), stages);
 			}
 			heartbeat.ensureOwned();
 			modelEgressPolicy.requireSummaryAllowed(tenantId);
-			String summary = summaryService.summarize(transcript.text());
+			String summary = stages.run(Stage.SUMMARY, () -> summaryService.summarize(transcript.text()));
 			heartbeat.ensureOwned();
 
-			mediaAssetService.markReady(tenantId, md5, transcript, summary);
-			if (!videoTaskService.completeAllByContentMd5(
-					tenantId, md5, transcript, summary, taskId, heartbeat.leaseId())) {
-				throw new LeaseLostException();
-			}
+			stages.run(Stage.RESULT_COMMIT, () -> {
+				mediaAssetService.markReady(tenantId, md5, transcript, summary);
+				if (!videoTaskService.completeAllByContentMd5(
+						tenantId, md5, transcript, summary, taskId, heartbeat.leaseId())) {
+					throw new LeaseLostException();
+				}
+				return null;
+			});
 			log.info("Content {} in tenant {} processed; fan-out committed", md5, tenantId);
 			metrics.stopProcessing(sample, "single_flight", "completed");
 			metrics.recordEndToEnd(task.getCreatedAt(), "completed");
@@ -170,13 +184,14 @@ public class WorkflowProcessor {
 		}
 	}
 
-	private void processStandalone(String taskId, VideoTask task, LeaseHeartbeat heartbeat) {
+	private void processStandalone(String taskId, VideoTask task, LeaseHeartbeat heartbeat, TaskStageObserver stages) {
 		Timer.Sample sample = metrics.startProcessing();
 		try {
 			TranscriptResult transcript;
 			modelEgressPolicy.requireTranscriptAllowed(task.getTenantId());
-			try (MediaStorageService.ResolvedMedia media = mediaStorageService.resolveForProcessing(task.getStoragePath())) {
-				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName());
+			try (MediaStorageService.ResolvedMedia media = stages.run(Stage.STORAGE_RESOLVE,
+					() -> mediaStorageService.resolveForProcessing(task.getStoragePath()))) {
+				transcript = transcriptService.extract(media.localPath().toString(), task.getFileName(), stages);
 			}
 			heartbeat.ensureOwned();
 			if (!videoTaskService.completeTranscript(taskId, transcript, heartbeat.leaseId())) {
@@ -184,11 +199,14 @@ public class WorkflowProcessor {
 			}
 
 			modelEgressPolicy.requireSummaryAllowed(task.getTenantId());
-			String summary = summaryService.summarize(transcript.text());
+			String summary = stages.run(Stage.SUMMARY, () -> summaryService.summarize(transcript.text()));
 			heartbeat.ensureOwned();
-			if (!videoTaskService.completeSummary(taskId, summary, heartbeat.leaseId())) {
-				throw new LeaseLostException();
-			}
+			stages.run(Stage.RESULT_COMMIT, () -> {
+				if (!videoTaskService.completeSummary(taskId, summary, heartbeat.leaseId())) {
+					throw new LeaseLostException();
+				}
+				return null;
+			});
 			log.info("Video task {} completed", taskId);
 			metrics.stopProcessing(sample, "standalone", "completed");
 			metrics.recordEndToEnd(task.getCreatedAt(), "completed");

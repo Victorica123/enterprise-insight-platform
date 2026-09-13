@@ -15,7 +15,7 @@
 python scripts/local_acceptance.py
 ```
 
-脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；33 项检查覆盖个人全链路、第二用户团队创建/邀请/切换、跨成员视频与 Agent 共享、personal 隔离、团队四眼发布、知识物化与未来 RAG 再召回、知识替代/撤回/历史引用状态、团队生命周期四眼、工单交付、VIEWER 只读、缓存安全边界，以及 objective 证据快照、阶段恢复稳定和旧 resume token 的 CAS 拒绝。它不访问公网，也不要求 Docker、域名、Redis、RocketMQ、S3 或模型 Key。失败日志会保存在系统临时目录并打印路径。
+脚本自动构建并启动两个后端到随机 `127.0.0.1` 端口，使用临时 H2、SQLite、本地媒体目录、mock 转写/摘要和本地模板回答；42 项检查覆盖个人/团队隔离、视频证据、分析冻结与恢复、审批、知识生命周期、工单、缓存、SSE/连续指代，以及阶段记录的实际执行/分页/越权和有聊天数据后的监控聚合。脚本显式清空 Agent MySQL URL、固定 H2/HS256 并关闭 LLM Router，避免继承真实环境配置。它不要求 Docker、域名或模型 Key；失败日志会保存在系统临时目录并打印路径。
 
 维护知识索引使用以下命令，不依赖外部 embedding 服务：
 
@@ -68,6 +68,8 @@ npm run dev
 
 默认连接 `127.0.0.1:8081` 的 Media Service 与 `127.0.0.1:8000` 的 Agent Service；可分别用 `VITE_MEDIA_API_BASE_URL`、`VITE_API_BASE_URL` 覆盖。
 
+Web 使用 `#/media`、`#/qa`、`#/analysis`、`#/tickets`、`#/graph`、`#/monitor` 六个路由，支持浏览器前进/后退与深链接刷新。Query 的 staleTime 为 15 秒、无观察者缓存保留 5 分钟，读请求最多重试两次；普通 4xx 与取消不重试，408/429 可退避。任务轮询随无进展时间由 2/5/10 秒延长到 30 秒，终态停止。写操作不自动重放。身份/Workspace/角色变化会取消并清空旧 QueryClient，QA 会话在同一 Workspace 内跨页面保留。
+
 ## 配置原则
 
 - 密钥只通过环境变量或密钥服务注入，不进入仓库和事件。
@@ -77,6 +79,37 @@ npm run dev
 - 启动时验证关键配置，避免以不安全默认值静默进入生产模式。
 - OIDC 页面在平台令牌到期前 60 秒自动续期，重新聚焦时再次检查；保留当前 Workspace 的请求由 Media 重新验证成员关系。IdP 会话失效后需重新登录；新增标签页或浏览器会话可能没有原标签页的 refresh token，不能仅凭 localStorage 中的平台令牌假定可持续续期。
 - 开发 light/mock 配置与真实集成配置分开命名并在健康接口中可识别。
+
+## Agent 启动、迁移与并发
+
+从 `services/agent-service` 运行 `python -m app.serve`；容器使用同一入口。配置集中在 `app/config.py`，启动校验失败时只输出参数名和原因。原 getter API 保留；修改部署配置后重启服务，不把测试用的环境缓存失效机制当作在线配置管理。
+
+| 参数 | 默认值 | 运行含义 |
+| --- | --- | --- |
+| `AGENT_WORKERS` | 1 | uvicorn 进程数；Compose 可用 `LOCAL_AGENT_WORKERS` 传入 |
+| `AGENT_THREAD_POOL_SIZE` | 40 | 每进程同步 HTTP / SSE 阻塞阶段共用的 anyio 线程额度 |
+| `AGENT_SPECIALIST_WORKERS` | 4 | 每进程确定性领域执行器线程上限 |
+| `CONVERSATION_LEASE_SECONDS` | 120 | 每三分之一周期续租，过期轮次不得复活 |
+| `EMBEDDING_REBUILD_BATCH_SIZE` | 64 | 后台补齐批次，后台循环最多 512 条 |
+| `EMBEDDING_BACKFILL_INTERVAL_SECONDS` | 60 | 后台补齐周期，推理不占数据库写事务 |
+
+每个 worker 有独立模型、缓存、指标和后台循环；增加进程前先量测内存、数据库竞争与真实吞吐。缓存依靠持久化 revision 失效，会话依靠数据库 CAS，不能把进程内缓存当作分布式锁。
+
+`database.init_db()` 通过编号迁移和 `schema_migrations` 升级。SQLite 用 `BEGIN IMMEDIATE`，失败整体回滚；MySQL 用 advisory lock，DDL 自动提交，迁移必须可重试。升级前先停写并备份，先在数据库副本演练；未来变化追加迁移。若数据库版本未知或高于应用，启动会拒绝，勿手改 ledger 绕过。blob/JSON 双写只保障向量读兼容，不代表整个数据库可随意降级。
+
+当前有八项编号迁移。`m008_mysql_text_fields` 只在 MySQL 将 `analysis_sessions.asset_ids_json`、`tickets.source_document_ids`、`knowledge_lifecycle_requests` 的 reason/replacement_statement/replacement_evidence_json、`knowledge_versions.invalidation_reason`、`documents.lifecycle_reason` 升级为 LONGTEXT；SQLite no-op。迁移可在部分 DDL 已提交后重入，1–7 的编号与实现不重写。MySQL 8.4 旧库/新库、双进程初始化、重启、长文本和未知版本拒绝已在隔离测试库验证；目标业务库仍需自己的副本演练与备份。
+
+SSE 网关需要允许长连接并关闭响应缓冲；服务返回 `X-Accel-Buffering: no` 和 15 秒心跳。只有 `done` 是完整回答；断连后需由用户重新提问，服务不透明重放工具请求。会话冲突可重试或新建会话，不能清除他人的活跃租约。
+
+## Media 配置、迁移与阶段查询
+
+十二组配置通过各自原 `app.*` 前缀独立绑定，`AppProperties` 只保留兼容聚合；原环境变量继续有效。配额、租约和完成事务分别在 `TaskQuotaService`、`TaskLeaseService`、`TaskCompletionService`，故障排查按职责定位。
+
+H2/MySQL 使用 `db/migration/{vendor}` 的 Flyway V1/V2，Hibernate 固定 `ddl-auto=validate`。空库直接应用 V1/V2。没有 `flyway_schema_history` 的旧库默认拒绝自动接管；先停写、备份并在副本演练，只有旧库满足冻结 V1 的表/列/主键/唯一约束后才可临时设置 `MEDIA_FLYWAY_BASELINE_ON_MIGRATE=true`，登记 V1 baseline 并执行 V2。两个 Compose 都传递该变量。接管后恢复 false，核对历史与业务数据并重启验证；禁止 clean、手改 ledger、自动 repair 或通过 `ddl-auto=update` 绕过失败。未知未来版本拒绝启动，回退需匹配版本的数据备份，不能直接以旧应用打开新库。
+
+已鉴权 `GET /api/workflow/tasks/{taskId}/stages?after=0&limit=50` 返回真实执行记录；limit 为 1–100，按 ID 排他游标翻页。错误仅为固定错误码；audit-days 控制清理。任务处理恢复把旧处理阶段标为 ABANDONED，独立 DELIVERY 不在此恢复范围，硬崩溃残留 RUNNING 不能当作仍在执行的充分证据，需结合 outbox 状态排障。
+
+Agent 投递由持久 outbox 重试，客户端每次只发送一次。默认 `APP_AGENT_CIRCUIT_FAILURE_THRESHOLD=3`、`APP_AGENT_CIRCUIT_OPEN_MS=30000`、`APP_AGENT_CIRCUIT_MAX_OPEN_MS=300000`；半开只放行一个探测，熔断跳过不增加 attempt。熔断状态为实例内状态，重启后重建；恢复可靠性依赖数据库 outbox 与下游幂等，不依赖熔断状态持久化。
 
 ## 可观测性
 
@@ -90,7 +123,7 @@ npm run dev
 
 - 媒体任务可安全重试，不能重复创建资产；处理中的 worker 以可续租 fencing lease 保持所有权，reaper 只通过过期条件更新重新获得调度权。
 - 上传接单、人工重试和 stale requeue 与 `workflow_dispatch_outbox` 在同一事务提交。dispatcher 对本地线程池拒绝或 MQ 发送失败做有上限的指数退避；成功响应表示“任务与调度意图已持久化”，不表示后台处理已完成。重复投递继续由任务 CAS/lease 保证安全。
-- 转写事件可重放，Agent 消费必须幂等。Media outbox 采用至少一次投递语义，dispatcher 先以条件更新将 `PENDING`/过期 `CLAIMED` 领取为带 `claimId + claimExpiresAt` 的 `CLAIMED`，网络发送后的 `SENT/FAILED/DEAD` 也必须校验持有者和 lease；重复出站仍由下游幂等兜底。当前已完成 H2/JPA 集成回归，但正式多实例应继续验证数据库方言、锁行为、重试/DEAD 告警与故障注入。
+- 转写事件可重放，Agent 消费必须幂等。Media outbox 采用至少一次投递语义，dispatcher 先以条件更新将 `PENDING`/过期 `CLAIMED` 领取为带 `claimId + claimExpiresAt` 的 `CLAIMED`，网络发送后的 `SENT/PENDING/DEAD` 也必须校验持有者和 lease；重复出站仍由下游幂等兜底。当前已有 H2/JPA 回归和真实 MySQL 单实例断连恢复证据，正式多实例仍需验证竞争领取、锁行为与重试/DEAD 告警。
 - Agent 业务会话、阶段结果、人工答案和冻结证据 revision/hash 可持久化读回；确认保留阶段 1–4，只重算收敛与 PRD，并以数据库 CAS 原子消费 token。它仍不宣称执行栈级 checkpoint continuation。
 - 发布 PRD、知识合并和外部写操作使用幂等键及审计记录；知识批准与 document/chunk/图索引同事务，失败回滚为 `PENDING`。
 - 停止本地栈后可用 `python scripts/local_data.py backup` 创建带 SHA-256 manifest 的归档；`verify` 校验文件与 SQLite，`restore --force` 覆盖前自动创建 pre-restore 安全备份。
@@ -98,6 +131,6 @@ npm run dev
 
 ## 当前运行状态与缺口
 
-统一 localhost Compose、启动/停止脚本、备份校验恢复工具、本地发布手册和本地质量目标已提供。无容器验收链路已实际通过；准生产 Compose、k6、JFR/NMT、tracemalloc 和 Toxiproxy 入口也已提供。当前主机没有 Docker/k6，因此准生产配置只完成静态解析，不能声明真实容器、中间件或故障注入已经运行通过。
+2026-09-13 在独立 Compose project 上完成 MySQL 8.4、Redis、RocketMQ、MinIO 的 42 项纵向验收、Agent 断连恢复和有限 k6 冒烟；两个 MySQL 业务库停止应用写入后，备份校验并恢复到新 schema，33 表/518 行摘要一致。完整结果与本机日志见 `knowledge/QUALITY.md`。原 `enterprise-insight-local` 与 `erp-mssql` 未升级或停止。
 
-真实 Redis、RocketMQ、MySQL、S3 与 Keycloak 的可重复本机验证路径已经定义，但仍需在安装 Docker/k6 的主机执行并留存结果；外部模型 smoke、生产数据库迁移编排、灾备演练与监控告警接入仍待目标环境验证。两个 outbox 的 claim/lease 已在 H2/JPA 集成测试验证，但尚未在真实数据库、多实例和故障注入环境验证；当前实现仍应按至少一次投递、消费者幂等来理解。`docs/SLO.md` 已记录获批的生产试点目标，但在取得目标环境观测证据前不能宣称已经兑现。
+本机已安装 Docker/k6；本轮身份为 HS256，AI 为 mock/local。Keycloak/RS256、外部模型、长时间压力、JFR/NMT/tracemalloc 浸泡、多 Media 实例竞争、MinIO 对象和异机灾备、聚合告警仍需独立演练。MySQL 的本机迁移/还原不替代目标业务库升级与匹配版本回退；至少一次投递与消费者幂等语义保持不变。`docs/SLO.md` 中的生产试点目标尚无兑现证据。

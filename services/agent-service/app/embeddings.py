@@ -1,22 +1,22 @@
 import hashlib
 import json
 import math
-import os
 import re
 from collections import OrderedDict
 from threading import RLock
 
+from app.config import get_settings
 from app.text import char_ngrams, normalize_text
 
 DEFAULT_EMBEDDING_DIMENSION = 64
 
 # A3: 真实语义 embedding（fastembed/BGE-small-zh，512 维，ONNX 本地推理，无 torch 依赖）。
 # 环境变量 EMBEDDING_MODEL 置空字符串可完全退回哈希 n-gram（离线/无模型场景）。
-REAL_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+REAL_EMBEDDING_MODEL = get_settings().embedding_model
 
 # A3: reranker（cross-encoder 精排），默认关闭以守住延迟预算。
 # 设置 RERANKER_MODEL（如 jinaai/jina-reranker-v2-base-multilingual）即启用。
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "")
+RERANKER_MODEL = get_settings().reranker_model
 
 _real_model_state: dict[str, object] = {}
 _reranker_state: dict[str, object] = {}

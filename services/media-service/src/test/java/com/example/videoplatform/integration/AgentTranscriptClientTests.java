@@ -1,6 +1,7 @@
 package com.example.videoplatform.integration;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.videoplatform.config.AppProperties;
 import com.sun.net.httpserver.HttpServer;
@@ -11,6 +12,32 @@ import org.junit.jupiter.api.Test;
 class AgentTranscriptClientTests {
 
 	private HttpServer server;
+
+	@Test
+	void repeatedServiceFailuresStopNetworkCallsUntilTheProbeSucceeds() throws Exception {
+		var calls = new java.util.concurrent.atomic.AtomicInteger();
+		var responseCode = new java.util.concurrent.atomic.AtomicInteger(503);
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/internal/v1/media/transcripts", exchange -> {
+			calls.incrementAndGet();
+			exchange.sendResponseHeaders(responseCode.get(), 0);
+			exchange.close();
+		});
+		server.start();
+		AppProperties properties = new AppProperties();
+		properties.getIntegration().getAgent().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+		properties.getIntegration().getAgent().setServiceToken("test-service-token");
+		var clock = new AgentDeliveryCircuitTests.MutableClock();
+		var client = new AgentTranscriptClient(properties, clock);
+		for (int i = 0; i < 3; i++) assertThatThrownBy(() -> client.send("{}")).hasMessageContaining("503");
+		assertThatThrownBy(() -> client.send("{}")).isInstanceOf(AgentDeliveryCircuit.OpenException.class);
+		assertThat(calls.get()).isEqualTo(3);
+		clock.advance(30_000);
+		responseCode.set(204);
+		client.send("{}");
+		assertThat(calls.get()).isEqualTo(4);
+		assertThat(client.canAttempt()).isTrue();
+	}
 
 	@AfterEach
 	void stopServer() {
