@@ -43,6 +43,23 @@ class KnowledgeIndexTests(unittest.TestCase):
         self.assertEqual(second_stats["reused"], len(second["chunks"]))
         self.assertNotIn("docs/archive/OLD.md", {source["path"] for source in second["sources"]})
 
+    def test_source_order_is_portable_for_mixed_case_paths(self) -> None:
+        for relative in ("README.md", "docs/Z_UPPER.md", "docs/a_lower.md"):
+            (self.root / relative).write_text("# Source\nPortable index ordering.\n", encoding="utf-8")
+
+        index, _ = knowledge_index.build_index(self.root)
+
+        self.assertEqual(
+            [
+                "README.md",
+                "docs/Z_UPPER.md",
+                "docs/a_lower.md",
+                "knowledge/ARCHITECTURE.md",
+                "knowledge/OPERATIONS.md",
+            ],
+            [source["path"] for source in index["sources"]],
+        )
+
     def test_semantic_query_routes_identity_to_architecture(self) -> None:
         index, _ = knowledge_index.build_index(self.root)
         encoded = index["chunks"][0]["vector_b64"]

@@ -98,14 +98,18 @@ def source_paths(root: Path = ROOT) -> list[Path]:
         "skills/enterprise-insight-maintainer/references/**/*.md",
     ):
         candidates.update(path for path in root.glob(pattern) if path.is_file())
+    # Path comparisons use OS-specific case rules; manifests need one portable order.
     return sorted(
-        path
-        for path in candidates
-        if path.name != "SEMANTIC_INDEX.json"
-        and not any(
-            part.lower() in {"node_modules", "target", "dist", ".git", "archive"}
-            for part in path.parts
-        )
+        (
+            path
+            for path in candidates
+            if path.name != "SEMANTIC_INDEX.json"
+            and not any(
+                part.lower() in {"node_modules", "target", "dist", ".git", "archive"}
+                for part in path.parts
+            )
+        ),
+        key=lambda path: path.relative_to(root).as_posix(),
     )
 
 

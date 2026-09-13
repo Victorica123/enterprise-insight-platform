@@ -6,14 +6,17 @@
 
 | 验证 | 结果 | 本机证据 |
 | --- | --- | --- |
-| 服务 harness | Agent **269/269**、维护工具 **3/3**；V6、PRD、Knowledge Lifecycle、Conversation **11/11** 与 V5 门禁均通过；Python lint PASS | `runtime/codex-github-verify.log` |
+| 服务 harness | Agent **269/269**；V6、PRD、Knowledge Lifecycle、Conversation **11/11** 与 V5 门禁均通过；Python lint PASS | `runtime/codex-github-verify.log` |
 | Web | **26/26**；lint 0 error / 10 个既有 warnings；TypeScript/Vite build PASS | 同上 |
 | Media | 修正测试时间前提后，聚焦 **4/4**、全量 **150/150**，failure/error/skipped 均 0 | `runtime/codex-github-outbox-fixed.log`、`runtime/codex-github-media-final.log` |
 | localhost smoke | **42/42 PASS**，随机端口、临时 H2/SQLite、真实 JWT 与 mock AI | `runtime/codex-github-local-acceptance.log` |
+| 维护工具跨平台回归 | Windows / Linux 各 **4/4 PASS**，新增大小写混合路径排序回归；ruff PASS | `runtime/codex-github-index-{windows,linux}.log` |
 
 首次 Media 全量和复跑均在 `OutboxClaimIntegrationTests.expiredClaimCanBeTakenOverAndOldWorkerCannotCompleteIt` 的初次领取阶段失败，单独运行通过。与已有 Workflow outbox fixture 保持一致，将测试事件的 `nextAttemptAt` 显式设为一秒前，确保“事件已到可领取时间”这一前提独立于 JDBC 时间戳精度与时钟分辨率；随后聚焦与全量通过。失败日志保留在 `runtime/codex-github-media-tests.log` 和 `runtime/codex-github-media-recheck.log`。
 
-工作树与 Git 历史中的常见凭证模式、大文件已检查；命中项为模板值或代码表达式，未发现真实 API Key、私钥或超出 GitHub 文件限制的 blob。早期误跟踪的 8 份本机编辑器/演示文件退出当前索引，本机文件与历史仍保留。知识生成、漂移检查与 `git diff --check` 作为提交前收尾检查；GitHub Actions 的云端结果以该提交对应的执行记录为准。
+首次推送 `d141ace` 的 [GitHub Actions #1](https://github.com/Victorica123/enterprise-insight-platform/actions/runs/34747164444) 中，Media、Web、localhost smoke 均通过，Agent 的测试与评测通过后在索引漂移校验失败。已在 Linux 容器复现：`Path` 的默认排序在 Windows 忽略大小写、在 Linux 区分大小写，导致相同知识源生成不同顺序与 revision。新增回归先在 Windows 失败，再将来源顺序固定为仓库相对 POSIX 路径字符串排序；两平台回归通过，索引通过更新器重新生成。
+
+工作树与 Git 历史中的常见凭证模式、大文件已检查；命中项为模板值或代码表达式，未发现真实 API Key、私钥或超出 GitHub 文件限制的 blob。早期误跟踪的 8 份本机编辑器/演示文件退出当前索引，本机文件与历史仍保留。知识生成、Windows/Linux 漂移检查与 `git diff --check` 作为提交前收尾检查；GitHub Actions 的最终云端结果以该提交对应的执行记录为准。
 
 ## 验证：2026-09-13 参考站复核与补齐
 

@@ -54,6 +54,8 @@ python scripts/update_knowledge.py --check
 
 首次 query 写入已忽略的 `.codex-cache/`，相同 corpus revision 与 query digest 再次查询命中缓存；知识文件变化后 revision 自动更换。提交的是可再生语义索引，不提交查询缓存。
 
+知识来源按仓库相对 POSIX 路径字符串排序，避免 Windows/Linux 的 `Path` 大小写比较差异改变 manifest 与 revision。跨平台生成后必须通过同一 `scripts/update_knowledge.py --check`；大小写混合路径的回归位于 `scripts/tests/test_knowledge_index.py`。
+
 需要持久数据和统一浏览器入口时使用根目录 Compose：
 
 ```powershell
