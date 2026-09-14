@@ -1,7 +1,7 @@
 # Enterprise Insight Platform 项目收尾基线
 
 - 状态：面试交付基线已封板
-- 日期：2026-08-30 封板；2026-09-13 架构优化提交、本机部署与增量收尾
+- 日期：2026-08-30 封板；2026-09-13 架构优化与本机部署；2026-09-14 面试文档合并与能力口径核对
 - 发布口径：可本地复现的工程型试点，不是生产发布
 
 ## 收尾结论
@@ -10,7 +10,13 @@
 
 > 视频/文档 → 授权证据 → 六阶段分析与等待恢复 → PRD 人工发布 → 知识独立批准并进入未来 RAG → 错误知识替代/撤回与历史审计 → 行动项审批后创建工单。
 
-停止继续开发的原因不是“没有优化空间”，而是剩余事项主要依赖正式业务和生产环境决策。此时继续添加向量数据库、Kubernetes、更多模型或更多页面，会扩大主线并制造无法证明的复杂度。
+当前按已批准范围维护工程型试点。文档核对仍发现 specialist 卡死截止/队列容量、严格引用与事实审核、真实模型独立留出集等缺口；本轮仅明确这些边界，没有实现补强或扩大生产发布范围。
+
+### 2026-09-14 当前交接
+
+参考站补齐和追问修复已在 2026-09-13 提交、部署并同步至 GitHub；本次文档整理的应用基线为 `c779ce6`，原部署和恢复材料见 [OPERATIONS](../knowledge/OPERATIONS.md)。下方各批次数字与“未推送”等描述保留其历史时点，不代表当前状态。
+
+四份面试材料合并为 [讲解与技术答辩](INTERVIEW_GUIDE.md) 和 [演示与计时练习](DEMO_SCRIPT.md)：前者维护选型、六类技术问题、代码证据、工程故事与贡献边界，后者维护现场步骤。旧稿由 Git 历史保留。已澄清自研有限编排、规则 specialist、异常与卡死差别、轻量 Reviewer 以及 Hit@3/事实子串命中口径；验收结果与剩余工作写入 [QUALITY](../knowledge/QUALITY.md)。
 
 ### 2026-09-04 状态补充
 
@@ -37,15 +43,13 @@
 | 产品定位与主链路 | `README.md`、`knowledge/PRODUCT.md` |
 | 10 分钟理解与按症状找代码 | `docs/START_HERE.md` |
 | 架构、数据流与技术实现 | `knowledge/ARCHITECTURE.md`、`knowledge/TECHNICAL_IMPLEMENTATION.md` |
-| 面试叙事与高频追问 | `docs/INTERVIEW_GUIDE.md` |
-| 8 分钟现场演示与失败兜底 | `docs/DEMO_SCRIPT.md` |
-| 计时演练、三段故事与追问速答 | `docs/INTERVIEW_REHEARSAL.md` |
-| 面试官压力评审与简历技术对照 | `docs/INTERVIEWER_STRESS_REVIEW.md` |
+| 面试叙事、框架取舍、连续追问、故事与贡献边界 | [讲解指南](INTERVIEW_GUIDE.md) |
+| 8 分钟操作、计时练习、打断恢复与失败兜底 | [演示脚本](DEMO_SCRIPT.md) |
 | 本地无服务器验收 | `scripts/local_acceptance.py`、`docs/LOCAL_RELEASE_RUNBOOK.md` |
 | 测试与浏览器证据 | `knowledge/QUALITY.md`、`docs/images/interview/` |
 | 长期维护入口 | `skills/enterprise-insight-maintainer/`、`knowledge/INDEX.md` |
 
-## 封板质量证据
+## 封板质量证据（2026-08-30 历史基线）
 
 - Agent Service：137/137（本轮 P0/P1 增量后）。
 - Media Service：JDK 18 下 124/124。
@@ -64,7 +68,7 @@
 ## 面试前最后准备
 
 1. 提前运行 `python scripts/local_acceptance.py`，保留 PASS 输出；本地验收使用合法 MP4 `ftyp` 头，验证上传校验不会被测试字节绕过。
-2. 按 `docs/INTERVIEW_REHEARSAL.md` 计时练习一分钟介绍、8 分钟主线和追问；现场操作细节以 `docs/DEMO_SCRIPT.md` 为准。
+2. 按 [讲解指南](INTERVIEW_GUIDE.md) 准备口述与追问，再按 [演示脚本](DEMO_SCRIPT.md) 计时练习和操作。
 3. 熟练讲出三个故事：业务闭环、并发迁移缺陷修复、两后端与授权缓存的架构取舍。
 4. 明确个人贡献，区分原媒体能力、迁移整合与新增 Agent/知识治理能力。
 5. 主动说明 localhost/mock 证明的是工程链路，不代表生产吞吐、真实模型质量或业务 ROI。
@@ -78,7 +82,7 @@
 - 用户批准进入生产化阶段，并明确 IdP、撤权、数据保留、外部模型策略和目标 SLO；
 - 代表性数据证明当前 SQLite 检索、进程级缓存或媒体处理能力已经超过预算。
 
-以下事项保持为生产化路线，不作为当前面试版本的未完成工作：正式 IdP/即时撤权、Flyway/Liquibase、统一真实中间件故障注入、Prometheus/OTel 告警、备份恢复演练、真实模型评测和业务 ROI 数据。
+Agent 编号迁移、Media Flyway 和本机中间件/备份恢复已有验证；剩余生产路线是目标 IdP/即时撤权、目标库升级/回退、长时与多实例故障、Prometheus/OTel 告警、异机灾备和业务 ROI。领域任务卡死保护、严格事实审核与真实模型评测是另行记录的实现/质量缺口，不因封板而声称已解决。
 
 ## 维护要求
 

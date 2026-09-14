@@ -1,12 +1,12 @@
-# Enterprise Insight Platform 面试演示脚本
+# Enterprise Insight Platform 面试演示与计时练习
 
-目标是在 8 分钟内证明业务闭环、Agent 工程和真实性边界。不要把时间花在注册表单或配置排错上。
+本文件统一维护现场步骤、计时练习和失败兜底；项目口述、框架取舍、技术追问与工程故事见 [面试讲解指南](INTERVIEW_GUIDE.md)，最新数字和环境查 [QUALITY](../knowledge/QUALITY.md)。2026-09-14 合并原演练手册，不代表重新执行了演示。目标是在 8 分钟内展示业务闭环和当前边界，提前完成注册和依赖准备。
 
 ## 演示前准备
 
 1. 使用 JDK 17/18、Python 3.12 和 Node.js 22。
 2. 准备一个小型 MP4；本地 mock 转写只验证链路，不用于展示真实语音质量。
-3. 启动持久本地工作台：
+3. 需要启动工作台时，先按 [运维记录](../knowledge/OPERATIONS.md) 核对数据和镜像：
 
 ```powershell
 ./scripts/start_local.ps1 -Build
@@ -17,11 +17,24 @@
 
 ```powershell
 python scripts/local_acceptance.py
+python scripts/check_local_web.py
 ```
 
-保留最后的 PASS 和 checks 输出，UI 异常时可作为兜底证据。
+保留实际 PASS/checks 输出。前者使用临时数据，不替代已有部署入口检查；后者核对 localhost nginx 入口。提前准备两名 team 成员与审批身份。
 
 仓库还保留三张已验收截图作为静态兜底：`docs/images/interview/knowledge-materialization.png`、`approved-knowledge-source.png` 和 `cache-hit.png`。截图只能证明该次本地运行，不替代现场自动验收结果。
+
+## 计时练习
+
+先理解 [框架选型](INTERVIEW_GUIDE.md#framework-choice) 和 [连续追问](INTERVIEW_GUIDE.md#cross-examination)，再练三遍：照稿讲通、计时删减、由同伴随机打断。
+
+| 练习 | 合格标准 |
+| --- | --- |
+| 一分钟介绍 | 55～70 秒，讲清用户、交付链路、工程重点与边界 |
+| 八分钟演示 | 7 分 30 秒至 8 分 30 秒；展示证据、等待恢复、审批和知识再召回 |
+| 三个工程故事 | 每个约 90 秒，能说出约束、替代方案、验证与未解决项 |
+| 技术追问 | 先给结论，再指出代码；不猜测模型效果、规模或个人贡献 |
+| 演示故障 | 30 秒内切到保存的日志/截图，不现场安装依赖或长时间排错 |
 
 ## 8 分钟主线
 
@@ -51,8 +64,9 @@ python scripts/local_acceptance.py
 
 - 决策人：产品负责人；
 - 验收标准：审批后 2 秒内展示明确结果；
-- 优先级规则：合规阻塞项优先；
-- 证据范围：仅使用当前视频。
+- 优先级规则：合规阻塞项优先。
+
+“2 秒”是需求示例，不是平台已验证的生产 SLO。若缺口是 `evidence_scope`，应选择有权限的真实材料后新建分析，不能靠填写文字扩充冻结证据。四个领域 specialist 当前是规则执行器。
 
 强调当前恢复的是同一持久化业务阶段 checkpoint，而不是模型执行栈：接口读取创建时冻结的证据，校验并 CAS 消费 resume token，合并人工答案，保留阶段 1–4，只重算收敛与 PRD。页面展示 checkpoint version、evidence revision 与 hash；不要把它讲成实习系统中的 AppServer/WebSocket continuation。
 
@@ -95,11 +109,11 @@ python scripts/local_acceptance.py
 
 打开监控页，展示请求延迟、token、执行轨迹和两个缓存命中率。最后主动说明：
 
-> 当前演示使用 localhost 和 mock AI，证明的是身份、状态、证据、审批、恢复和检索闭环；真实模型质量、统一平台生产吞吐和正式 SLA 需要独立环境证据。
+> 当前 localhost、hash/local 和 mock AI 演示证明工程链路；真实模型质量、领域任务卡死隔离、严格语义审核和生产容量仍有独立的补证或实现工作。
 
 ## 无 UI 兜底
 
-如果现场端口、浏览器或 Docker 不可用，运行：
+优先展示提前保存的日志和截图，并说明记录日期。如果时间与本机开发依赖允许，可重新运行以下命令；它不依赖运行中的 Docker 工作台，但不能承诺 30 秒内完成：
 
 ```powershell
 python scripts/local_acceptance.py
@@ -114,6 +128,17 @@ python scripts/local_acceptance.py
 5. 知识物化、替代/撤回、版本链与历史引用状态；
 6. 工单审批与团队生命周期四眼；
 7. VIEWER 只读、缓存鉴权和播放 Range。
+
+## 被打断与最后自查
+
+| 场景 | 恢复话术 |
+| --- | --- |
+| 技术追问 | “我先说明实现和边界，再打开代码；闭环还剩审批和知识召回。” |
+| 怀疑自研 | 使用指南的选型回答，承认维护成本，不声称框架无法做检查点或人工介入。 |
+| 时间不足 | “我展示保存的验收、知识再召回截图和关键代码，并说明 mock 范围。” |
+| 页面失败 | “现场页面未通过，我用此前证据解释接口链路，不把旧日志说成这次实测。” |
+
+面试前能解释 Hit@3 与 Recall@K、异常与卡死、合法引用与事实支持的区别；能按 [三个故事](INTERVIEW_GUIDE.md#stories) 说明本人实际参与，不移植实习业务量。
 
 ## 演示禁区
 

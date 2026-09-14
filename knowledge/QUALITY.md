@@ -1,6 +1,22 @@
 # 质量知识
 
-## 最新验证：2026-09-13 参考站浏览器收尾
+## 最新验证：2026-09-14 面试文档合并与事实核对
+
+以应用基线 `c779ce6` 核对框架选型、召回、Agent 通信与故障、效果评估和幻觉处理。四份面试材料合并为 [技术答辩](../docs/INTERVIEW_GUIDE.md) 与 [演示练习](../docs/DEMO_SCRIPT.md)，重复内容由 Git 历史保留；README、项目地图、收尾与知识入口同步更新。架构、契约、质量和运维仍分别维护各自事实。
+
+本轮仅调整文档与生成知识，未更换模型、引入框架、修改应用/契约或部署。核对确认：自研的是有限业务编排；规则 specialist 通过同进程 Future 汇总，异常可隔离，但永久挂起没有等待截止，线程数也不限制提交队列容量；引用 Reviewer 只有格式与部分数字锚点检查；V6 的 `recall3` 是 Hit@3，`fact_coverage` 是任一预期事实子串命中。历史数字与日期保留，不包装成严格召回率或模型事实准确率。
+
+| 验证 | 结果 | 本机证据 |
+| --- | --- | --- |
+| Python lint | **PASS**；`uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality` | `runtime/codex-interview-docs-python-lint.log` |
+| Web lint | **PASS**；`apps/web` 下 `npm run lint`，0 error / 10 个既有 warnings | `runtime/codex-interview-docs-web-lint.log` |
+| 维护工具 | **4/4 PASS**；`python -m unittest discover -s scripts/tests -q` | `runtime/codex-interview-docs-maintenance-tests.log` |
+| 文档检查 | **PASS**；13 份修改 Markdown 的 120 条本地链接/锚点有效，已合并旧入口残留为 0；无应用/契约变更 | `runtime/codex-interview-docs-check.log` |
+| 知识交接 | 生成与 `--check` **PASS**；选型查询 Top-1 命中框架比较段；`git diff --check` **PASS** | `runtime/codex-interview-docs-knowledge-{update,check}.log`、`runtime/codex-interview-docs-semantic.log` |
+
+文档合并与本地检查已完成，提交与跨设备共享使用既有 GitHub `origin/main`，云端 CI 以本次文档提交的 Actions 记录为准。specialist 截止/容量、严格引用与语义事实校验、真实模型独立留出集是后续改进项，本轮未实现；本轮本地未重跑下方业务全测或真实模型评测。本机部署与恢复材料继续以 [OPERATIONS](OPERATIONS.md) 为准，后续维护从知识入口和这两份面试材料恢复。
+
+## 验证：2026-09-13 参考站浏览器收尾
 
 检索补齐提交 `ee51a8e` 与后续追问补丁 `acb1d7e` 均已更新至本机 Agent，当前镜像为 `enterprise-insight-local-agent:release-acb1d7e` / `a6180c2959a9`。两次均通过经 nginx 且携带 Origin 的业务验收 **42/42**、同源检查 **5/5**。最新在线 SQLite 备份与八个表的原行保留验证通过，schema ledger 仍为 8；过程记录 `runtime/codex-reference-followup-release-state.json`，恢复材料 `backups/reference-followup-20260913-163320/`。第一轮六个核心表验证和 `backups/reference-review-20260913-160222/` 按历史保留。
 
@@ -46,7 +62,7 @@
 | 先复现回归 | 最初 8 个方法出现 **14 个子断言失败 / 2 个错误**；再复现固定追问与失败指标两项 | `runtime/codex-reference-regressions-before.log`、`runtime/codex-reference-followup-before.log` |
 | Agent 全量 | **269/269 PASS**（比起点增加 25 个用例），Python 3.12 | `runtime/codex-reference-agent-final.log` |
 | 检索专项 | 反向精排进入 standard/agentic 答案与分析快照；阈值、预算后计数、双向通道故障、超时、持续饱和、取消、ContextVar、迟到结果、畸形分数与 legacy adapter 均通过 | `tests/test_retrieval_pipeline.py`；聚焦记录 `runtime/codex-reference-focused-expanded.log` |
-| V6 | **45 题 PASS**；hybrid 决策 **44/45**，真实 Recall@3 与事实覆盖均 **39/40**（展示均约 98%）；p95 **11.7 ms** | `runtime/codex-reference-v6-final.log` |
+| V6 | **45 题 PASS**；hybrid 决策 **44/45**，Top-3 来源命中（Hit@3）与事实子串命中均 **39/40**（展示均约 98%）；p95 **11.7 ms** | `runtime/codex-reference-v6-final.log` |
 | PRD V1 | **12/12 PASS**，十项 100%；p95 **11.08 ms** | `runtime/codex-reference-prd.log` |
 | Knowledge Lifecycle | **3 场景 PASS**，九项 100% | `runtime/codex-reference-lifecycle.log` |
 | Conversation V1 | **11/11 PASS**，新增上下文追问与拒答不推荐；JSON/SSE 推荐一致由服务回归验证 | `runtime/codex-reference-conversation-final.log`、`runtime/codex-reference-followup-focused.log` |
@@ -58,7 +74,7 @@
 
 评测均使用 hash embedding、空真实 embedding/reranker、`LLM_ROUTER_ENABLED=0`。V6 同次 keyword 为 98/98/98（p95 12.9 ms），单独 hash embedding 为 87/68/75（p95 16.5 ms）；本轮并不证明真实 BGE 或 cross-encoder 效果。原 42 题在修正降级路径后仍为 41/42 决策、36/37 事实覆盖；扩展后的分母为 45/40，不应把百分比变化夸称模型进步。`para-04`“系统上线前的质量门槛”仍是已知闭集未答题。
 
-**评测口径修正**：旧 `recall3` 实际检查全部最多四条来源；本轮严格检查前三条，同时补上 hybrid 自身的 decision 阈值。新增 `tests/test_evaluation_contracts.py` 防止第四条被算作前三条命中、keyword 成绩掩盖 hybrid 决策失败。历史 baseline 和旧验证数字保留，但旧 recall3 不应再当成精确 Top-3 比较。
+**评测口径修正**：旧 `recall3` 实际检查全部最多四条来源；该次修复改为检查前三条，同时补上 hybrid 自身的 decision 阈值。新增 `tests/test_evaluation_contracts.py` 防止第四条被算作前三条命中、keyword 成绩掩盖 hybrid 决策失败。2026-09-14 再核对确认它统计的是命中任一目标文档的问题比例（Hit@3），并非检出全部相关证据的比例；fact 也只检查任一事实子串。历史 baseline 和数字保留，但不能按严格 Recall@3 或逐陈述真实性解释，也不能跨旧的四条窗口直接比较。
 
 线程池满员与超时是故障注入测试，原生推理不能被 Python 强制终止；有界占槽与迟到结果隔离不等于生产容量或真实模型压测。已有 MySQL/Redis/RocketMQ/MinIO 证据属于下方阶段 4 历史，本轮未重测这些中间件。
 
@@ -351,7 +367,7 @@ JDK 25 下 Mockito inline/ByteBuddy 不支持该 Java 版本并产生测试加�
 
 ## Agent 评测适用边界
 
-- V6 当前包含 45 个手工案例和 4 份固定 fixture：40 个应回答、5 个应拒绝。hybrid 决策为 44/45，真实 Recall@3 与 fact 为 39/40，四舍五入均约 98%。此前 42 题与 37 个应答题的记录是历史分母；旧 recall3 实际覆盖最多四条，不能和当前真实 Top-3 直接相比。
+- V6 当前包含 45 个手工案例和 4 份固定 fixture：40 个应回答、5 个应拒绝。hybrid 决策为 44/45，Top-3 来源命中（Hit@3）与事实子串命中为 39/40，四舍五入均约 98%。此前 42 题与 37 个应答题的记录是历史分母；旧 recall3 实际覆盖最多四条，不能和当前 Top-3 窗口直接相比。严格 Recall@K 需要逐条相关性标注与全部相关证据分母，当前门禁未提供。
 - `evaluate_v6.py` 显式关闭 LLM Router，使用确定性回答路径；judge 检查是否答/拒、Top-3 是否包含预期文档，以及答案是否包含任一期望事实子串。因此它是闭集检索/拒答回归门禁，不代表开放域模型准确率。
 - PRD V1 黄金集包含 12 个手工场景，覆盖缺口等待、补充后恢复、objective Top-1、跨租户过滤、显式冲突、视频时间定位、引用支持、验收可测试性、阶段稳定和 specialist 固定顺序。当前质量项均为 100%，首次本机 P95 为 22.28 ms；样本规模小、与规则共同维护且没有真实客户 holdout，因此只能作为确定性回归门禁，不能外推 PRD 业务接受率或开放域模型能力。
 - Knowledge Lifecycle V1 只有 personal 替代、personal 撤回、team 替代三类固定场景，用于防止治理语义回退；它不覆盖大规模图谱增量成本、长期数据保留策略或真实多人组织流程。

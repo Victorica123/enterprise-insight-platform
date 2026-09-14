@@ -1,5 +1,9 @@
 # Agent 工程知识
 
+## 框架与编排边界
+
+Agent Service 使用 FastAPI、Pydantic、OpenAI-compatible SDK 和自研的有限业务编排，没有引入 LangChain/LangGraph。问答侧可选 LLM 路由/规划/工具选择/生成，六阶段 specialist 与引用 Reviewer 当前仍是规则实现。框架能力比较、优势、维护成本和迁移条件统一见 [面试选型答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)，不宣称自研有未经对照验证的性能或可靠性优势。
+
 ## 六阶段分析
 
 1. 意图识别：识别会议目标、任务类型和期望交付物。
@@ -14,6 +18,8 @@
 当前实现位于独立的 `analysis_evidence`、`analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts`、`knowledge_lifecycle_store` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。创建会话时，`analysis_evidence` 先在 JWT 限定的 tenant/owner/asset scope 内用 hybrid 检索按 objective 排序，最多冻结 24 个正分 chunk；canonical JSON、content revision 与 SHA-256 随 session 持久化。`analysis_pipeline` 仍是无外部模型的确定性基线，但领域阶段现在通过进程共享、默认 4 worker（`AGENT_SPECIALIST_WORKERS`）的线程池并行执行业务、数据与安全、技术与集成、规则与合规四个 specialist；结果按固定声明顺序合并，单维失败进入人工复核，显式冲突进入 `domain_conflict`。这些 specialist 是有界领域执行器，不声称是独立 LLM Agent。
 
 事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，读取创建时的冻结证据，保留阶段 1–4，只重新执行收敛和 PRD 阶段。目标、证据排序、早期结论和恢复输入因此可以复现，不受等待期间新摄取材料影响。
+
+2026-09-14 代码核对：这里的“有界”限定输入、每请求四个任务与线程数，不代表共享提交队列有容量限制。当前 `as_completed(futures)` 没有 timeout；单维抛异常会转人工复核，永久挂起仍可能阻塞分析请求。尚未实现独立 specialist 进程隔离或统一请求截止，不能把检索通道的超时/满员保护推及所有 Agent。
 
 ## 对话执行计划
 
@@ -34,7 +40,7 @@
 
 `chat_events.py` 用 64 项队列、15 秒心跳和取消信号连接同步执行器；异步答案 provider 的总时限为 timeout × (retries + 1)。本地模板计算完才分片，API 答案可先发待审核 delta；`done` 才携带引用审核结果。前端停止会关闭 fetch，上游流随之取消；同步阻塞规划受调用超时约束。会话已完成但客户端未收到 done 的情况不自动重放。
 
-Conversation V1 九场景覆盖连续指代、摘要、显式换题、两种歧义、删除/替换后的新证据、owner 隔离和同章节跨客户合并。它是合成规则回归，真实模型质量需要单独评估。决策与验证边界见 ADR-0016。
+Conversation V1 当前包含连续指代、摘要、换题/歧义、证据更新、owner 隔离、同章节主题过滤与追问去重；2026-09-13 最新记录为 14 场景。它是合成规则回归，真实模型质量需单独评估，结果以 QUALITY 为准；会话设计边界见 ADR-0016。
 
 追问由 `follow_up.py` 根据本轮预算后证据生成最多三个规则建议：携带问题里的客户/项目主题，跳过当前问题与最近四轮同一明确主题集合中已问的意图，拒答时不推荐。去重只使用授权会话中的用户问题及其字面主题补全，不读取历史答案或模型摘要；每个历史问题最多 550 字符。不同客户/项目、比较主题集合不会互相屏蔽，`memory_mode=none` 不使用历史去重。它不额外调用模型，JSON/SSE 使用相同结果；不声称实现开放式 LLM 推荐或全会话永久去重。
 
@@ -46,7 +52,9 @@ Conversation V1 九场景覆盖连续指代、摘要、显式换题、两种歧�
 - 批准知识采用规范 Markdown 物化，保存 candidate ID、PRD version、analysis session、内容 SHA-256 与原始证据；后续检索来源明确标记为 `approved_knowledge`。
 - 已批准知识通过独立生命周期申请演进：替代创建新的不可变知识版本并双向链接前驱/后继，撤回软失效当前版本；未来检索和图谱只读取活跃 document，历史聊天回放保留原引用并显示当前失效状态。
 - 检索结果在进入模型前完成权限过滤；模型不能扩张检索范围。
-- 最终答案校验引用存在、归属正确、时间范围有效，并拒绝伪造引用。
+- 来源权限和视频定位由摄取、授权检索、来源结构与播放接口约束；这不等于答案逐句被来源支持。`citation_review.py` 当前只检查至少一个合法样式标记及部分数字/日期锚点，缺引用时追加列表。可疑陈述只加警告，状态仍可能是 `passed`，未实现全引用逐条校验或语义级强制阻断。
+
+后续严格审核应逐陈述绑定证据、校验全部引用和矛盾，对不支持内容删除/降为假设、有限次再生成或转人工。本次仅记录方案，没有增加语义裁判或自动修复闭环；结构化 JSON、合法来源与低温生成都不能单独证明无幻觉。面试示例与处理分层见 [幻觉答辩](../docs/INTERVIEW_GUIDE.md#hallucination-control)。
 
 ## LLM 通道与结构化输出
 
@@ -95,6 +103,6 @@ Conversation V1 九场景覆盖连续指代、摘要、显式换题、两种歧�
 
 ## PRD 专项评测
 
-`quality/agent-evals/evaluate_prd.py` 使用 12 个冻结手工场景，不调用外部 LLM，评价 decision、问题召回与精确率、objective Top-1、冲突升级、证据完整性、受支持结论、验收可测试性、检查点稳定性和 specialist 顺序。当前本地基线各质量项为 100%，P95 约 22 ms。它是代码回归门禁，不代表真实访谈分布、开放域语义质量或生产延迟；后续需要匿名真实坏案例、holdout 与独立人工评审。
+`quality/agent-evals/evaluate_prd.py` 使用 12 个冻结手工场景，不调用外部 LLM，评价 decision、问题召回与精确率、objective Top-1、冲突升级、证据完整性、受支持结论、验收可测试性、检查点稳定性和 specialist 顺序。最新质量与耗时以 QUALITY 对应日期记录为准。它是代码回归门禁，不代表真实访谈分布、开放域语义质量或生产延迟；后续需要匿名真实坏案例、holdout 与独立人工评审。
 
 `quality/agent-evals/evaluate_knowledge_lifecycle.py` 使用 personal 替代、personal 撤回和 team 替代三类冻结场景，验证未来检索、版本链、历史状态、tenant 隔离、四眼、重复决定冲突、图谱失效与物理保留。它是确定性治理回归门禁，不代表生产数据量下的图谱重建成本。

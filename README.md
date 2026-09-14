@@ -36,15 +36,15 @@ flowchart LR
 8. 批准知识以版本、哈希和原始证据物化，并被后续 RAG 检索命中。
 9. 过期或错误知识通过独立审批被替代/撤回；旧版本保留审计，未来 RAG 与图谱只读取活跃版本。
 
-## 工程证据
+## 工程证据（2026-09-13 已记录验证）
 
 | 能力 | 当前可验证证据 |
 | --- | --- |
-| Agent Service | 244 个自动化用例，覆盖会话/SSE、续租/预算、主题与证据、配置/迁移、MySQL 兼容、审批与知识治理 |
+| Agent Service | 271 个自动化用例，覆盖会话/SSE、续租/预算、主题与证据、配置/迁移、检索通道隔离、审批与知识治理 |
 | Media Service | Temurin JDK 17.0.18 下 150 个自动化用例，覆盖 Flyway、阶段日志、配额/租约/outbox 与熔断 |
-| Agent 质量 | V6 RAG 42 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景 + Conversation V1 9 场景 |
+| Agent 质量 | V6 RAG 45 例 + PRD V1 12 例 + Knowledge Lifecycle V1 3 类场景 + Conversation V1 14 场景；闭集规则回归，不代表真实模型准确率 |
 | 平台纵向链路 | H2/SQLite 与真实 MySQL/Redis/RocketMQ/MinIO 两套环境各 42 项验收，使用真实 JWT 与 mock/local AI |
-| Web | ESLint 0 error（10 warning）+ 21 个会话、查询隔离和只读权限回归 + TypeScript/Vite 构建 |
+| Web | ESLint 0 error（10 warning）+ 26 个会话、查询隔离、只读权限与播放 URL 回归 + TypeScript/Vite 构建 |
 | 可靠性实测 | MySQL 新旧库迁移与两库备份恢复、Redis 分片续传、MinIO Range 播放、Agent 断连恢复、有限 k6 冒烟 |
 | 静态检查 | ruff 0.16.6（E/F/I/UP/B）与 ESLint 10（TypeScript + React Hooks）0 error，本机与 CI 共用同一配置 |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
@@ -72,7 +72,7 @@ Agentic RAG 的 Router、Planner 和 Tool Agent 是可选的 LLM 辅助通道：
 | --- | --- | --- |
 | ![知识候选批准并沉淀](docs/images/interview/knowledge-materialization.png) | ![已批准知识作为来源证据](docs/images/interview/approved-knowledge-source.png) | ![授权 Chunk 缓存命中](docs/images/interview/cache-hit.png) |
 
-完整现场顺序、提问文本和失败兜底见 [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)；可直接开口练习的一分钟介绍、逐分钟话术和三段项目故事见 [`docs/INTERVIEW_REHEARSAL.md`](docs/INTERVIEW_REHEARSAL.md)。
+现场步骤、计时练习与失败兜底统一见 [演示脚本](docs/DEMO_SCRIPT.md)；口述、框架取舍、技术答辩和工程故事统一见 [面试讲解指南](docs/INTERVIEW_GUIDE.md)。
 
 ## 一键无服务器验收
 
@@ -105,10 +105,8 @@ python scripts/local_acceptance.py
 ## 面试入口
 
 - [`docs/PROJECT_CLOSEOUT.md`](docs/PROJECT_CLOSEOUT.md)：正式收尾结论、封板证据、面试前检查和重新打开规则。
-- [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：一分钟介绍、架构取舍、高频追问、证据与不能夸大的边界。
-- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟主链路演示与无 UI 兜底方案。
-- [`docs/INTERVIEW_REHEARSAL.md`](docs/INTERVIEW_REHEARSAL.md)：可计时练习的口述稿、逐分钟演示、三段完整故事和追问速答。
-- [`docs/INTERVIEWER_STRESS_REVIEW.md`](docs/INTERVIEWER_STRESS_REVIEW.md)：站在面试官角度审查代码真实性、简历技术映射、连续追问和危险回答。
+- [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：自研与主流框架取舍、召回/评测、Agent 通信与故障、幻觉、连续追问和个人贡献边界。
+- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟操作、计时练习、打断恢复与无 UI 兜底。
 - [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)：完整代码框架、数据流、RAG、缓存和 Agent 工程说明。
 - [`knowledge/decisions/`](knowledge/decisions/)：重要决策的背景、选型与后果。
 

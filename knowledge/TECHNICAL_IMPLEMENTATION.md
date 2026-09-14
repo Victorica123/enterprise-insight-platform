@@ -4,7 +4,7 @@
 
 ## 1. 总体框架
 
-系统由三层组成：统一交互层、两类业务后端和独立的工程知识维护平面。
+系统由三层组成：统一交互层、两类业务后端和独立的工程知识维护平面。Agent 使用 FastAPI + Pydantic + OpenAI-compatible SDK，自研有限业务编排，没有采用 LangChain/LangGraph。选型取舍和改用成熟运行时的条件统一见 [框架答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)；不以无基准的性能或可靠性优势解释自研。
 
 ```text
 Browser / React 19 + TypeScript + Vite
@@ -46,7 +46,7 @@ Engineering knowledge plane (not customer runtime data)
 
 ### 3.1 视频到证据
 
-1. 浏览器用 OIDC Authorization Code + PKCE 登录，Media 验证 Keycloak token 并映射内部用户；之后浏览器携带 Media Service 以 RS256 签发的 active-Workspace JWT。
+1. 生产试点配置支持 OIDC Authorization Code + PKCE、Keycloak token 映射及 Media RS256 active-Workspace JWT；当前本机部署使用本地账号与 HS256，不能把支持路径当作正式身份集成已验收，具体环境见 OPERATIONS。
 2. Spring Security 将受信 claims 重建为 `WorkspacePrincipal`，后续代码不读取客户端自报角色头。
 3. 上传服务把文件写入租户范围内的媒体目录，同时创建持久化媒体任务。分片、直传和普通上传都绑定 tenant、owner 与上传会话。
 4. 媒体任务完成后生成结构化转写片段，每段带稳定 segment ID、开始/结束毫秒、说话人和文本。
@@ -60,7 +60,7 @@ Engineering knowledge plane (not customer runtime data)
 2. Router 判断问题意图与复杂度，Planner 生成原问题、改写和补充 query。两者与 B2 工具选择均通过 `response_format` 请求结构化 JSON：OpenAI 使用严格 JSON Schema，DeepSeek 使用 JSON Object；服务端再做枚举、类型、工具白名单和参数校验，失败统一降级到规则路径。
 3. Retriever 可选择 keyword、embedding 或 hybrid。hybrid 的独立有界通道先过滤弱候选；真实语义路径用 RRF（K=60），hash 降级保留关键词优先并标记 `keyword_then_hash`。可选 cross-encoder 只重排 Top-12；最终名次独立于相关性分，回答层不再覆盖融合/精排名次，证据门控仍使用实际分数。通道异常、超时、饱和与最终保留数均进 trace，见 ADR-0019。
 4. Evidence Agent 判断证据是否足够；复杂问题最多进行受限轮次补查，不无限循环。
-5. 本地模板或 LLM 生成答案后，引用校验器检查 source、租户归属及视频时间范围。无法支持的结论必须标记假设或拒答。
+5. 本地模板或 LLM 生成后，Reviewer 检查标准来源标记与部分数字/日期锚点，缺引用时补列表；可疑陈述仅告警，尚无严格语义阻断。来源授权与视频定位由前序数据/检索及播放链路约束，不能把它们当成答案逐句支持性验证。
 6. 前端点击视频引用时向 Media Service 请求短时播放 token；Agent Service 不保存对象存储凭证。
 
 `LLM_RESPONSE_FORMAT=auto` 是兼容策略，不是模型质量保证：`json_schema` 请求被 provider 拒绝、网络失败、拒答或 JSON 解析失败时，Router/Planner/Tool Agent 记录降级并继续使用确定性规则。工具选择的严格 envelope 使用 `{ "calls": [...] }`，每项将不同工具的参数编码为 `arguments_json` 字符串，解析后仍必须经过工具定义和执行前鉴权。当前 `analysis_pipeline.py` 的四个 specialist 仍是规则基线；结构化 LLM 通道不等同于完整多 LLM Agent Runtime。
@@ -83,6 +83,8 @@ Engineering knowledge plane (not customer runtime data)
 - team Workspace 必须由不同的写成员批准，提交者不能自批；
 - compare-and-set 状态、审计、canonical JSON SHA-256 版本、知识候选和行动草稿在同一 SQLite 事务提交；
 - 知识发布和外部工单仍有各自独立审批，PRD 通过不等于副作用自动执行。
+
+领域任务的异常隔离不含永久挂起：当前 `as_completed` 没有截止时间，共享 ThreadPoolExecutor 队列也未做容量准入。这里限制了输入和线程数，尚无独立 specialist worker；详见 [故障边界](../docs/INTERVIEW_GUIDE.md#fault-isolation)。
 
 ### 3.4 批准知识物化与再召回
 
@@ -184,7 +186,7 @@ Workspace 管理弹窗通过 React Portal 挂载到 `document.body`。这是因�
 
 - Media Service：JUnit/Spring 集成测试覆盖认证、上传、任务、播放、outbox、租户、Flyway、真实阶段日志与熔断。quota/lease/completion 分担任务职责，十二组配置独立绑定，`AppProperties` 保留兼容入口。
 - Agent Service：unittest 覆盖摄取、检索、向量回退、分析、发布、工具、隔离与观测。
-- Agent 评测：V6 黄金集验证 keyword、embedding、hybrid 的决策、recall@3、事实正确性和延迟；PRD V1 黄金集验证目标排序、授权隔离、缺口/冲突、引用支持、验收可测试性、检查点和 specialist 顺序；Knowledge Lifecycle V1 验证替代/撤回后的检索、版本链、历史引用、四眼与事务失效。
+- Agent 评测：V6 黄金集验证 keyword、embedding、hybrid 的决策、Top-3 来源命中（字段 `recall3`，实为 Hit@3）、任一预期事实子串命中和延迟；后两者不等于严格召回率与逐陈述事实正确率。PRD V1 黄金集验证目标排序、授权隔离、缺口/冲突、引用支持、验收可测试性、检查点和 specialist 顺序；Knowledge Lifecycle V1 验证替代/撤回后的检索、版本链、历史引用、四眼与事务失效。
 - Web：TypeScript project build + Vite production build，并补真实浏览器业务操作。
 - 平台：`scripts/local_acceptance.py` 使用随机 localhost 端口、H2、SQLite、本地文件和 mock AI 跑 42 项双用户完整纵向链路；同一链路已在 MySQL/Redis/RocketMQ/MinIO、HS256、mock/local AI 隔离环境通过。新旧库、Agent 断连、分片续传、Range、两库备份恢复和有限 k6 分别留证，见 `QUALITY.md`。
 - 知识：生成器漂移检查、维护索引单元测试和 Skill quick validation。

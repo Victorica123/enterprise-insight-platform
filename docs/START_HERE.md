@@ -18,6 +18,8 @@
 
 如果只是修一个明确问题，读完本文后直接进入对应模块，不需要通读全部知识文档。
 
+面试准备只保留两个入口：[讲解与答辩](INTERVIEW_GUIDE.md) 解释框架取舍、召回、通信、故障、幻觉和评测；[演示与计时](DEMO_SCRIPT.md) 维护实际操作。原演练与压力评审已合并；实现事实和质量证据仍分别由 knowledge 文档维护。
+
 2026-09-13 追加了 [Nexus 参考站复核](NEXUS_REFERENCE_AUDIT.md)：当前公开目录 88 页，本轮补齐检索排名、通道过滤/隔离、观测和证据追问。检索策略与边界见 [ADR-0019](../knowledge/decisions/0019-retrieval-ranking-and-channel-isolation.md)，当前部署看 `knowledge/OPERATIONS.md`。
 
 ## 只记住三个边界

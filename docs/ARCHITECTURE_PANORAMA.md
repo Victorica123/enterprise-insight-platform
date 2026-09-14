@@ -18,18 +18,18 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 
 | 图片层 | 当前 façade | 现有实现 | 真实状态 |
 | --- | --- | --- | --- |
-| 对话编排中心 | `app.architecture.conversation` / `orchestration` | JSON/SSE 共用流水线、主题记忆、计划链、注册表、受限补查与分析检查点 | 已实现；复用成熟执行器，记忆不能替代新证据 |
-| 检索与证据 | `app.architecture.retrieval` | 授权范围过滤、关键词/向量/混合召回、RRF、可选 Top-12 rerank、引用和 provenance 校验 | 已实现；当前以 SQLite 扫描基线承载，尚非独立向量数据库集群 |
-| 三层执行器 | `app.architecture.execution` | 六阶段确定性领域 specialist、Agentic RAG、受审批工具执行 | 已实现；specialist 是有界规则执行器，不冒充自治多 Agent Runtime |
+| 对话编排中心 | `app.architecture.conversation` / `orchestration` | JSON/SSE 共用流水线、主题记忆、计划链、注册表、受限补查与分析检查点 | 已实现；复用项目执行器，记忆不能替代新证据 |
+| 检索与证据 | `app.architecture.retrieval` | 授权范围过滤、关键词/向量/混合召回、RRF、可选 Top-12 rerank、引用格式/数字锚点检查与 provenance 保留 | 已实现；Reviewer 不保证逐条语义支持，当前采用 SQLite 扫描基线 |
+| 三层执行器 | `app.architecture.execution` | 六阶段确定性领域 specialist、Agentic RAG、受审批工具执行 | 已实现；specialist 限制线程数并隔离异常，但没有等待截止或提交队列容量限制 |
 | 知识底座 | `app.architecture.knowledge` | 文档解析/分块、视频转写事件摄取、embedding、图谱索引、知识生命周期 | 已实现；PGVector/Elasticsearch/Neo4j 只对应可替换适配方向 |
 | 治理与审批 | `app.architecture.governance` | PRD 发布、知识候选与生命周期、行动项、审计、CAS 检查点 | 已实现；写操作和知识发布保留人工门禁 |
-| 工程化护栏 | `app.architecture.observability` + 配置/存储模块 | Settings、编号迁移、会话续租/预算/取消、JWT scope、revision、outbox、审计与保留 | 本地回归已验证；真实 MySQL、多实例与外部模型需独立验证 |
+| 工程化护栏 | `app.architecture.observability` + 配置/存储模块 | Settings、编号迁移、会话续租/预算/取消、JWT scope、revision、outbox、审计与保留 | 本机 MySQL 集成、迁移与还原已有证据；目标生产库、多实例与外部模型仍需独立验证 |
 
 ## 端到端请求路径
 
 1. React 通过统一 API 入口把请求送到 Media Service 或 Agent Service；服务端从共享 JWT 得到 tenant、owner、workspace 和 role。
 2. Chat 路由创建 `RetrievalScope`，由 `ConversationOrchestrator` 先跑 `PreparationChain` 生成 `ExecutionPlan`，再由 `ExecutorRegistry` 按 `plan.mode` 选择单一执行器（clarify / tool_only / retrieval / agentic；`workflow_mode` 只是输入）。整个计划与执行在一个每请求调用预算内运行（模型调用 8 次、工具调用 6 次，超限降级为规则 / 模板并写 trace）。scope 在检索前生效，不能由问题正文或客户端角色头覆盖。
-3. 检索层执行混合召回和证据门控；按分数选出的来源再经字符预算裁剪（单来源 2200、总量 5200 字符），模型、证据检查与引用审核看到同一份证据。视频来源继续携带 `asset_id`、`segment_id`、`start_ms` 和 `end_ms`，无法验证的结论拒答或标记为缺口。
+3. 检索层执行混合召回和证据门控；按最终 selection_rank 选出的来源再经字符预算裁剪（单来源 2200、总量 5200 字符），模型、门控与引用审核看到同一份证据。视频继续携带资产/片段及时间范围。资料不足会拒答，但生成后 Reviewer 目前只做引用格式与部分数字锚点检查，可疑陈述仅警告，不能保证所有无支持结论被阻断。
 4. 分析请求先固化授权证据快照，再按六阶段运行。缺少决策人、验收标准或冲突处理方式时进入 `WAITING_CONFIRMATION`；确认通过 CAS 恢复，不重写阶段 1–4。
 5. PRD、知识候选和行动项分别经过人工审批。批准知识会物化为带 provenance 的受治理文档，工具副作用只产生待审批 action，不在问答期间直接执行。
 6. 观测层记录请求、回答状态、引用状态、token、工具调用、影子路由一致性和审计事件，供 `/metrics/*`、`/chat-logs` 和管理面板使用。
@@ -53,9 +53,9 @@ React 用户入口 / Chat / Admin / 文档 / 观测
 
 ## 生产边界与后续替换
 
-- 当前测试和本地验收使用 SQLite、进程内缓存和 mock/local 模式；它们是可重复的基线，不等于 Redis、Kafka、PGVector、Elasticsearch、Neo4j 或对象存储已经部署。
+- 默认测试和本机交付使用 H2/SQLite、进程内缓存和 mock/local AI；另有隔离 MySQL/Redis/RocketMQ/MinIO 的集成与恢复证据，范围见 [QUALITY](../knowledge/QUALITY.md)。图中的 Kafka、PGVector、Elasticsearch、Neo4j 不代表当前已部署。
 - 当数据规模超过 SQLite 扫描预算时，可在 `retrieval.py` 后增加支持 metadata pre-filter 的向量/关键词适配器，并以现有检索评测作为行为对照。
-- MCP/Skills、联网搜索和 Checkpoint 是扩展点：工具必须注册定义、通过 tenant/role 校验并在产生副作用前进入审批；不能因为架构图列出了能力就绕过治理。
-- 真实生产声明仍需 MySQL、Keycloak、Redis、消息系统、对象存储和模型供应商 smoke 证据，以及故障注入和恢复数据支持。
+- MCP/Skills、联网搜索与通用运行时恢复是扩展方向；当前仅有业务阶段 checkpoint。工具必须注册定义、通过 tenant/role 校验并在产生副作用前进入审批。
+- 生产声明仍需目标环境的身份、数据库、中间件、对象存储和模型供应商验收，以及长时容量、多实例故障与灾备数据；本机通过不替代这些证据。
 
 机器可读映射见 `services/agent-service/app/architecture/manifest.py`，边界回归见 `services/agent-service/tests/test_architecture_boundaries.py`。

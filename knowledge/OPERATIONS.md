@@ -174,6 +174,6 @@ Agent 投递由持久 outbox 重试，客户端每次只发送一次。默认 `A
 
 ## 当前运行状态与缺口
 
-2026-09-13 在独立 Compose project 上完成 MySQL 8.4、Redis、RocketMQ、MinIO 的 42 项纵向验收、Agent 断连恢复和有限 k6 冒烟；两个 MySQL 业务库停止应用写入后，备份校验并恢复到新 schema，33 表/518 行摘要一致。完整结果与本机日志见 `knowledge/QUALITY.md`。原 `enterprise-insight-local` 与 `erp-mssql` 未升级或停止。
+2026-09-13 在独立 Compose project 上完成 MySQL 8.4、Redis、RocketMQ、MinIO 的 42 项纵向验收、Agent 断连恢复和有限 k6 冒烟；两个 MySQL 测试业务库停止应用写入后，备份校验并恢复到新 schema，33 表/518 行摘要一致。完整结果与本机日志见 `knowledge/QUALITY.md`。该次隔离演练没有升级或停止原 `enterprise-insight-local` 与 `erp-mssql`；同日后续已单独升级 `enterprise-insight-local` 的 H2/SQLite，详见上方本机部署记录，`erp-mssql` 保持不动。
 
 本机已安装 Docker/k6；本轮身份为 HS256，AI 为 mock/local。Keycloak/RS256、外部模型、长时间压力、JFR/NMT/tracemalloc 浸泡、多 Media 实例竞争、MinIO 对象和异机灾备、聚合告警仍需独立演练。MySQL 的本机迁移/还原不替代目标业务库升级与匹配版本回退；至少一次投递与消费者幂等语义保持不变。`docs/SLO.md` 中的生产试点目标尚无兑现证据。
