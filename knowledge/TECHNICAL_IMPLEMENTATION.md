@@ -4,9 +4,9 @@
 
 ## 1. 总体框架
 
-系统由三层组成：统一交互层、两类业务后端和独立的工程知识维护平面。Agent 使用 FastAPI + Pydantic + OpenAI-compatible SDK，自研有限业务编排，没有采用 LangChain/LangGraph。选型取舍和改用成熟运行时的条件统一见 [框架答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)；不以无基准的性能或可靠性优势解释自研。
+系统由三层组成：统一交互层、两类业务后端和独立的工程知识维护平面。Agent 使用 FastAPI + Pydantic + OpenAI-compatible SDK，六阶段需求分析采用 LangGraph 1.2.11；问答、检索和受控工具继续复用现有业务实现。选型取舍见 [应用报告](decisions/0020-langgraph-application-report.md)；此处的收益是明确流程表达，没有框架性能对照结论。
 
-2026-09-15 已选 LangGraph 作为六阶段编排迁移方向，当前交付为 [应用与选型报告](decisions/0020-langgraph-application-report.md) 和独立示例，尚未改应用依赖。报告明确先复用业务检查点，避免增加重复状态存储；本节继续描述已实现代码。
+2026-09-15 已完成首阶段代码接入。图使用 State、Node、Edge 组织现有函数，等待与恢复继续使用业务检查点，未增加框架状态库或外部运行服务。基础依赖已通过 `requirements.lock` 约束，Python 3.12 的 Windows/Linux 基础包从 32 增至 55；这是统一编排方式的代价，不是安装体积精简。
 
 ```text
 Browser / React 19 + TypeScript + Vite
@@ -18,7 +18,7 @@ Browser / React 19 + TypeScript + Vite
   └─ /agent -> FastAPI / Pydantic Agent Service
        ├─ evidence ingestion / chunk / embedding
        ├─ keyword + vector + hybrid retrieval
-       ├─ six-stage analysis / checkpoint / resume
+       ├─ LangGraph six-stage analysis / business checkpoint / resume
        ├─ PRD / approval / immutable deliverables
        └─ governed knowledge materialization and controlled action tools
 
@@ -75,7 +75,9 @@ Engineering knowledge plane (not customer runtime data)
 
 ### 3.3 六阶段分析和发布治理
 
-分析流程按意图、干系人、领域、风险、收敛、PRD 六个可观测阶段输出结构化 Pydantic 结果，而不是依赖不可检查的长对话。创建会话时，`analysis_evidence.py` 先把 objective 送入 hybrid Retriever；tenant/owner/asset 过滤发生在排序前，最多保留 24 个正分 chunk。系统在检索前后读取持久化 content revision，只有稳定读才把排名、分数、query 命中和必要 chunk 事实固化为 canonical JSON，并记录 SHA-256。embedding 向量不复制进会话快照。
+分析流程由 `analysis_pipeline.py` 内的六节点 StateGraph 执行：意图、干系人、领域、风险、收敛、PRD，输出仍为结构化 Pydantic 结果。创建会话时，`analysis_evidence.py` 先把 objective 送入 hybrid Retriever；tenant/owner/asset 过滤发生在排序前，最多保留 24 个正分 chunk。系统在检索前后读取持久化 content revision，只有稳定读才把排名、分数、query 命中和必要 chunk 事实固化为 canonical JSON，并记录 SHA-256。embedding 向量不复制进会话快照。
+
+`_AnalysisState` 只存本次执行所需的数据；`_analysis_graph()` 缓存拓扑，每次 invoke 创建独立状态。新建从 intent 开始，恢复在验证阶段 1–4 后从 convergence 开始；仍有问题时沿条件边 END，由原存储保存等待结果，否则执行 prd。图没有 checkpointer、模型客户端或数据库写入；显式关闭 LangSmith tracing，宿主环境开启追踪也不导出这条流程的证据。旧 `_run_initial_stages` / `_finish_analysis` 调度已移除，规则与节点保留在同一个模块。
 
 `analysis_pipeline.py` 仍不调用生成模型，但领域阶段通过进程共享、默认 4 worker（`AGENT_SPECIALIST_WORKERS`）的线程池并行执行四个固定 specialist：业务、数据与安全、技术与集成、规则与合规。LLM 结构化输出目前只覆盖问答侧的 Router、Planner 和 Tool Agent，不改变六阶段分析的确定性 baseline。每个 specialist 最多投影 4 个证据片段；主线程按声明顺序而非完成顺序合并。单个任务异常被隔离为 `specialist_review`，显式“冲突/矛盾/口径不一致”被合并为风险并产生 `domain_conflict`，没有无限 loop 或无界 fan-out。这里的 specialist 是本地确定性领域执行器，不冒充独立 LLM Agent。
 

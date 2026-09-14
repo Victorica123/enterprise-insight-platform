@@ -6,6 +6,7 @@
 
 | 需要了解 | 入口 |
 | --- | --- |
+| 第一次理解项目：业务例子、最小技术栈与代码阅读路线 | [从一个例子理解项目](../docs/START_HERE.md) |
 | 产品定位、用户、业务闭环、范围 | [PRODUCT.md](PRODUCT.md) |
 | 服务边界、数据流、运行架构 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 架构图全景与 Agent Service 六层映射 | [全景映射](../docs/ARCHITECTURE_PANORAMA.md) 与 [ADR-0015](decisions/0015-agent-service-bounded-context-facades.md) |
@@ -20,10 +21,9 @@
 | 代码框架、完整数据流、RAG、缓存与技术讲解 | [TECHNICAL_IMPLEMENTATION.md](TECHNICAL_IMPLEMENTATION.md) |
 | 测试分层、质量门禁、已验证事实 | [QUALITY.md](QUALITY.md) |
 | 本地启动、配置、部署、故障恢复 | [OPERATIONS.md](OPERATIONS.md)、[本地发布手册](../docs/LOCAL_RELEASE_RUNBOOK.md)、[本机可靠性手册](../docs/LOCAL_RELIABILITY_RUNBOOK.md) 与 [SLO](../docs/SLO.md) |
-| 框架选型、Agent/召回/幻觉/评测答辩、工程故事与个人贡献 | [面试讲解指南](../docs/INTERVIEW_GUIDE.md)、[自研与框架取舍](../docs/INTERVIEW_GUIDE.md#framework-choice) |
-| LangGraph 如何接入、与其他框架比较、精简依赖、状态与恢复的取舍 | [应用与框架选型报告（ADR-0020）](decisions/0020-langgraph-application-report.md)（设计与独立示例，业务迁移尚未实施） |
+| 框架选型、Agent/召回/幻觉/评测答辩、工程故事与个人贡献 | [面试讲解指南](../docs/INTERVIEW_GUIDE.md)、[LangGraph 与业务编排的取舍](../docs/INTERVIEW_GUIDE.md#framework-choice) |
+| LangGraph 六节点接入、其他框架比较、依赖与业务恢复的取舍 | [应用与框架选型报告（ADR-0020）](decisions/0020-langgraph-application-report.md)（已接入六阶段，复用业务检查点） |
 | 正式收尾、8 分钟操作、计时练习与失败兜底 | [收尾基线](../docs/PROJECT_CLOSEOUT.md)、[演示与计时脚本](../docs/DEMO_SCRIPT.md) |
-| 第一次理解项目、按症状找代码 | [10 分钟项目地图](../docs/START_HERE.md) |
 | 已批准且不可静默推翻的选择 | [decisions/](decisions/) |
 | 从代码生成的实时结构快照 | [generated/CURRENT_STATE.md](generated/CURRENT_STATE.md) |
 | 面向维护 Skill 的可再生语义路由索引 | `generated/SEMANTIC_INDEX.json`（通过脚本查询，不直接加载） |

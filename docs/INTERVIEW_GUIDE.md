@@ -1,27 +1,29 @@
 # Enterprise Insight Platform 面试讲解与技术答辩
 
-本文统一维护口述、框架取舍、技术追问、代码核对和个人贡献边界；现场操作与计时练习见 [演示脚本](DEMO_SCRIPT.md)。2026-09-14 按应用代码基线 `c779ce6` 核对；2026-09-15 补充 LangGraph 选型方向，应用尚未迁移，文档更新不代表能力升级。
+本文统一维护口述、框架取舍、技术追问、代码核对和个人贡献边界；现场操作与计时练习见 [演示脚本](DEMO_SCRIPT.md)。2026-09-14 按应用代码基线 `c779ce6` 核对；2026-09-15 已将六阶段调度接入 LangGraph，保留业务检查点、规则分析与审批边界。首次理解项目先读 [从一个例子理解项目](START_HERE.md)。
 
 原面试演练手册的口述与故事、压力评审的追问与经历边界已合入本文；演示和练习步骤合入演示脚本。旧稿保留在 Git 历史，不再并行维护重复答案。数字与环境查 [QUALITY](../knowledge/QUALITY.md)，实现语义查 [Agent 工程知识](../knowledge/AGENT_ENGINEERING.md)。
 
 ## 一分钟项目介绍
 
-> 我做的是面向客户访谈和需求评审的企业洞察平台，把视频和文档转成可追溯证据、PRD、受治理知识和工单。Spring Media Service 负责身份与媒体，FastAPI Agent Service 负责知识与分析，React 提供统一工作台。分析先在授权范围按目标检索并冻结证据，再由四个规则 specialist 并行提取事实；缺信息时等待人工确认，恢复时保留已完成阶段。PRD 发布、知识沉淀和工单执行分别审批。我重点讲解授权检索、跨服务幂等、业务检查点和副作用治理。当前本机验收证明工程闭环，六阶段仍是规则基线，真实模型效果和生产容量需要独立证据。
+> 我做的是面向客户访谈和需求评审的企业洞察平台，把视频和文档转成可追溯证据、PRD、受治理知识和工单。Spring Media Service 负责身份与媒体，FastAPI Agent Service 负责知识与分析，React 提供统一工作台。分析先在授权范围按目标检索并冻结证据，再由 LangGraph 组织六阶段，领域阶段调用四个规则 specialist；缺信息时等待人工确认，恢复时保留已完成阶段。PRD 发布、知识沉淀和工单执行分别审批。我重点讲解授权检索、跨服务幂等、业务检查点和副作用治理。六阶段仍是规则基线，真实模型效果和生产容量需要独立证据。
 
 20 秒版：平台把会议材料连接到证据、需求、知识与行动；核心是让结论可追溯、写操作受控，问答侧可以接 LLM，交付分析保持可复现的规则基线。“我做了什么”须按本人实际参与调整，不能把迁移来源、团队经历或 AI 辅助产出全部说成从零手写。
 
 <a id="framework-choice"></a>
-## 为什么自研编排，而不是主流框架
+## 为什么选择 LangGraph，哪些业务代码仍需保留
 
 ### 面试可直接回答的版本
 
-> 我没有从零开发通用 Agent 框架，只实现了当前业务需要的一层编排。Web、类型校验和模型调用仍使用 FastAPI、Pydantic 和 OpenAI-compatible SDK。当前流程比较固定，授权证据、确认、审批事务和幂等都能显式检查；代价是截止、队列、取消和恢复等能力需要自己维护。为了控制后续学习与维护成本，已选择 LangGraph 作为六阶段编排的迁移方向，用函数节点复用现有业务逻辑，首阶段保留业务检查点。目前完成了应用设计，尚未迁移，不能说已经获得框架的持久化执行保障。
+> 最初的实现是有限业务编排，现在已把六阶段执行顺序和分支收敛到 LangGraph，节点直接复用普通 Python 函数。选择它是因为现有阶段和状态能直接对应，不必把规则函数重写成自由对话的 Agent。首阶段只用状态、节点和边，证据冻结、恢复令牌和审批仍由业务数据库负责，避免同时维护两套状态。代价是新增框架及间接依赖，超时隔离和事实校验仍要自己实现。没有同条件对照实验，我不会声称这次接入让模型更准或系统更快。
 
 这是基于当前代码的选型解释，不是已经做过框架性能对照实验的结论。
 
-完整比较、源码接入映射、可运行示例和验收条件统一维护在 [LangGraph 应用与框架选型报告（ADR-0020）](../knowledge/decisions/0020-langgraph-application-report.md)。它比较 LangGraph、LangChain 高层 Agent、CrewAI、AutoGen 与继续自研；这里只保留口述，避免重复维护。
+完整比较、源码接入映射、实际接线方式和验收条件统一维护在 [LangGraph 应用与框架选型报告（ADR-0020）](../knowledge/decisions/0020-langgraph-application-report.md)。它比较 LangGraph、LangChain 高层 Agent、CrewAI、AutoGen 与继续自研；这里只保留口述，避免重复维护。
 
 答辩记住：选择理由是与当前显式流程和 Python 函数更匹配；LangChain 高层 Agent 也基于 LangGraph，CrewAI Flows 也有状态与人工反馈。权限、证据和审批不是任何框架或自研方案独有优势，没有同条件基准就不声称性能更优。
+
+接入事实集中在 [analysis_pipeline.py](../services/agent-service/app/analysis_pipeline.py)：`_AnalysisState` 传递本次输入和阶段输出，六个函数节点由 `StateGraph` 连接。缺信息的条件边走 `END`，业务存储保存等待状态；确认请求从 `convergence` 进入。图缓存只复用拓扑，每次建立独立状态；原先的两段手工阶段调度已移除。没有新增 `analysis_graph.py` 或外部运行服务，也没有启用 LangGraph checkpointer / `interrupt`，因此不具备节点中途崩溃恢复。实际 `invoke` 外显式关闭 LangSmith 追踪，不因宿主环境开启追踪而外发本次证据。
 
 <a id="agent-boundaries"></a>
 ## Agent 是什么，如何通信
@@ -29,10 +31,10 @@
 | 路径 | 当前实现 | 边界 |
 | --- | --- | --- |
 | 问答 | Router、Planner、工具选择和生成可调用 LLM；失败或未配置时有规则/模板路径 | 不是每次请求都调用所有模型角色 |
-| 六阶段分析 | 意图、相关方、领域、风险、收敛、PRD；四类 specialist 做关键词/规则提取 | specialist 没有专家 Prompt 或独立模型调用 |
+| 六阶段分析 | LangGraph 组织意图、相关方、领域、风险、收敛、PRD；四类 specialist 做关键词/规则提取 | specialist 没有专家 Prompt 或独立模型调用 |
 | 引用 Reviewer | 标准引用与部分数字锚点的轻量规则 | 不是完整语义事实审查模型 |
 
-问答通过 `ExecutionPlan`、`AgenticRagState` 传递问题、查询、证据、工具结果和 trace。领域分析由中心编排器分发同一冻结证据，四个 specialist 返回 `DomainSpecialistResult(findings, evidence, error)`，按业务、数据安全、技术集成、规则合规的固定顺序合并。
+问答通过 `ExecutionPlan`、`AgenticRagState` 传递问题、查询、证据、工具结果和 trace。六阶段节点通过 `_AnalysisState` 传递结果；领域节点把同一冻结证据交给四个 specialist，取得 `DomainSpecialistResult(findings, evidence, error)`，按业务、数据安全、技术集成、规则合规的固定顺序合并。
 
 这是同进程函数调用与 Future 汇总，没有 Agent 间网络协议、自由对话或分布式消息总线。固定顺序不代表完整语义冲突消解；当前主要识别材料中明确出现的冲突表述。
 
@@ -127,7 +129,7 @@ Media 到 Agent 是另一层通信：业务事务写 outbox，领取 claim/lease
 | 缓存如何失效 | Chunk key 含数据库、revision 和 scope，写入提升 revision；BGE key 含模型身份与内容摘要。缓存不是模型 attention KV cache。 |
 | 角色变更即时生效吗 | 前端按身份/Workspace/角色重建查询上下文；已有 JWT 的服务端撤权要按部署机制核对，不能凭 UI 清缓存宣称即时撤权。 |
 | 视频来源有多可信 | 保存 asset/segment/时间范围，播放时申请 Media 授权；保证定位和权限，不证明转写无误或答案逐句被支持。 |
-| checkpoint 恢复哪层 | 保存 session、阶段、确认与证据快照，保留阶段 1–4，只重算收敛/PRD；CAS 消费 token，竞争回归一个 200、一个 409；新资料需新建分析。 |
+| checkpoint 恢复哪层 | 业务数据库保存 session、阶段、确认与证据快照，保留阶段 1–4，重建图输入后只执行收敛/PRD；CAS 消费 token，竞争只有一次能提交；未用 LangGraph 原生 saver / interrupt，新资料需新建分析。 |
 | SSE 还是 WebSocket | 问答已有 SSE，媒体轮询，分析确认走 HTTP；没有 AppServer/WebSocket continuation，也不自动重放客户端漏收的 done。 |
 | 为什么独立审批 | PRD 发布与知识影响未来检索是不同决定；personal OWNER 二次确认，team 不同成员四眼；行动项再进入受控工具审批。 |
 | 知识批准只是改状态吗 | 候选、托管 document/chunk、版本/证据、revision 与图谱事务物化，失败回滚，未来 RAG 可检索；替代/撤回保留历史。 |
@@ -143,7 +145,7 @@ Media 到 Agent 是另一层通信：业务事务写 outbox，领取 claim/lease
 
 | 主题 | 让同伴继续追问 |
 | --- | --- |
-| 选型 | LangGraph 已有 checkpoint 和人工介入，为什么还自研？省哪些适配、增哪些维护？有性能对照吗？何时换？ |
+| 选型 | 六阶段怎样映射为图？为何先复用业务检查点？比直接 SDK 多了什么依赖？什么时候才需要原生 interrupt？有性能对照吗？ |
 | Agent 真实性 | 指出实际模型调用；四个 specialist 为什么是规则？前 8 个 chunk 投影 PRD 有何语义局限？ |
 | 故障 | 异常与卡死有何区别？4 worker 是否限制队列？Future.cancel 能否停掉正在运行的推理？进程退出怎么办？ |
 | 检索/评测 | 证据召回后在哪一步丢失？Hit@3 与 Recall@3 有何区别？任一事实命中能证明整段正确吗？ |
@@ -185,12 +187,12 @@ Media 到 Agent 是另一层通信：业务事务写 outbox，领取 claim/lease
 
 | 入口 | 要能解释的内容 |
 | --- | --- |
-| [编排器](../services/agent-service/app/architecture/orchestration.py) / [依赖](../services/agent-service/requirements.txt) | 框架边界、模式分发、调用预算 |
-| [分析证据](../services/agent-service/app/analysis_evidence.py) / [流水线](../services/agent-service/app/analysis_pipeline.py) | 目标检索、冻结范围、规则 specialist、无超时等待、PRD 投影局限 |
+| [问答编排器](../services/agent-service/app/architecture/orchestration.py) / [依赖](../services/agent-service/requirements.txt) | 问答与六阶段的框架边界、模式分发、调用预算与锁定依赖 |
+| [分析证据](../services/agent-service/app/analysis_evidence.py) / [六节点流程图](../services/agent-service/app/analysis_pipeline.py) | 目标检索、冻结范围、StateGraph 分支、规则 specialist、无超时等待、PRD 投影局限 |
 | [分析存储](../services/agent-service/app/analysis_store.py) | CAS、checkpoint version、证据 hash；同库 hash 检测漂移，不防管理员同时改正文与 hash |
 | [检索执行](../services/agent-service/app/retrieval_execution.py) / [引用审核](../services/agent-service/app/citation_review.py) | 截止与槽位的保障；告警与语义校验的差别 |
 | [发布](../services/agent-service/app/publication_service.py) / [知识事务](../services/agent-service/app/knowledge_lifecycle_store.py) | personal/team 审批、物化、版本与回滚 |
 | [outbox](../services/media-service/src/main/java/com/example/videoplatform/integration/AgentOutboxDispatcher.java) | claim、lease、HTTP 失败与重投 |
 | [V6](../quality/agent-evals/evaluate_v6.py) / [纵向验收](../scripts/local_acceptance.py) | 指标分母、judge、mock 与真实环境边界 |
 
-优先补强 specialist 截止/容量、严格引用与事实审核、真实模型独立留出集。本轮仅记录待办，没有实现这些功能，也没有更换模型、框架或扩大生产发布范围。
+本轮已接入六阶段 LangGraph 编排；specialist 截止/容量、严格引用与事实审核、真实模型独立留出集仍是待补项。模型选择与部署范围未变，源码与当前容器版本应分别核对；验证与环境以 [QUALITY](../knowledge/QUALITY.md) 和 [OPERATIONS](../knowledge/OPERATIONS.md) 为准。

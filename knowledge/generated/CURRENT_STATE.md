@@ -5,7 +5,7 @@
 ## Workspace inventory
 
 - Media Service: 116 production Java files; 40 test files; 150 `@Test` methods.
-- Agent Service: 90 application Python files; 32 test files; 271 pytest test functions.
+- Agent Service: 90 application Python files; 32 test files; 277 test methods/functions.
 - React Web: 45 TypeScript/TSX/CSS source files.
 - Machine-readable contracts: 14 files.
 - Local localhost-only acceptance runner: present.
@@ -13,7 +13,7 @@
 ## Detected primary dependencies
 
 - Media Service: java 17, spring-boot 3.3.5
-- Agent Service: fastapi 0.115.6, pydantic 2.10.4
+- Agent Service: fastapi 0.115.6, uvicorn 0.34.0, pydantic 2.10.4, langgraph 1.2.11
 - React Web: react ^19.0.0, typescript ^5.7.2, vite ^6.0.7
 
 ## HTTP surface approximation

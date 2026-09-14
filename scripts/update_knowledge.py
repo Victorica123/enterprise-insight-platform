@@ -56,11 +56,13 @@ def python_dependencies() -> dict[str, str]:
     requirements = ROOT / "services" / "agent-service" / "requirements.txt"
     if not requirements.exists():
         return {}
-    wanted = {"fastapi", "pydantic", "uvicorn", "pytest"}
+    wanted = {"fastapi", "pydantic", "uvicorn", "pytest", "langgraph"}
     values: dict[str, str] = {}
     for raw in requirements.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = raw.strip()
-        match = re.match(r"([A-Za-z0-9_.-]+)==([^;\s]+)", line)
+        if not line or line.startswith(("#", "-")):
+            continue
+        match = re.match(r"([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?\s*==\s*([^;\s]+)", line)
         if match and match.group(1).lower() in wanted:
             values[match.group(1).lower()] = match.group(2)
     return values
@@ -107,7 +109,7 @@ def render() -> str:
         "## Workspace inventory",
         "",
         f"- Media Service: {len(java_main)} production Java files; {len(java_test)} test files; {java_test_methods} `@Test` methods.",
-        f"- Agent Service: {len(python_main)} application Python files; {len(python_test)} test files; {python_test_functions} pytest test functions.",
+        f"- Agent Service: {len(python_main)} application Python files; {len(python_test)} test files; {python_test_functions} test methods/functions.",
         f"- React Web: {len(web_source)} TypeScript/TSX/CSS source files.",
         f"- Machine-readable contracts: {len(contracts)} files.",
         f"- Local localhost-only acceptance runner: {'present' if local_acceptance else 'missing'}.",

@@ -1,9 +1,11 @@
+import os
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app import analysis_pipeline, database
 from app.analysis_pipeline import resume_six_stage_analysis, run_six_stage_analysis
@@ -12,6 +14,10 @@ from app.publication_artifacts import decide_knowledge_candidate, get_publicatio
 from app.rag import answer_question
 from app.retrievers import Chunk, RetrievalScope, clear_chunk_cache, load_chunks
 from fastapi.testclient import TestClient
+from langchain_core.runnables import RunnableLambda
+from langchain_core.tracers.context import tracing_v2_enabled
+from langsmith import Client as LangSmithClient
+from langsmith import utils as langsmith_utils
 
 
 class SixStagePipelineTests(unittest.TestCase):
@@ -42,6 +48,25 @@ class SixStagePipelineTests(unittest.TestCase):
         self.assertEqual(requirement.evidence[0].asset_id, "asset-1")
         self.assertEqual(requirement.evidence[0].start_ms, 1200)
         self.assertEqual(requirement.acceptance_criteria, ["审批提交后 2 秒内展示结果"])
+
+    def test_initial_prd_keeps_stage_placeholders_out_of_business_fields(self) -> None:
+        run = run_six_stage_analysis("整理页面展示需求", [Chunk(
+            document_id="doc-page", filename="page.md", chunk_index=0,
+            content="页面显示蓝色按钮。",
+        )], {
+            "decision_maker": "  陈经理  ",
+            "acceptance_criteria": "2 秒内显示按钮",
+            "priority_rule": "P0 优先",
+        })
+
+        self.assertIsNotNone(run.prd)
+        self.assertEqual(run.stages[1].findings, ["材料未明确标注干系人身份"])
+        self.assertEqual(run.prd.stakeholders, ["陈经理"])
+        self.assertEqual(
+            run.stages[3].findings,
+            ["未发现材料中被明确表述的风险；这不等同于不存在风险"],
+        )
+        self.assertEqual(run.prd.risks, ["材料未明确风险，发布前需人工复核"])
 
     def test_domain_specialists_merge_deterministically_and_surface_conflicts(self) -> None:
         chunks = [Chunk(
@@ -102,6 +127,148 @@ class SixStagePipelineTests(unittest.TestCase):
             [stage.model_dump(mode="json") for stage in resumed.stages[:4]], frozen,
         )
         self.assertIsNotNone(resumed.prd)
+
+    def test_partial_resumes_preserve_reviews_without_repeating_specialists(self) -> None:
+        chunks = [Chunk(
+            document_id="doc-conflict", filename="refund.md", chunk_index=0,
+            content="客户提出退款页面的两种口径冲突。",
+        )]
+        original = analysis_pipeline._run_one_specialist
+
+        def fail_data(config, evidence):
+            if config.key == "data":
+                raise RuntimeError("simulated")
+            return original(config, evidence)
+
+        with patch("app.analysis_pipeline._run_one_specialist", side_effect=fail_data):
+            waiting = run_six_stage_analysis("生成退款页面 PRD", chunks)
+        frozen = [stage.model_dump(mode="json") for stage in waiting.stages]
+        previous = waiting.stages
+        answers = {}
+        steps = [
+            (
+                {"decision_maker": "产品负责人", "acceptance_criteria": "   "},
+                ["acceptance_criteria", "priority_rule", "domain_conflict", "specialist_review"],
+            ),
+            (
+                {"acceptance_criteria": "2 秒内显示退款结果", "priority_rule": "P0 优先",
+                 "domain_conflict": "采用退款完成后显示结果的口径"},
+                ["specialist_review"],
+            ),
+            ({"specialist_review": "数据负责人已复核"}, []),
+        ]
+        with patch("app.analysis_pipeline._run_domain_specialists") as specialists:
+            for changes, expected_questions in steps:
+                with self.subTest(remaining=expected_questions):
+                    answers.update(changes)
+                    before = [stage.model_dump(mode="json") for stage in previous]
+                    resumed = resume_six_stage_analysis(
+                        "生成退款页面 PRD", chunks, previous, answers,
+                    )
+                    self.assertEqual([stage.model_dump(mode="json") for stage in previous], before)
+                    self.assertEqual(
+                        [stage.model_dump(mode="json") for stage in resumed.stages[:4]], frozen[:4],
+                    )
+                    self.assertEqual(
+                        [question.question_id for question in resumed.open_questions], expected_questions,
+                    )
+                    self.assertEqual(len(resumed.stages), 5 if expected_questions else 6)
+                    self.assertEqual(resumed.prd is None, bool(expected_questions))
+                    self.assertEqual(resumed.specialist_results, ())
+                    previous = resumed.stages
+            specialists.assert_not_called()
+        self.assertEqual([stage.model_dump(mode="json") for stage in waiting.stages], frozen)
+
+    def test_resume_rejects_incomplete_or_out_of_order_checkpoints(self) -> None:
+        waiting = run_six_stage_analysis("生成页面需求 PRD", [])
+        completed = waiting.stages[:4]
+        checkpoints = {
+            "missing_stages": completed[:3],
+            "wrong_order": [completed[1], completed[0], *completed[2:]],
+            "unfinished_stage": [
+                completed[0].model_copy(update={"status": "WAITING_CONFIRMATION"}), *completed[1:],
+            ],
+        }
+        with patch("app.analysis_pipeline._run_domain_specialists") as specialists:
+            for name, stages in checkpoints.items():
+                with self.subTest(checkpoint=name), self.assertRaises(ValueError):
+                    resume_six_stage_analysis("生成页面需求 PRD", [], stages, {})
+            specialists.assert_not_called()
+
+    def test_analysis_calls_do_not_share_evidence_answers_or_prd(self) -> None:
+        chunks = [Chunk(
+            document_id="doc-refund", filename="refund.md", chunk_index=0,
+            content="客户希望退款后显示回执。",
+        )]
+        waiting = run_six_stage_analysis("生成退款回执 PRD", chunks)
+        unrelated = run_six_stage_analysis("生成库存预警 PRD", [Chunk(
+            document_id="doc-stock", filename="stock.md", chunk_index=0,
+            content="库存产品负责人要求 P0，验收标准为 3 秒内显示预警。",
+        )])
+        self.assertIsNotNone(unrelated.prd)
+        unrelated_prd = unrelated.prd.model_dump(mode="json")
+
+        resumed = resume_six_stage_analysis("生成退款回执 PRD", chunks, waiting.stages, {
+            "decision_maker": "退款负责人",
+            "acceptance_criteria": "2 秒内显示回执",
+            "priority_rule": "P0 优先",
+        })
+        empty = run_six_stage_analysis("生成新页面 PRD", [])
+
+        self.assertIsNotNone(resumed.prd)
+        self.assertEqual(resumed.prd.goals, ["生成退款回执 PRD"])
+        self.assertEqual(
+            {ref.document_id for requirement in resumed.prd.requirements for ref in requirement.evidence},
+            {"doc-refund"},
+        )
+        self.assertEqual(unrelated.prd.model_dump(mode="json"), unrelated_prd)
+        self.assertIsNone(empty.prd)
+        self.assertEqual(
+            [question.question_id for question in empty.open_questions],
+            ["evidence_scope", "decision_maker", "acceptance_criteria", "priority_rule"],
+        )
+        self.assertTrue(all(not stage.evidence for stage in empty.stages))
+
+    def test_analysis_does_not_export_evidence_through_ambient_tracing(self) -> None:
+        chunks = [Chunk(
+            document_id="doc-private", filename="internal.md", chunk_index=0,
+            content="客户希望简化内部退款流程。",
+        )]
+        tracing_env = {
+            "LANGSMITH_TRACING": "true", "LANGSMITH_TRACING_V2": "true",
+            "LANGCHAIN_TRACING_V2": "true", "LANGCHAIN_TRACING": "", "LANGCHAIN_HANDLER": "",
+        }
+        self.addCleanup(langsmith_utils.get_env_var.cache_clear)
+        for outer_tracer in (False, True):
+            client = Mock(spec=LangSmithClient)
+            with (
+                self.subTest(outer_tracer=outer_tracer),
+                patch.dict(os.environ, tracing_env),
+                patch("langchain_core.tracers.langchain.get_client", return_value=client),
+                patch("socket.getaddrinfo", side_effect=AssertionError("Unexpected DNS lookup")) as dns,
+                patch("socket.socket.connect", side_effect=AssertionError("Unexpected network")) as connect,
+                tracing_v2_enabled(client=client) if outer_tracer else nullcontext(),
+            ):
+                langsmith_utils.get_env_var.cache_clear()
+                # Prove ambient tracing reaches the fake exporter before testing the production boundary.
+                RunnableLambda(lambda value: value).invoke("non-sensitive tracing control")
+                client.create_run.assert_called()
+                client.update_run.assert_called()
+                client.reset_mock()
+
+                waiting = run_six_stage_analysis("生成内部退款 PRD", chunks)
+                resumed = resume_six_stage_analysis("生成内部退款 PRD", chunks, waiting.stages, {
+                    "decision_maker": "产品负责人", "acceptance_criteria": "2 秒内显示退款结果",
+                    "priority_rule": "P0 优先",
+                })
+
+                self.assertIsNone(waiting.prd)
+                self.assertIsNotNone(resumed.prd)
+                self.assertEqual(resumed.prd.requirements[0].evidence[0].document_id, "doc-private")
+                client.create_run.assert_not_called()
+                client.update_run.assert_not_called()
+                dns.assert_not_called()
+                connect.assert_not_called()
 
     def test_text_confirmation_cannot_replace_a_missing_evidence_snapshot(self) -> None:
         waiting = run_six_stage_analysis("生成权益 PRD", [])
@@ -343,6 +510,57 @@ class AnalysisApiTests(unittest.TestCase):
         ).json()
         self.assertEqual(stored["checkpoint_version"], 2)
         self.assertEqual(stored["status"], "DRAFT_READY")
+
+    def test_partial_confirmation_rotates_token_and_merges_later_answers(self) -> None:
+        database.insert_document(
+            "doc-partial", "invoice.mp4", [("", "客户希望优化发票申请体验。")],
+            tenant_id="tenant-a", owner_id="user-a", source_type="video", external_id="asset-partial",
+            chunk_metadata=[{
+                "asset_id": "asset-partial", "segment_id": "segment-partial",
+                "start_ms": 0, "end_ms": 3000, "speaker": "客户",
+            }],
+        )
+        headers = {"X-User-Role": "operator", "X-User-Id": "user-a", "X-Tenant-Id": "tenant-a"}
+        created_response = self.client.post(
+            "/analysis/sessions", headers=headers,
+            json={"objective": "生成发票申请 PRD", "asset_ids": ["asset-partial"]},
+        )
+        self.assertEqual(created_response.status_code, 201, created_response.text)
+        created = created_response.json()
+        path = f"/analysis/sessions/{created['session_id']}"
+        first_payload = {
+            "resume_token": created["resume_token"], "answers": {"decision_maker": "  财务负责人  "},
+        }
+        partial_response = self.client.post(f"{path}/confirm", headers=headers, json=first_payload)
+        self.assertEqual(partial_response.status_code, 200, partial_response.text)
+        partial = partial_response.json()
+        self.assertEqual(partial["status"], "WAITING_CONFIRMATION")
+        self.assertEqual(partial["checkpoint_version"], 2)
+        self.assertNotEqual(partial["resume_token"], created["resume_token"])
+        self.assertEqual(partial["confirmations"], {"decision_maker": "财务负责人"})
+        self.assertEqual(
+            [question["question_id"] for question in partial["open_questions"]],
+            ["acceptance_criteria", "priority_rule"],
+        )
+
+        replay = self.client.post(f"{path}/confirm", headers=headers, json=first_payload)
+        self.assertEqual(replay.status_code, 409, replay.text)
+        self.assertEqual(self.client.get(path, headers=headers).json(), partial)
+
+        completed_response = self.client.post(f"{path}/confirm", headers=headers, json={
+            "resume_token": partial["resume_token"],
+            "answers": {"acceptance_criteria": "2 秒内显示申请编号", "priority_rule": "P0 优先"},
+        })
+        self.assertEqual(completed_response.status_code, 200, completed_response.text)
+        completed = completed_response.json()
+        self.assertEqual(completed["status"], "DRAFT_READY")
+        self.assertEqual(completed["checkpoint_version"], 3)
+        self.assertIsNone(completed["resume_token"])
+        self.assertEqual(completed["stages"][:4], created["stages"][:4])
+        self.assertEqual(completed["confirmations"]["decision_maker"], "财务负责人")
+        self.assertEqual(
+            completed["prd"]["requirements"][0]["acceptance_criteria"], ["2 秒内显示申请编号"],
+        )
 
     def test_personal_owner_uses_two_explicit_steps_and_receives_audit_chain(self) -> None:
         headers = {

@@ -10,6 +10,8 @@
 
 ## 当前本机部署（2026-09-13）
 
+2026-09-15 的 LangGraph 源码与依赖更新未部署到这些运行中容器；本轮只在隔离测试环境验证。下表继续记录本机已部署版本，不能将 GitHub 最新源码等同于已运行版本。
+
 参考站复核的检索修复 `ee51a8e` 与浏览器追问补丁 `acb1d7e` 已部署到既有 Compose project `enterprise-insight-local`，入口 **http://127.0.0.1:8080**。当前 Agent 来自 `acb1d7e`；Web 沿用播放代理前缀修复 `03f810b`，Media 沿用阶段 0–4 的 `af2dc6e`。两次均只更新 Agent，Web/Media 容器 ID 保持不变，随后 reload nginx 解析新上游。三个容器均 healthy，仅 Web 发布 loopback 8080，`erp-mssql` 未改动。源码托管状态见上方 GitHub 记录。
 
 | 服务容器 | 固定镜像 | 已核对 Image ID（前 12 位） |
@@ -33,6 +35,21 @@
 先在数据副本、再在目标库停写升级，均在恢复 Web 写入前逐表核对原字段/行数/内容摘要；原 H2 为 9 表/0 行，SQLite 为 16 表/1 行。副本 project `codex-release-20260913132509` 已关闭并移除容器/网络，保留副本文件。正式部署之后新增了验收账号与示例数据，恢复升级前备份前必须先保留这些新写入；本轮未对正式本机执行降级回退。
 
 发布验收：Web 26/26、实际入口带 Origin 的业务链路 42/42、同源检查 5/5；浏览器登录、3 秒 MP4/206 回放、阶段日志、SSE 证据与六路由宽窄屏通过。快速复核用 `python scripts/check_local_web.py`；该命令不创建账号或修改数据。nginx 保留 Host 的外部端口，播放客户端保留 `/media` 路径前缀，不能用只测后端直连接口代替浏览器检查。后续维护从 harness brief、本文与 `QUALITY.md` 最新条目恢复，原迁移来源只读，既有一次性备份/副本脚本不要重跑覆盖。
+
+## Agent 依赖安装与锁定（2026-09-15）
+
+六阶段分析新增 `langgraph==1.2.11`，在现有 Agent 进程内运行，不需要 LangGraph 服务或 LangSmith 账号。`requirements.txt` 中的 `-c requirements.lock` 自动约束完整基础依赖；Docker 同时复制这两个文件，CI 的 pip cache 同时跟踪两者。
+
+```powershell
+python -m pip install -r services/agent-service/requirements.txt
+python -m pip check
+# 只有需要本地语义模型时才安装可选扩展：
+python -m pip install -r services/agent-service/requirements-embedding.txt
+```
+
+Windows/Linux Python 3.12 基础依赖为 55 包，较原环境增加 23 个（1 个直接、22 个传递）；原 FastAPI、Pydantic、OpenAI SDK 等直接版本保持。`websockets` 从 17.1 约束至 16.1.1，以满足 LangGraph SDK 的 `<17` 要求，并兼容现有 Uvicorn。可选 fastembed 未加入默认安装，锁文件只固定它与基础环境共享的依赖。
+
+锁文件头记录当前版本的重现命令。升级时先准备不引用旧锁的候选输入与候选约束，解除受影响包的旧 pins，再解析候选锁；`--upgrade` 不会覆盖 `-c` 指定的旧约束。验证安装兼容性、图执行、全部 Agent 测试和相关评测后，一起更新正式输入、锁与知识快照。当前图显式关闭外部追踪，`LANGSMITH_TRACING` / `LANGCHAIN_TRACING_V2` 不能开启这条分析流程的证据上传。
 
 ## 支持的本地工具链
 

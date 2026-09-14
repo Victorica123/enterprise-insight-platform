@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import cache
+from typing import TypedDict
+
+from langgraph.graph import END, START, StateGraph
+from langsmith import tracing_context
 
 from app.analysis_models import (
     AnalysisStageResult,
@@ -32,6 +37,24 @@ class AnalysisRun:
     specialist_results: tuple[DomainSpecialistResult, ...] = ()
 
 
+class _AnalysisState(TypedDict):
+    """Per-call state only; durable checkpoints remain in analysis_store."""
+
+    objective: str
+    chunks: list[Chunk]
+    answers: dict[str, str]
+    corpus: str
+    evidence: list[EvidenceRef]
+    stages: list[AnalysisStageResult]
+    stakeholder_findings: list[str]
+    risk_findings: list[str]
+    conflicts: list[str]
+    failed_count: int
+    specialist_results: tuple[DomainSpecialistResult, ...]
+    open_questions: list[OpenQuestion]
+    prd: PrdDraft | None
+
+
 @dataclass(frozen=True)
 class _SpecialistConfig:
     key: str
@@ -54,18 +77,8 @@ def run_six_stage_analysis(
     chunks: list[Chunk],
     confirmations: dict[str, str] | None = None,
 ) -> AnalysisRun:
-    """Run the initial bounded six-stage analysis over an already authorized snapshot."""
-
-    answers = _clean_answers(confirmations)
-    bounded = chunks[:200]
-    first_four, stakeholders, risks, conflict_count, failed_count, specialists = (
-        _run_initial_stages(objective, bounded)
-    )
-    return _finish_analysis(
-        objective, bounded, answers, first_four, stakeholders, risks,
-        conflict_count=conflict_count, failed_count=failed_count,
-        specialist_results=specialists,
-    )
+    """Run all six graph stages over an already authorized evidence snapshot."""
+    return _invoke_analysis(objective, chunks, _clean_answers(confirmations), [])
 
 
 def resume_six_stage_analysis(
@@ -74,8 +87,7 @@ def resume_six_stage_analysis(
     previous_stages: list[AnalysisStageResult],
     confirmations: dict[str, str],
 ) -> AnalysisRun:
-    """Resume from the persisted business checkpoint without recomputing stages 1-4."""
-
+    """Re-enter at convergence using the persisted business checkpoint."""
     if [stage.stage for stage in previous_stages[:4]] != [
         "intent", "stakeholders", "domain", "risks",
     ]:
@@ -83,131 +95,147 @@ def resume_six_stage_analysis(
     first_four = previous_stages[:4]
     if any(stage.status != "COMPLETED" for stage in first_four):
         raise ValueError("Analysis checkpoint stages 1-4 must be completed.")
-
-    domain_findings = first_four[2].findings
-    conflict_count = sum(finding.startswith("[冲突]") for finding in domain_findings)
-    failed_count = sum(finding.startswith("[specialist失败]") for finding in domain_findings)
-    return _finish_analysis(
-        objective,
-        chunks[:200],
-        _clean_answers(confirmations),
-        first_four,
-        first_four[1].findings,
-        first_four[3].findings,
-        conflict_count=conflict_count,
-        failed_count=failed_count,
-        specialist_results=(),
-    )
+    return _invoke_analysis(objective, chunks, _clean_answers(confirmations), first_four)
 
 
-def _run_initial_stages(
-    objective: str,
-    chunks: list[Chunk],
-) -> tuple[
-    list[AnalysisStageResult], list[str], list[str], int, int,
-    tuple[DomainSpecialistResult, ...],
-]:
-    evidence = [_evidence(chunk) for chunk in chunks[:12]]
-    corpus = "\n".join(chunk.content for chunk in chunks)
-    speakers = _unique(chunk.speaker for chunk in chunks if chunk.speaker)
-
-    intent = AnalysisStageResult(
-        stage="intent", status="COMPLETED",
-        summary=f"分析目标已确定：{objective.strip()}",
-        findings=["交付物：证据化需求分析与 PRD 草稿", f"冻结证据范围：{len(chunks)} 个片段"],
-        evidence=evidence[:3],
-    )
-    stakeholder_findings = speakers or _matched_terms(
-        corpus, ["客户", "用户", "产品", "研发", "测试", "负责人"],
-    )
-    stakeholders = AnalysisStageResult(
-        stage="stakeholders", status="COMPLETED",
-        summary="已识别有证据支持的参与者；未明确的决策权不会由 Agent 猜测。",
-        findings=stakeholder_findings or ["材料未明确标注干系人身份"],
-        evidence=[ref for ref in evidence if ref.speaker][:6] or evidence[:2],
-    )
-
-    specialist_results = _run_domain_specialists(tuple(chunks))
-    specialist_findings = [
-        finding for result in specialist_results for finding in result.findings
-    ]
-    specialist_evidence = _unique_chunks(
-        chunk for result in specialist_results for chunk in result.evidence
-    )
-    conflicts = _conflict_findings(chunks)
-    failed_count = sum(result.error is not None for result in specialist_results)
-    domain = AnalysisStageResult(
-        stage="domain", status="COMPLETED",
-        summary=(
-            f"4 个有界领域 specialist 已按固定顺序合并；"
-            f"发现 {len(conflicts)} 个显式冲突，{failed_count} 个执行失败。"
-        ),
-        findings=(specialist_findings + conflicts) or ["当前材料不足以形成领域结论"],
-        evidence=[_evidence(chunk) for chunk in specialist_evidence[:12]] or evidence[:8],
-    )
-
-    risk_findings = _unique(_risk_findings(chunks) + conflicts)
-    risks = AnalysisStageResult(
-        stage="risks", status="COMPLETED",
-        summary="已检查冲突、依赖、交付与合规风险。",
-        findings=risk_findings or ["未发现材料中被明确表述的风险；这不等同于不存在风险"],
-        evidence=[_evidence(chunk) for chunk in chunks if _is_risk(chunk.content)][:8],
-    )
-    return (
-        [intent, stakeholders, domain, risks],
-        stakeholder_findings,
-        risk_findings,
-        len(conflicts),
-        failed_count,
-        specialist_results,
-    )
-
-
-def _finish_analysis(
+def _invoke_analysis(
     objective: str,
     chunks: list[Chunk],
     answers: dict[str, str],
     first_four: list[AnalysisStageResult],
-    stakeholder_findings: list[str],
-    risk_findings: list[str],
-    *,
-    conflict_count: int,
-    failed_count: int,
-    specialist_results: tuple[DomainSpecialistResult, ...],
 ) -> AnalysisRun:
-    evidence = [_evidence(chunk) for chunk in chunks[:12]]
-    corpus = "\n".join(chunk.content for chunk in chunks)
-    questions = _open_questions(
-        corpus, answers, bool(chunks), conflict_count=conflict_count,
-        failed_count=failed_count,
+    bounded = chunks[:200]
+    domain_findings = first_four[2].findings if first_four else []
+    state = _AnalysisState(
+        objective=objective, chunks=bounded, answers=answers,
+        corpus="\n".join(chunk.content for chunk in bounded),
+        evidence=[_evidence(chunk) for chunk in bounded[:12]],
+        stages=first_four,
+        # Keep the existing resume semantics; fresh nodes set raw findings.
+        stakeholder_findings=first_four[1].findings if first_four else [],
+        risk_findings=first_four[3].findings if first_four else [],
+        conflicts=[finding for finding in domain_findings if finding.startswith("[冲突]")],
+        failed_count=sum(finding.startswith("[specialist失败]") for finding in domain_findings),
+        specialist_results=(), open_questions=[], prd=None,
     )
-    convergence = AnalysisStageResult(
-        stage="convergence",
-        status="WAITING_CONFIRMATION" if questions else "COMPLETED",
+    # A host's LangSmith environment must not export this workflow's evidence.
+    with tracing_context(enabled=False, parent=False):
+        result = _analysis_graph().invoke(state, config={"callbacks": [], "recursion_limit": 16})
+    return AnalysisRun(
+        stages=result["stages"], open_questions=result["open_questions"],
+        prd=result["prd"], specialist_results=result["specialist_results"],
+    )
+
+
+def _intent_node(state: _AnalysisState) -> dict[str, object]:
+    stage = AnalysisStageResult(
+        stage="intent", status="COMPLETED",
+        summary=f"分析目标已确定：{state['objective'].strip()}",
+        findings=["交付物：证据化需求分析与 PRD 草稿", f"冻结证据范围：{len(state['chunks'])} 个片段"],
+        evidence=state["evidence"][:3],
+    )
+    return {"stages": [stage]}
+
+
+def _stakeholders_node(state: _AnalysisState) -> dict[str, object]:
+    findings = _unique(chunk.speaker for chunk in state["chunks"] if chunk.speaker) or _matched_terms(
+        state["corpus"], ["客户", "用户", "产品", "研发", "测试", "负责人"],
+    )
+    stage = AnalysisStageResult(
+        stage="stakeholders", status="COMPLETED",
+        summary="已识别有证据支持的参与者；未明确的决策权不会由 Agent 猜测。",
+        findings=findings or ["材料未明确标注干系人身份"],
+        evidence=[ref for ref in state["evidence"] if ref.speaker][:6] or state["evidence"][:2],
+    )
+    return {"stages": [*state["stages"], stage], "stakeholder_findings": findings}
+
+
+def _domain_node(state: _AnalysisState) -> dict[str, object]:
+    results = _run_domain_specialists(tuple(state["chunks"]))
+    findings = [finding for result in results for finding in result.findings]
+    evidence = _unique_chunks(chunk for result in results for chunk in result.evidence)
+    conflicts = _conflict_findings(state["chunks"])
+    failed_count = sum(result.error is not None for result in results)
+    stage = AnalysisStageResult(
+        stage="domain", status="COMPLETED",
+        summary=(
+            "4 个有界领域 specialist 已按固定顺序合并；"
+            f"发现 {len(conflicts)} 个显式冲突，{failed_count} 个执行失败。"
+        ),
+        findings=(findings + conflicts) or ["当前材料不足以形成领域结论"],
+        evidence=[_evidence(chunk) for chunk in evidence[:12]] or state["evidence"][:8],
+    )
+    return {
+        "stages": [*state["stages"], stage], "specialist_results": results,
+        "conflicts": conflicts, "failed_count": failed_count,
+    }
+
+
+def _risks_node(state: _AnalysisState) -> dict[str, object]:
+    findings = _unique(_risk_findings(state["chunks"]) + state["conflicts"])
+    stage = AnalysisStageResult(
+        stage="risks", status="COMPLETED",
+        summary="已检查冲突、依赖、交付与合规风险。",
+        findings=findings or ["未发现材料中被明确表述的风险；这不等同于不存在风险"],
+        evidence=[_evidence(chunk) for chunk in state["chunks"] if _is_risk(chunk.content)][:8],
+    )
+    return {"stages": [*state["stages"], stage], "risk_findings": findings}
+
+
+def _convergence_node(state: _AnalysisState) -> dict[str, object]:
+    questions = _open_questions(
+        state["corpus"], state["answers"], bool(state["chunks"]),
+        conflict_count=len(state["conflicts"]), failed_count=state["failed_count"],
+    )
+    stage = AnalysisStageResult(
+        stage="convergence", status="WAITING_CONFIRMATION" if questions else "COMPLETED",
         summary=(
             "存在影响 PRD 正确性的事实缺口，需要人工确认。"
             if questions else "关键事实已达到生成可评审 PRD 草稿的最低条件。"
         ),
-        findings=[f"已确认：{key} = {value}" for key, value in answers.items()],
-        evidence=evidence[:4], open_questions=questions,
+        findings=[f"已确认：{key} = {value}" for key, value in state["answers"].items()],
+        evidence=state["evidence"][:4], open_questions=questions,
     )
-    stages = [*first_four, convergence]
-    if questions:
-        return AnalysisRun(
-            stages=stages, open_questions=questions, prd=None,
-            specialist_results=specialist_results,
-        )
+    return {"stages": [*state["stages"][:4], stage], "open_questions": questions}
 
-    prd = _build_prd(objective, chunks, stakeholder_findings, risk_findings, answers)
-    stages.append(AnalysisStageResult(
+
+def _prd_node(state: _AnalysisState) -> dict[str, object]:
+    prd = _build_prd(
+        state["objective"], state["chunks"], state["stakeholder_findings"],
+        state["risk_findings"], state["answers"],
+    )
+    stage = AnalysisStageResult(
         stage="prd", status="COMPLETED", summary="PRD 草稿已生成，仍需人工评审后才能发布。",
         findings=[f"生成 {len(prd.requirements)} 条需求", "当前状态：DRAFT"],
-        evidence=evidence[:8],
-    ))
-    return AnalysisRun(
-        stages=stages, open_questions=[], prd=prd,
-        specialist_results=specialist_results,
+        evidence=state["evidence"][:8],
     )
+    return {"stages": [*state["stages"], stage], "prd": prd}
+
+
+@cache
+def _analysis_graph():
+    """Cache topology, never request state; no framework persistence is enabled."""
+    builder = StateGraph(_AnalysisState)
+    nodes = {
+        "intent": _intent_node, "stakeholders": _stakeholders_node,
+        "domain": _domain_node, "risks": _risks_node,
+        "convergence": _convergence_node, "prd": _prd_node,
+    }
+    for name, node in nodes.items():
+        builder.add_node(name, node)
+    builder.add_conditional_edges(
+        START, lambda state: "convergence" if state["stages"] else "intent",
+        {"intent": "intent", "convergence": "convergence"},
+    )
+    names = list(nodes)
+    for source, target in zip(names[:4], names[1:5], strict=True):
+        builder.add_edge(source, target)
+    builder.add_conditional_edges(
+        "convergence", lambda state: "wait" if state["open_questions"] else "ready",
+        {"wait": END, "ready": "prd"},
+    )
+    builder.add_edge("prd", END)
+    return builder.compile()
 
 
 def _run_domain_specialists(chunks: tuple[Chunk, ...]) -> tuple[DomainSpecialistResult, ...]:

@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 先装依赖（利用层缓存）
-COPY requirements.txt ./
+COPY requirements.txt requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app

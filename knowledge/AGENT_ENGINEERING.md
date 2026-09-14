@@ -2,9 +2,9 @@
 
 ## 框架与编排边界
 
-Agent Service 使用 FastAPI、Pydantic、OpenAI-compatible SDK 和自研的有限业务编排，没有引入 LangChain/LangGraph。问答侧可选 LLM 路由/规划/工具选择/生成，六阶段 specialist 与引用 Reviewer 当前仍是规则实现。框架能力比较、优势、维护成本和迁移条件统一见 [面试选型答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)，不宣称自研有未经对照验证的性能或可靠性优势。
+Agent Service 使用 FastAPI、Pydantic、OpenAI-compatible SDK；六阶段分析由 LangGraph 1.2.11 编排。问答侧保留现有 Router/Planner/工具执行，可选 LLM 路由、规划、工具选择和生成；六阶段 specialist 与引用 Reviewer 当前仍是规则实现。框架适配、依赖成本和扩展条件统一见 [应用报告 ADR-0020](decisions/0020-langgraph-application-report.md)，不宣称未经对照验证的性能或效果优势。
 
-2026-09-15 用户已同意 LangGraph 选型方向，[应用报告 ADR-0020](decisions/0020-langgraph-application-report.md) 给出六阶段图与最小示例。首阶段设计复用现有业务检查点，不增加框架状态库；原生 interrupt/checkpointer 按长任务需要再引入。当前依赖和业务流程尚未迁移，现有能力仍以下文实现为准。
+2026-09-15 已将 `analysis_pipeline.py` 的手工阶段调度替换为六节点 StateGraph，保留两个公开执行入口及原 HTTP 契约。图与规则 helpers 留在一个文件，调用方继续经过 `architecture.execution`。本阶段复用业务检查点，不增加框架状态库；原生 interrupt/checkpointer 按长任务需要再引入。实际验证见 [QUALITY](QUALITY.md)，运行中镜像与源码版本分别见 [OPERATIONS](OPERATIONS.md)。
 
 ## 六阶段分析
 
@@ -15,13 +15,13 @@ Agent Service 使用 FastAPI、Pydantic、OpenAI-compatible SDK 和自研的有�
 5. 收敛检查：把事实、推断、假设、待确认项分层，判断是否可生成 PRD。
 6. PRD 生成：生成带来源、验收口径、风险和未决问题的可评审草案。
 
-阶段是可观测的业务节点，不等同于必须绑定某个 Agent 框架。每一阶段接受结构化状态并产生可校验输出。
+每一阶段对应一个普通 Python 节点函数，接受 `_AnalysisState` 并返回更新字段；公开输出仍为原 Pydantic 模型。StateGraph 的入口区分新建与恢复，收敛后按剩余问题选择结束等待或生成 PRD。`@cache` 只缓存编译后的图拓扑，每次请求独立初始化状态；不缓存会话、证据或模型结果。图调用显式禁用 LangSmith tracing，避免宿主环境的追踪配置自动导出业务证据。
 
 当前实现位于独立的 `analysis_evidence`、`analysis_pipeline`、`analysis_store`、`publication_service`、`publication_artifacts`、`knowledge_lifecycle_store` 与 `routes/analysis` 模块，没有继续扩张已有的 `agentic_rag.py`。创建会话时，`analysis_evidence` 先在 JWT 限定的 tenant/owner/asset scope 内用 hybrid 检索按 objective 排序，最多冻结 24 个正分 chunk；canonical JSON、content revision 与 SHA-256 随 session 持久化。`analysis_pipeline` 仍是无外部模型的确定性基线，但领域阶段现在通过进程共享、默认 4 worker（`AGENT_SPECIALIST_WORKERS`）的线程池并行执行业务、数据与安全、技术与集成、规则与合规四个 specialist；结果按固定声明顺序合并，单维失败进入人工复核，显式冲突进入 `domain_conflict`。这些 specialist 是有界领域执行器，不声称是独立 LLM Agent。
 
 事实不足时返回结构化问题和恢复令牌；补充后保持同一 session，读取创建时的冻结证据，保留阶段 1–4，只重新执行收敛和 PRD 阶段。目标、证据排序、早期结论和恢复输入因此可以复现，不受等待期间新摄取材料影响。
 
-2026-09-14 代码核对：这里的“有界”限定输入、每请求四个任务与线程数，不代表共享提交队列有容量限制。当前 `as_completed(futures)` 没有 timeout；单维抛异常会转人工复核，永久挂起仍可能阻塞分析请求。尚未实现独立 specialist 进程隔离或统一请求截止，不能把检索通道的超时/满员保护推及所有 Agent。
+2026-09-15 迁移后核对：这里的“有界”限定输入、每请求四个任务与线程数，不代表共享提交队列有容量限制。当前 `as_completed(futures)` 没有 timeout；单维抛异常会转人工复核，永久挂起仍可能阻塞分析请求。LangGraph 接入未改变此边界；尚未实现独立 specialist 进程隔离或统一请求截止，不能把检索通道的超时/满员保护推及所有 Agent。
 
 ## 对话执行计划
 

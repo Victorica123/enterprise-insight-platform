@@ -2,11 +2,11 @@
 
 源码仓库：[Victorica123/enterprise-insight-platform](https://github.com/Victorica123/enterprise-insight-platform)（私有仓库，默认分支 `main`）。
 
-第一次阅读建议从 [`docs/START_HERE.md`](docs/START_HERE.md) 开始：它用 10 分钟阅读顺序、模块地图和按症状定位表解释项目，不需要先通读所有历史文档。
+第一次阅读从 [从一个例子理解项目](docs/START_HERE.md) 开始：用“审计报表导出需求”串起页面操作、两个后端、六阶段与审批，再给出最小学习范围和代码路线。
 
 面向客户访谈、需求评审和故障复盘的企业多模态洞察平台：把视频与业务文档转化为可回放证据、结构化分析、可评审 PRD、受治理知识和可追踪行动项。
 
-它不是“视频站 + 聊天机器人”的页面拼接。项目用统一身份、Workspace、版本化契约和一条纵向业务链路，把媒体处理与 Agent 分析整合为一个产品。
+项目用统一身份、Workspace、版本化契约和一条业务链路，把媒体处理与 Agent 分析整合为一个产品。
 
 ## 90 秒了解项目
 
@@ -17,28 +17,31 @@ flowchart LR
     M -->|transcript.ready.v1 / outbox| A
     M --> V[上传 / 转写 / 播放]
     A --> R[授权检索 / 时间戳证据]
-    R --> P[六阶段分析 / 等待恢复]
+    R --> Q[知识问答 / 连续追问]
+    R --> P[LangGraph 六阶段 / 业务等待恢复]
     P --> G[PRD 审批 / 不可变版本]
     G --> K[知识批准后进入未来 RAG]
     K --> L[替代/撤回审批与版本链]
     G --> T[行动项审批后创建工单]
 ```
 
-当前主链路：
+问答与需求分析是两个并列入口，共用授权证据；聊天记录不会自动变成分析材料。主要操作路径：
 
 1. 上传会议视频，查看可恢复的异步处理状态。
 2. 带时间段的转写通过事务 outbox 幂等进入 Agent Service。
 3. 用户跨视频/文档提问、连续追问，查看流式进度和核验后的答案；视频证据可点击回放，支持停止或新建会话。
-4. Agent 经过意图、干系人、领域、风险、收敛、PRD 六阶段分析。
-5. objective 驱动授权 hybrid 检索并冻结证据；信息不足时持久化等待，人工补充后保留阶段 1–4，仅重算收敛与 PRD，并以 CAS 一次性消费恢复 token。
+4. 创建需求分析时，先按目标检索并冻结授权证据，再由 LangGraph 组织意图、干系人、领域、风险、收敛、PRD 六阶段。
+5. 信息不足时保存等待状态，人工补充后保留阶段 1–4，只重算收敛与 PRD，数据库保证恢复令牌只能成功提交一次。
 6. personal Workspace 使用 OWNER 二次确认发布；team Workspace 必须不同成员四眼审批。
 7. 发布生成不可变 PRD、知识候选和行动项；知识与工单分别经过独立审批。
 8. 批准知识以版本、哈希和原始证据物化，并被后续 RAG 检索命中。
 9. 过期或错误知识通过独立审批被替代/撤回；旧版本保留审计，未来 RAG 与图谱只读取活跃版本。
 
+六阶段的流程图和节点集中在 [analysis_pipeline.py](services/agent-service/app/analysis_pipeline.py)，已替换原有手工阶段调度。首阶段只使用 LangGraph 的状态、节点和边，等待恢复仍由现有业务数据库负责，未启用框架 checkpointer 或 `interrupt`。问答、模型 SDK 和审批保持各自职责，没有新增运行服务；新依赖并不等于依赖总量减少。设计、取舍与后续扩展条件见 [ADR-0020](knowledge/decisions/0020-langgraph-application-report.md)。
+
 ## 工程证据（2026-09-13 已记录验证）
 
-| 能力 | 当前可验证证据 |
+| 能力 | 当次记录的验证证据 |
 | --- | --- |
 | Agent Service | 271 个自动化用例，覆盖会话/SSE、续租/预算、主题与证据、配置/迁移、检索通道隔离、审批与知识治理 |
 | Media Service | Temurin JDK 17.0.18 下 150 个自动化用例，覆盖 Flyway、阶段日志、配额/租约/outbox 与熔断 |
@@ -49,7 +52,7 @@ flowchart LR
 | 静态检查 | ruff 0.16.6（E/F/I/UP/B）与 ESLint 10（TypeScript + React Hooks）0 error，本机与 CI 共用同一配置 |
 | 维护知识 | Skill + 语义 Top-K 索引 + 增量向量复用 + revision 查询缓存 + CI 漂移检查 |
 
-详细、可审计的测试口径见 [`knowledge/QUALITY.md`](knowledge/QUALITY.md)。
+上表保留原验证日期；本轮 LangGraph 接入及后续最新验证，以 [`knowledge/QUALITY.md`](knowledge/QUALITY.md) 为准。源码更新不会自动更新已运行容器，部署情况见 [OPERATIONS](knowledge/OPERATIONS.md)。
 
 2026-09-13 的架构优化已完成阶段 0–4，包括 Media 职责/配置拆分、Flyway、真实阶段日志与投递熔断，以及 Web Router/Query、会话状态下沉和 Workspace/角色切换隔离。完整进度、历史性能基准与交接见 [`docs/ARCHITECTURE_OPTIMIZATION_PLAN.md`](docs/ARCHITECTURE_OPTIMIZATION_PLAN.md)。会话记忆仍是受限主题提示，每轮重新检索证据；本轮未验证外部模型或生产容量。
 
@@ -106,7 +109,7 @@ python scripts/local_acceptance.py
 
 - [`docs/PROJECT_CLOSEOUT.md`](docs/PROJECT_CLOSEOUT.md)：正式收尾结论、封板证据、面试前检查和重新打开规则。
 - [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：自研与主流框架取舍、召回/评测、Agent 通信与故障、幻觉、连续追问和个人贡献边界。
-- [LangGraph 应用与选型报告](knowledge/decisions/0020-langgraph-application-report.md)：框架比较、六阶段接入设计与最小示例；业务迁移尚未实施。
+- [LangGraph 应用与选型报告](knowledge/decisions/0020-langgraph-application-report.md)：框架比较、已接入的六节点流程、业务检查点与原生恢复的区别。
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟操作、计时练习、打断恢复与无 UI 兜底。
 - [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)：完整代码框架、数据流、RAG、缓存和 Agent 工程说明。
 - [`knowledge/decisions/`](knowledge/decisions/)：重要决策的背景、选型与后果。
@@ -116,7 +119,7 @@ python scripts/local_acceptance.py
 | 路径 | 职责 |
 | --- | --- |
 | `services/media-service` | Spring Boot 媒体上传、存储、转写、播放、Workspace/JWT 与可靠异步工作流 |
-| `services/agent-service` | FastAPI 证据摄取、授权 RAG、六阶段分析、发布治理、知识与受控工具 |
+| `services/agent-service` | FastAPI 证据摄取、授权 RAG、LangGraph 六阶段、发布治理、知识与受控工具 |
 | `apps/web` | React 统一登录、Workspace、媒体、问答、分析、图谱、工单与监控工作台 |
 | `contracts` | JWT、事件和 HTTP 机器可验证契约 |
 | `knowledge` | 产品、架构、安全、质量、ADR 与生成式结构快照 |
@@ -124,4 +127,4 @@ python scripts/local_acceptance.py
 
 ## 真实边界
 
-当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或兑现 99.5% SLO。本轮已在隔离 Docker 环境验证 MySQL/Redis/RocketMQ/MinIO、迁移和恢复，但使用 HS256 与 mock/local AI；k6 仅为 3 VUs、150 请求的小样本。生产试点基线仍为 Keycloak OIDC、RS256/JWKS、MySQL、30/180/365 天保留期和模型出境租户白名单。正式身份集成、外部模型、长时间容量、多实例、聚合告警和目标部署灾备需要独立证据。
+当前交付是可本地复现的工程型试点，不宣称已经获得生产用户量或兑现 99.5% SLO。2026-09-13 在隔离 Docker 环境验证了 MySQL/Redis/RocketMQ/MinIO、迁移和恢复，但使用 HS256 与 mock/local AI；k6 仅为 3 VUs、150 请求的小样本。LangGraph 接入没有补齐 specialist 永久挂起保护或严格事实审核。生产试点基线仍为 Keycloak OIDC、RS256/JWKS、MySQL、30/180/365 天保留期和模型出境租户白名单。正式身份集成、外部模型、长时间容量、多实例、聚合告警和目标部署灾备需要独立证据。

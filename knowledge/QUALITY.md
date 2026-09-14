@@ -1,6 +1,31 @@
 # 质量知识
 
-## 最新验证：2026-09-15 LangGraph 应用与框架选型报告
+## 最新验证：2026-09-15 LangGraph 六阶段接入与项目梳理
+
+以干净的 `main@5b48f7d` 为起点，完成 [ADR-0020](decisions/0020-langgraph-application-report.md) 的 B 阶段：`analysis_pipeline.py` 用六节点 StateGraph 替换手工调度，两个公开入口及 HTTP 契约保持兼容。冻结证据、前四阶段、重复等待、恢复令牌 CAS 和发布审批仍由原业务实现负责。报告从拟议方案更新为源码应用记录；新手说明集中于 [START_HERE](../docs/START_HERE.md)，用一个报表需求区分问答、分析和审批。
+
+| 验证 | 结果 | 本机证据 |
+| --- | --- | --- |
+| 分析兼容基线与迁移回归 | 原实现先通过新增兼容用例 **19/19**；迁移后含追踪隔离 **20/20 PASS**。覆盖原始 findings、连续部分确认、失败/冲突恢复、无效 checkpoint、独立请求状态与 token 失效 | `runtime/codex-langgraph-analysis-tests.log`、`runtime/codex-langgraph-workflow-postmigration.log` |
+| Agent 全量 | **277/277 PASS**；Python 3.12、hash/local、无可选 fastembed、`LLM_ROUTER_ENABLED=0` | `runtime/codex-slimming-agent-tests.log` |
+| PRD V1 | **12/12 PASS**；现有十项指标 100%，`baseline_regression=none` | `runtime/codex-langgraph-prd-postmigration.log` |
+| 检索与会话 | V6 **45 题门禁 PASS**；Conversation **14/14 PASS**；V5 观测检查 **100% PASS** | `runtime/codex-slimming-{v6,conversation,v5}.log` |
+| 知识生命周期 | **3 场景 PASS**；九项既有指标 100% | `runtime/codex-slimming-lifecycle.log` |
+| localhost 业务链 | **42/42 PASS**；随机端口、临时 H2/SQLite、真实 JWT、mock AI，包含冻结/恢复/并发确认和审批 | `runtime/codex-slimming-local-acceptance.log` |
+| 依赖与镜像 | 原环境安装与 `uv pip check` PASS；Agent Docker 构建 PASS，Linux 镜像在 `--network none` 下 `pip check`、真实图等待分支 PASS | `runtime/codex-slimming-dependency-{install,check}.log`、`runtime/codex-slimming-agent-image{,-smoke}.log` |
+| 外部追踪隔离 | 实际 run/resume 在环境开启追踪及外层 tracer 两场景零导出、零 DNS/连接；正向对照证明 fake exporter 可达 | `tests/test_analysis_workflow.py::test_analysis_does_not_export_evidence_through_ambient_tracing` |
+| Python / Web lint | Python PASS；Web 0 error / 10 个既有 warnings | `runtime/codex-slimming-{python,web}-lint.log` |
+| 维护工具 | **6/6 PASS**；主要依赖快照正确识别 Uvicorn extras 和 LangGraph，不展开 constraints/可选依赖 | `runtime/codex-langgraph-dependency-audit/maintenance-tests.log` |
+| 文档与范围检查 | **PASS**；11 份修改 Markdown 的 174 条本地链接/锚点有效，已合并旧入口残留为 0，应用修改限于已核定范围 | `runtime/codex-slimming-document-check.log` |
+| 知识交接 | 生成与 `--check` **PASS**；语义查询 Top-K 命中当前收尾与 ADR-0020；`git diff --check` PASS | `runtime/codex-slimming-knowledge-{update,check}.log`、`runtime/codex-slimming-semantic.log` |
+
+依赖审计在 Windows/Linux Python 3.12 下得到基础包 **32 → 55（新增 23）**，直接要求新增 `langgraph==1.2.11`，传递版本写入 `requirements.lock`。唯一调整的原安装版本为 `websockets 17.1 → 16.1.1`，其余原有直接版本保留；fastembed 可选环境解析与导入通过，没有下载或评测真实模型。完整审计位于 `runtime/codex-langgraph-dependency-audit/`。
+
+本次以显式图取代手工阶段拼接，并统一新手入口；`analysis_pipeline.py` 从 **384 → 412 行**，不宣称代码量、依赖体积、延迟或 token 成本下降。应用报告用真实源码替代长玩具示例，**203 → 122 行**。各评测仍是原有规则/闭集口径，PRD 的 `supported_claim_rate` 与 V6 的 Hit@3/事实子串命中不能等同于真实模型逐句正确率；没有新增框架性能对照结论。
+
+当前 B 阶段已完成；C 的 specialist 截止、队列容量与迟到隔离，D 的原生 checkpointer/interrupt 仍未实施，严格语义幻觉审核和真实模型独立留出集也仍是缺口。源码交付沿用 GitHub `origin/main`，本次未更新已有容器；部署版本和恢复材料见 [OPERATIONS](OPERATIONS.md)。本地未重复执行未改动的 Media 全量及 Web 单测/构建，云端四组 CI 以本次提交的 Actions 记录为准。
+
+## 历史验证：2026-09-15 LangGraph 应用与框架选型报告
 
 以 `5c136b4` 为代码基线交付 [ADR-0020 应用报告](decisions/0020-langgraph-application-report.md)，同时承担选型报告和架构决策记录。用户已同意 LangGraph 方向；本轮完成框架比较、源码映射、六阶段图设计、可运行示例和验收条件，未实施业务迁移。面试指南中的详细比较收敛到报告，只保留口述和入口。
 
