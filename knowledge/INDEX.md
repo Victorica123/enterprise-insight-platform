@@ -21,6 +21,7 @@
 | 测试分层、质量门禁、已验证事实 | [QUALITY.md](QUALITY.md) |
 | 本地启动、配置、部署、故障恢复 | [OPERATIONS.md](OPERATIONS.md)、[本地发布手册](../docs/LOCAL_RELEASE_RUNBOOK.md)、[本机可靠性手册](../docs/LOCAL_RELIABILITY_RUNBOOK.md) 与 [SLO](../docs/SLO.md) |
 | 框架选型、Agent/召回/幻觉/评测答辩、工程故事与个人贡献 | [面试讲解指南](../docs/INTERVIEW_GUIDE.md)、[自研与框架取舍](../docs/INTERVIEW_GUIDE.md#framework-choice) |
+| LangGraph 如何接入、与其他框架比较、精简依赖、状态与恢复的取舍 | [应用与框架选型报告（ADR-0020）](decisions/0020-langgraph-application-report.md)（设计与独立示例，业务迁移尚未实施） |
 | 正式收尾、8 分钟操作、计时练习与失败兜底 | [收尾基线](../docs/PROJECT_CLOSEOUT.md)、[演示与计时脚本](../docs/DEMO_SCRIPT.md) |
 | 第一次理解项目、按症状找代码 | [10 分钟项目地图](../docs/START_HERE.md) |
 | 已批准且不可静默推翻的选择 | [decisions/](decisions/) |

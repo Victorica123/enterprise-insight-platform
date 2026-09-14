@@ -106,6 +106,7 @@ python scripts/local_acceptance.py
 
 - [`docs/PROJECT_CLOSEOUT.md`](docs/PROJECT_CLOSEOUT.md)：正式收尾结论、封板证据、面试前检查和重新打开规则。
 - [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)：自研与主流框架取舍、召回/评测、Agent 通信与故障、幻觉、连续追问和个人贡献边界。
+- [LangGraph 应用与选型报告](knowledge/decisions/0020-langgraph-application-report.md)：框架比较、六阶段接入设计与最小示例；业务迁移尚未实施。
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)：8 分钟操作、计时练习、打断恢复与无 UI 兜底。
 - [`knowledge/TECHNICAL_IMPLEMENTATION.md`](knowledge/TECHNICAL_IMPLEMENTATION.md)：完整代码框架、数据流、RAG、缓存和 Agent 工程说明。
 - [`knowledge/decisions/`](knowledge/decisions/)：重要决策的背景、选型与后果。

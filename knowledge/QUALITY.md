@@ -1,6 +1,22 @@
 # 质量知识
 
-## 最新验证：2026-09-14 面试文档合并与事实核对
+## 最新验证：2026-09-15 LangGraph 应用与框架选型报告
+
+以 `5c136b4` 为代码基线交付 [ADR-0020 应用报告](decisions/0020-langgraph-application-report.md)，同时承担选型报告和架构决策记录。用户已同意 LangGraph 方向；本轮完成框架比较、源码映射、六阶段图设计、可运行示例和验收条件，未实施业务迁移。面试指南中的详细比较收敛到报告，只保留口述和入口。
+
+| 验证 | 结果 | 本机证据 |
+| --- | --- | --- |
+| 官方资料核对 | LangGraph/LangChain、CrewAI Flows、AutoGen 资料及 PyPI 包元数据已读取；比较按核对日期理解，不是性能基准 | `runtime/langgraph-report-sources/summary.json`；报告列出原始 URL |
+| 报告代码块 | **4 条路径 PASS**：首次等待、恢复完成、再次等待、直接完成；输入阶段列表未被改写 | `runtime/codex-langgraph-report-example.log`；Python 3.12 + 隔离 `langgraph==1.2.11`，未安装到项目环境 |
+| Python lint | **PASS**；`uvx ruff@0.16.6 check --config ruff.toml services/agent-service scripts quality` | `runtime/codex-langgraph-report-python-lint.log` |
+| Web lint | **PASS**；`npm run lint`，0 error / 10 个既有 warnings | `runtime/codex-langgraph-report-web-lint.log` |
+| 维护工具 | **4/4 PASS**；`python -m unittest discover -s scripts/tests -q` | `runtime/codex-langgraph-report-maintenance-tests.log` |
+| 文档检查 | **PASS**；8 份新增/修改 Markdown 的 120 条本地链接/锚点有效；合并旧入口残留为 0；`git diff --check` 通过 | `runtime/codex-langgraph-report-check.log` |
+| 知识交接 | 生成与 `--check` **PASS**；应用报告查询 Top-1 命中 ADR-0020 结论段 | `runtime/codex-langgraph-report-knowledge-{update,check}.log`、`runtime/codex-langgraph-report-semantic.log` |
+
+示例只验证 StateGraph API 和条件路径，没有调用项目检索、鉴权、审批、数据库或真实模型。应用依赖、HTTP 契约和部署未变；不以该示例宣称业务迁移、原生持久化执行、超时保护或效果提升已完成。下一步从报告 B 阶段实施六阶段调度，保持冻结证据、阶段 1–4 与令牌 CAS，并运行报告指定业务门禁。当前业务验证继续查下方 2026-09-13 记录。
+
+## 验证：2026-09-14 面试文档合并与事实核对
 
 以应用基线 `c779ce6` 核对框架选型、召回、Agent 通信与故障、效果评估和幻觉处理。四份面试材料合并为 [技术答辩](../docs/INTERVIEW_GUIDE.md) 与 [演示练习](../docs/DEMO_SCRIPT.md)，重复内容由 Git 历史保留；README、项目地图、收尾与知识入口同步更新。架构、契约、质量和运维仍分别维护各自事实。
 

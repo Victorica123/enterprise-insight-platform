@@ -6,6 +6,8 @@
 
 系统由三层组成：统一交互层、两类业务后端和独立的工程知识维护平面。Agent 使用 FastAPI + Pydantic + OpenAI-compatible SDK，自研有限业务编排，没有采用 LangChain/LangGraph。选型取舍和改用成熟运行时的条件统一见 [框架答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)；不以无基准的性能或可靠性优势解释自研。
 
+2026-09-15 已选 LangGraph 作为六阶段编排迁移方向，当前交付为 [应用与选型报告](decisions/0020-langgraph-application-report.md) 和独立示例，尚未改应用依赖。报告明确先复用业务检查点，避免增加重复状态存储；本节继续描述已实现代码。
+
 ```text
 Browser / React 19 + TypeScript + Vite
   ├─ /media -> Spring Boot 3.3 / Java 17 Media Service

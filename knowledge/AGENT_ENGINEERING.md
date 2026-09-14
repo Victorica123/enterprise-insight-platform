@@ -4,6 +4,8 @@
 
 Agent Service 使用 FastAPI、Pydantic、OpenAI-compatible SDK 和自研的有限业务编排，没有引入 LangChain/LangGraph。问答侧可选 LLM 路由/规划/工具选择/生成，六阶段 specialist 与引用 Reviewer 当前仍是规则实现。框架能力比较、优势、维护成本和迁移条件统一见 [面试选型答辩](../docs/INTERVIEW_GUIDE.md#framework-choice)，不宣称自研有未经对照验证的性能或可靠性优势。
 
+2026-09-15 用户已同意 LangGraph 选型方向，[应用报告 ADR-0020](decisions/0020-langgraph-application-report.md) 给出六阶段图与最小示例。首阶段设计复用现有业务检查点，不增加框架状态库；原生 interrupt/checkpointer 按长任务需要再引入。当前依赖和业务流程尚未迁移，现有能力仍以下文实现为准。
+
 ## 六阶段分析
 
 1. 意图识别：识别会议目标、任务类型和期望交付物。
